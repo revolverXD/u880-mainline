@@ -229,9 +229,26 @@ for property in interrupts-extended extcon usb-role-switch; do
   nix_dummy=1; fdtput -d $O /soc/ssusb@a600000 $property 2>/dev/null || true
 done
 
-# 6b USB host test build: USB_HOST=1 fixes the port role to host (no PC link then; use Wi-Fi). Needs kernel patch 0019.
-if [ "${USB_HOST:-0}" = 1 ]; then
+# 6b USB role: USB_MODE=otg (default: roles from UCSI) | peripheral (PC link only) | host (fixed host, test build; same as USB_HOST=1) | otg (roles from UCSI over pmic-glink, or sysfs).
+USB_MODE=${USB_MODE:-otg}; [ "${USB_HOST:-0}" = 1 ] && USB_MODE=host
+case $USB_MODE in
+host)
   fdtput -t s $O /soc/ssusb@a600000 dr_mode host
-  fdtput $O /soc/hsphy@88e3000 qcom,u880-host-mode
-  echo "USB host mode build"
-fi
+  fdtput $O /soc/hsphy@88e3000 qcom,u880-host-mode ;;
+otg)
+  fdtput -t s $O /soc/ssusb@a600000 dr_mode otg
+  # Our root pmic-glink node starts the UCSI client (kernel patch 0020) and carries the Type-C connector; its high-speed port points at a stub
+  # endpoint in usb0 (the ABL overlay adds its own port/endpoint towards the stock ucsi node, which we do not use).
+  fdtput -t s $O /pmic-glink compatible alldocube,u880-pmic-glink
+  fdtput -t u $O /pmic-glink '#address-cells' 1; fdtput -t u $O /pmic-glink '#size-cells' 0
+  UP=/soc/ssusb@a600000
+  fdtput -c $O $UP/port@1; fdtput -t u $O $UP/port@1 reg 1
+  fdtput -c $O $UP/port@1/endpoint; fdtput -t x $O $UP/port@1/endpoint phandle 0x7f000500
+  C=/pmic-glink/connector@0
+  fdtput -c $O $C; fdtput -t s $O $C compatible usb-c-connector; fdtput -t u $O $C reg 0
+  fdtput -t s $O $C power-role dual; fdtput -t s $O $C data-role dual
+  fdtput -c $O $C/ports; fdtput -t u $O $C/ports '#address-cells' 1; fdtput -t u $O $C/ports '#size-cells' 0
+  fdtput -c $O $C/ports/port@0; fdtput -t u $O $C/ports/port@0 reg 0
+  fdtput -c $O $C/ports/port@0/endpoint; fdtput -t x $O $C/ports/port@0/endpoint remote-endpoint 0x7f000500 ;;
+esac
+echo "USB mode: $USB_MODE"

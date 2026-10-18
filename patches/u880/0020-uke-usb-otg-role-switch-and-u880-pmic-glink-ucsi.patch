@@ -1,0 +1,69 @@
+--- a/drivers/usb/dwc3/dwc3-qcom.c	2026-10-18 23:54:25.404989729 +0000
++++ b/drivers/usb/dwc3/dwc3-qcom.c	2026-10-18 23:54:40.863072601 +0000
+@@ -23,6 +23,9 @@
+ #include "core.h"
+ #include "glue.h"
+ 
++/* same bit as PHY_HOST_MODE in phy-msm-snps-eusb2-uke.c (the usb_phy flags word is driver defined) */
++#define U880_PHY_HOST_MODE BIT(0)
++
+ /* USB QSCRATCH Hardware registers */
+ #define QSCRATCH_HS_PHY_CTRL			0x10
+ #define UTMI_OTG_VBUS_VALID			BIT(20)
+@@ -568,6 +571,20 @@
+ 	if (qcom->current_role == next_role)
+ 		return;
+ 
++	/*
++	 * U880 (sm7675-dwc3): the eUSB2 PHY and repeater are configured differently for host and device (U880_PHY_HOST_MODE),
++	 * so flip the flag and re-run the PHY init on every role change. The core soft-resets afterwards.
++	 */
++	if (qcom->uke && dwc->usb2_phy && (next_role == USB_ROLE_HOST || next_role == USB_ROLE_DEVICE)) {
++		usb_phy_shutdown(dwc->usb2_phy);
++		if (next_role == USB_ROLE_HOST)
++			dwc->usb2_phy->flags |= U880_PHY_HOST_MODE;
++		else
++			dwc->usb2_phy->flags &= ~U880_PHY_HOST_MODE;
++		if (usb_phy_init(dwc->usb2_phy))
++			dev_warn(qcom->dev, "USB2 PHY re-init for role %d failed\n", next_role);
++	}
++
+ 	if (pm_runtime_resume_and_get(qcom->dev)) {
+ 		dev_dbg(qcom->dev, "Failed to resume device\n");
+ 		return;
+@@ -670,10 +687,7 @@
+ 
+ 	qcom->dev = &pdev->dev;
+ 	qcom->uke = of_device_is_compatible(dev->of_node, "qcom,sm7675-dwc3");
+-	if (qcom->uke && usb_get_dr_mode(dev) != USB_DR_MODE_PERIPHERAL &&
+-	    usb_get_dr_mode(dev) != USB_DR_MODE_HOST)
+-		return dev_err_probe(dev, -EOPNOTSUPP,
+-				     "Uke OTG role switching is not admitted (fixed peripheral or host only)\n");
++	/* U880: fixed peripheral, fixed host, or OTG with role switching from UCSI / sysfs (PHY re-initialised per role below) */
+ 
+ 	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
+ 	if (IS_ERR(qcom->resets)) {
+--- a/drivers/soc/qcom/pmic_glink.c	2026-10-18 23:54:25.410015119 +0000
++++ b/drivers/soc/qcom/pmic_glink.c	2026-10-18 23:54:25.427085787 +0000
+@@ -390,6 +390,13 @@
+ }
+ 
+ /* Keep the fixed USB peripheral route independent of unqualified role drivers. */
++/* U880: battery + UCSI (Type-C roles); no altmode client yet */
++static const struct pmic_glink_data pmic_glink_u880_data = {
++	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT) | BIT(PMIC_GLINK_CLIENT_UCSI),
++	.charger_pdr_service_name = "tms/servreg",
++	.charger_pdr_service_path = "msm/adsp/charger_pd",
++};
++
+ static const struct pmic_glink_data pmic_glink_uke_data = {
+ 	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT),
+ 	.charger_pdr_service_name = "tms/servreg",
+@@ -412,6 +419,7 @@
+ 
+ static const struct of_device_id pmic_glink_of_match[] = {
+ 	{ .compatible = "xiaomi,uke-pmic-glink", .data = &pmic_glink_uke_data },
++	{ .compatible = "alldocube,u880-pmic-glink", .data = &pmic_glink_u880_data },
+ 	{ .compatible = "qcom,glymur-pmic-glink", .data = &pmic_glink_soccp_data },
+ 	{ .compatible = "qcom,kaanapali-pmic-glink", .data = &pmic_glink_soccp_data },
+ 	{ .compatible = "qcom,pmic-glink", .data = &pmic_glink_adsp_data },

@@ -11562,7 +11562,7 @@
  	u32			ref_clk_per;
 --- a/drivers/usb/dwc3/dwc3-qcom.c
 +++ b/drivers/usb/dwc3/dwc3-qcom.c
-@@ -16,6 +16,7 @@
+@@ -16,11 +16,15 @@
  #include <linux/phy/phy.h>
  #include <linux/usb/of.h>
  #include <linux/reset.h>
@@ -11570,7 +11570,15 @@
  #include <linux/iopoll.h>
  #include <linux/usb/hcd.h>
  #include <linux/usb.h>
-@@ -69,6 +70,8 @@
+ #include "core.h"
+ #include "glue.h"
++
++/* same bit as PHY_HOST_MODE in phy-msm-snps-eusb2-uke.c (the usb_phy flags word is driver defined) */
++#define U880_PHY_HOST_MODE BIT(0)
+ 
+ /* USB QSCRATCH Hardware registers */
+ #define QSCRATCH_HS_PHY_CTRL			0x10
+@@ -69,6 +73,8 @@
  };
  
  struct dwc3_qcom {
@@ -11579,7 +11587,28 @@
  	struct device		*dev;
  	void __iomem		*qscratch_base;
  	struct dwc3		dwc;
-@@ -607,6 +610,49 @@
+@@ -565,6 +571,20 @@
+ 	if (qcom->current_role == next_role)
+ 		return;
+ 
++	/*
++	 * U880 (sm7675-dwc3): the eUSB2 PHY and repeater are configured differently for host and device (U880_PHY_HOST_MODE),
++	 * so flip the flag and re-run the PHY init on every role change. The core soft-resets afterwards.
++	 */
++	if (qcom->uke && dwc->usb2_phy && (next_role == USB_ROLE_HOST || next_role == USB_ROLE_DEVICE)) {
++		usb_phy_shutdown(dwc->usb2_phy);
++		if (next_role == USB_ROLE_HOST)
++			dwc->usb2_phy->flags |= U880_PHY_HOST_MODE;
++		else
++			dwc->usb2_phy->flags &= ~U880_PHY_HOST_MODE;
++		if (usb_phy_init(dwc->usb2_phy))
++			dev_warn(qcom->dev, "USB2 PHY re-init for role %d failed\n", next_role);
++	}
++
+ 	if (pm_runtime_resume_and_get(qcom->dev)) {
+ 		dev_dbg(qcom->dev, "Failed to resume device\n");
+ 		return;
+@@ -607,6 +627,49 @@
  	.pre_run_stop	= dwc3_qcom_run_stop_notifier,
  };
  
@@ -11629,19 +11658,16 @@
  static int dwc3_qcom_probe(struct platform_device *pdev)
  {
  	struct dwc3_probe_data	probe_data = {};
-@@ -623,6 +669,11 @@
+@@ -623,6 +686,8 @@
  		return -ENOMEM;
  
  	qcom->dev = &pdev->dev;
 +	qcom->uke = of_device_is_compatible(dev->of_node, "qcom,sm7675-dwc3");
-+	if (qcom->uke && usb_get_dr_mode(dev) != USB_DR_MODE_PERIPHERAL &&
-+	    usb_get_dr_mode(dev) != USB_DR_MODE_HOST)
-+		return dev_err_probe(dev, -EOPNOTSUPP,
-+				     "Uke OTG role switching is not admitted (fixed peripheral or host only)\n");
++	/* U880: fixed peripheral, fixed host, or OTG with role switching from UCSI / sysfs (PHY re-initialised per role below) */
  
  	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
  	if (IS_ERR(qcom->resets)) {
-@@ -635,18 +686,18 @@
+@@ -635,18 +700,18 @@
  		return dev_err_probe(dev, ret, "failed to get clocks\n");
  	qcom->num_clocks = ret;
  
@@ -11672,7 +11698,7 @@
  	}
  
  	ret = clk_bulk_prepare_enable(qcom->num_clocks, qcom->clks);
-@@ -655,6 +706,10 @@
+@@ -655,6 +720,10 @@
  
  	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
  	if (!r) {
@@ -11683,7 +11709,7 @@
  		ret = -EINVAL;
  		goto clk_disable;
  	}
-@@ -840,6 +895,7 @@
+@@ -840,6 +909,7 @@
  
  static const struct of_device_id dwc3_qcom_of_match[] = {
  	{ .compatible = "qcom,snps-dwc3" },
@@ -79848,11 +79874,18 @@
 +#include <trace/define_trace.h>
 --- a/drivers/soc/qcom/pmic_glink.c
 +++ b/drivers/soc/qcom/pmic_glink.c
-@@ -389,6 +389,13 @@
+@@ -389,6 +389,20 @@
  	__pmic_glink = NULL;
  }
  
 +/* Keep the fixed USB peripheral route independent of unqualified role drivers. */
++/* U880: battery + UCSI (Type-C roles); no altmode client yet */
++static const struct pmic_glink_data pmic_glink_u880_data = {
++	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT) | BIT(PMIC_GLINK_CLIENT_UCSI),
++	.charger_pdr_service_name = "tms/servreg",
++	.charger_pdr_service_path = "msm/adsp/charger_pd",
++};
++
 +static const struct pmic_glink_data pmic_glink_uke_data = {
 +	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT),
 +	.charger_pdr_service_name = "tms/servreg",
@@ -79862,11 +79895,12 @@
  static const struct pmic_glink_data pmic_glink_adsp_data = {
  	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT) |
  		       BIT(PMIC_GLINK_CLIENT_ALTMODE) |
-@@ -404,6 +411,7 @@
+@@ -404,6 +418,8 @@
  };
  
  static const struct of_device_id pmic_glink_of_match[] = {
 +	{ .compatible = "xiaomi,uke-pmic-glink", .data = &pmic_glink_uke_data },
++	{ .compatible = "alldocube,u880-pmic-glink", .data = &pmic_glink_u880_data },
  	{ .compatible = "qcom,glymur-pmic-glink", .data = &pmic_glink_soccp_data },
  	{ .compatible = "qcom,kaanapali-pmic-glink", .data = &pmic_glink_soccp_data },
  	{ .compatible = "qcom,pmic-glink", .data = &pmic_glink_adsp_data },
