@@ -13742,7 +13742,7 @@
 +obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += qcom-proxy-consumer-uke.o
 --- /dev/null
 +++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
-@@ -0,0 +1,2132 @@
+@@ -0,0 +1,2133 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
 +/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
@@ -15743,6 +15743,7 @@
 +	    strcmp(aggr_vreg->resource_name, "lmx.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "mxc.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob2") &&
++	    strcmp(aggr_vreg->resource_name, "ldob3") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob4") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob7") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob17") &&

@@ -1,0 +1,10 @@
+--- a/drivers/regulator/qcom-rpmh-regulator-uke.c	2026-10-19 01:03:37.047065213 +0000
++++ b/drivers/regulator/qcom-rpmh-regulator-uke.c	2026-10-19 01:03:37.049382290 +0000
+@@ -1998,6 +1998,7 @@
+ 	    strcmp(aggr_vreg->resource_name, "lmx.lvl") &&
+ 	    strcmp(aggr_vreg->resource_name, "mxc.lvl") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob2") &&
++	    strcmp(aggr_vreg->resource_name, "ldob3") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob4") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob7") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob17") &&

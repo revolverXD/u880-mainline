@@ -1,0 +1,135 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * U880 display stage 3 (DISP=3): DisplayPort 0 (INTF_0) + USB3/DP combo PHY (SM8650-compatible QMPv6, same addresses as the stock Cliffs node)
+ * + the Type-C connector graph for the pmic-glink altmode client. USB itself stays HS-only (dwc3 still uses the legacy eUSB2 PHY).
+ * Power: no rpmhpd on this board; rails are held by firmware (GDSC always-on via the uke driver), PHY supplies are regulators L3B/L4B.
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,gcc-cliffs.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,sm8550-dispcc.h>
+#include <dt-bindings/clock/qcom,tcsrcc-pineapple.h>
+#include <dt-bindings/phy/phy-qcom-qmp.h>
+
+/* DP0 link / VCO-div clocks come from the combo PHY (indices 8 and 9 of the SM8550 dispcc parent list) */
+&dispcc {
+	clocks = <&rpmhcc RPMH_CXO_CLK>, <&rpmhcc RPMH_CXO_CLK_A>, <&gcc GCC_DISP_AHB_CLK>, <&sleep_clk>,
+		 <0>, <0>, <0>, <0>,
+		 <&usb_dp_qmpphy QMP_USB43DP_DP_LINK_CLK>, <&usb_dp_qmpphy QMP_USB43DP_DP_VCO_DIV_CLK>,
+		 <0>, <0>, <0>, <0>, <0>, <0>;
+};
+
+&{/soc} {
+	usb_dp_qmpphy: phy@88e8000 {
+		compatible = "qcom,sm8650-qmp-usb3-dp-phy";
+		reg = <0x88e8000 0x3000>;
+		clocks = <&gcc GCC_USB3_PRIM_PHY_AUX_CLK>,
+			 <&tcsrcc TCSR_USB3_CLKREF_EN>,
+			 <&gcc GCC_USB3_PRIM_PHY_COM_AUX_CLK>,
+			 <&gcc GCC_USB3_PRIM_PHY_PIPE_CLK>;
+		clock-names = "aux", "ref", "com_aux", "usb3_pipe";
+		resets = <&gcc GCC_USB3_PHY_PRIM_BCR>, <&gcc GCC_USB3_DP_PHY_PRIM_BCR>;
+		reset-names = "phy", "common";
+		vdda-phy-supply = <&L3B>;
+		vdda-pll-supply = <&L4B>;
+		#clock-cells = <1>;
+		#phy-cells = <1>;
+		mode-switch;
+		orientation-switch;
+		status = "okay";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				usb_dp_qmpphy_out: endpoint {
+					remote-endpoint = <&pmic_glink_ss_in>;
+				};
+			};
+
+			port@2 {
+				reg = <2>;
+				usb_dp_qmpphy_dp_in: endpoint {
+					remote-endpoint = <&mdss_dp0_out>;
+				};
+			};
+		};
+	};
+};
+
+&mdss {
+	mdss_dp0: displayport-controller@af54000 {
+		compatible = "qcom,sm8650-dp";
+		reg = <0xaf54000 0x104>,
+		      <0xaf54200 0xc0>,
+		      <0xaf55000 0x770>,
+		      <0xaf56000 0x9c>,
+		      <0xaf57000 0x9c>;
+		interrupts-extended = <&mdss 12>;
+		clocks = <&dispcc DISP_CC_MDSS_AHB_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_AUX_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_LINK_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_LINK_INTF_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_PIXEL0_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_PIXEL1_CLK>;
+		clock-names = "core_iface", "core_aux", "ctrl_link", "ctrl_link_iface", "stream_pixel", "stream_1_pixel";
+		assigned-clocks = <&dispcc DISP_CC_MDSS_DPTX0_LINK_CLK_SRC>,
+				  <&dispcc DISP_CC_MDSS_DPTX0_PIXEL0_CLK_SRC>,
+				  <&dispcc DISP_CC_MDSS_DPTX0_PIXEL1_CLK_SRC>;
+		assigned-clock-parents = <&usb_dp_qmpphy QMP_USB43DP_DP_LINK_CLK>,
+					 <&usb_dp_qmpphy QMP_USB43DP_DP_VCO_DIV_CLK>,
+					 <&usb_dp_qmpphy QMP_USB43DP_DP_VCO_DIV_CLK>;
+		phys = <&usb_dp_qmpphy QMP_USB43DP_DP_PHY>;
+		phy-names = "dp";
+		#sound-dai-cells = <0>;
+		status = "okay";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				mdss_dp0_in: endpoint {
+					remote-endpoint = <&dpu_intf0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				mdss_dp0_out: endpoint {
+					data-lanes = <0 1 2 3>;
+					remote-endpoint = <&usb_dp_qmpphy_dp_in>;
+				};
+			};
+		};
+	};
+};
+
+&mdss_mdp {
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@2 {
+			reg = <2>;
+			dpu_intf0_out: endpoint {
+				remote-endpoint = <&mdss_dp0_in>;
+			};
+		};
+	};
+};
+
+/* The connector node (compatible usb-c-connector, port@0 = HS) is created by build-stock-disabled.sh; add the super-speed / DP-mux port */
+&{/pmic-glink/connector@0/ports} {
+	port@1 {
+		reg = <1>;
+		pmic_glink_ss_in: endpoint {
+			remote-endpoint = <&usb_dp_qmpphy_out>;
+		};
+	};
+};

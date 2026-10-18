@@ -267,3 +267,10 @@ if [ "${DISP:-0}" -ge 2 ]; then
   dtc -q -@ -I dts -O dtb -o $S/disp2-overlay.dtbo $S/disp2-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp2.dtb $S/disp2-overlay.dtbo && mv $S/dtb2-disabled.disp2.dtb $O && echo "disp2 overlay applied"
 fi
+
+# 7c Display stage 3 (DISP=3): DP0 controller + combo PHY + connector graph (stage1/disp3-overlay.dtso). Needs kernel patches 0022/0023.
+if [ "${DISP:-0}" -ge 3 ]; then
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp3-overlay.dtso > $S/disp3-overlay.pp.dts
+  dtc -q -@ -I dts -O dtb -o $S/disp3-overlay.dtbo $S/disp3-overlay.pp.dts
+  fdtoverlay -i $O -o $S/dtb2-disabled.disp3.dtb $S/disp3-overlay.dtbo && mv $S/dtb2-disabled.disp3.dtb $O && echo "disp3 overlay applied"
+fi
