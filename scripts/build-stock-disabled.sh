@@ -228,3 +228,10 @@ fdtoverlay -i $O -o $S/dtb2-disabled.usb.dtb $S/usb-overlay.dtbo && mv $S/dtb2-d
 for property in interrupts-extended extcon usb-role-switch; do
   nix_dummy=1; fdtput -d $O /soc/ssusb@a600000 $property 2>/dev/null || true
 done
+
+# 6b USB host test build: USB_HOST=1 fixes the port role to host (no PC link then; use Wi-Fi). Needs kernel patch 0019.
+if [ "${USB_HOST:-0}" = 1 ]; then
+  fdtput -t s $O /soc/ssusb@a600000 dr_mode host
+  fdtput $O /soc/hsphy@88e3000 qcom,u880-host-mode
+  echo "USB host mode build"
+fi

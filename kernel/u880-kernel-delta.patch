@@ -11629,18 +11629,19 @@
  static int dwc3_qcom_probe(struct platform_device *pdev)
  {
  	struct dwc3_probe_data	probe_data = {};
-@@ -623,6 +669,10 @@
+@@ -623,6 +669,11 @@
  		return -ENOMEM;
  
  	qcom->dev = &pdev->dev;
 +	qcom->uke = of_device_is_compatible(dev->of_node, "qcom,sm7675-dwc3");
-+	if (qcom->uke && usb_get_dr_mode(dev) != USB_DR_MODE_PERIPHERAL)
++	if (qcom->uke && usb_get_dr_mode(dev) != USB_DR_MODE_PERIPHERAL &&
++	    usb_get_dr_mode(dev) != USB_DR_MODE_HOST)
 +		return dev_err_probe(dev, -EOPNOTSUPP,
-+				     "Uke host PHY/repeater/VBUS profile is not admitted\n");
++				     "Uke OTG role switching is not admitted (fixed peripheral or host only)\n");
  
  	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
  	if (IS_ERR(qcom->resets)) {
-@@ -635,18 +685,18 @@
+@@ -635,18 +686,18 @@
  		return dev_err_probe(dev, ret, "failed to get clocks\n");
  	qcom->num_clocks = ret;
  
@@ -11671,7 +11672,7 @@
  	}
  
  	ret = clk_bulk_prepare_enable(qcom->num_clocks, qcom->clks);
-@@ -655,6 +705,10 @@
+@@ -655,6 +706,10 @@
  
  	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
  	if (!r) {
@@ -11682,7 +11683,7 @@
  		ret = -EINVAL;
  		goto clk_disable;
  	}
-@@ -840,6 +894,7 @@
+@@ -840,6 +895,7 @@
  
  static const struct of_device_id dwc3_qcom_of_match[] = {
  	{ .compatible = "qcom,snps-dwc3" },
@@ -12134,7 +12135,7 @@
 +MODULE_LICENSE("GPL");
 --- /dev/null
 +++ b/drivers/usb/repeater/repeater-qti-pmic-eusb2-uke.c
-@@ -0,0 +1,517 @@
+@@ -0,0 +1,516 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -12451,20 +12452,19 @@
 +	u8 status;
 +	int ret;
 +
-+	/* Uke experiment only supports the vendor device-mode sequence. */
-+	if (ur->flags & BIT(0))
-+		return -EOPNOTSUPP;
++	bool host = ur->flags & BIT(0);	/* PHY_HOST_MODE */
++
 +	WRITE_ONCE(diag_init, 2 * 10000 + EINPROGRESS);
 +	ret = eusb2_repeater_update_seq(er, er->param_override_seq,
 +				      er->param_override_seq_cnt);
 +	if (ret)
 +		return ret;
-+	/* Clear retained host workaround exactly as in Xiaomi device mode. */
++	/* Device mode clears the 19.2 MHz clock workaround (Xiaomi device mode); host mode forces it on (U880: host mode enabled). */
 +	WRITE_ONCE(diag_init, 3 * 10000 + EINPROGRESS);
-+	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_EN_5, F_CLK_19P2M_EN, 0);
++	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_EN_5, F_CLK_19P2M_EN, host ? F_CLK_19P2M_EN : 0);
 +	if (ret)
 +		return ret;
-+	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_VAL_5, V_CLK_19P2M_EN, 0);
++	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_VAL_5, V_CLK_19P2M_EN, host ? V_CLK_19P2M_EN : 0);
 +	if (ret)
 +		return ret;
 +	WRITE_ONCE(diag_init, 4 * 10000 + EINPROGRESS);
@@ -12674,7 +12674,7 @@
 +	select USB_REPEATER
 --- /dev/null
 +++ b/drivers/usb/phy/phy-msm-snps-eusb2-uke.c
-@@ -0,0 +1,927 @@
+@@ -0,0 +1,928 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -13187,8 +13187,6 @@
 +	int ret;
 +
 +	dev_info(uphy->dev, "phy_flags:%x\n", phy->phy.flags);
-+	if (phy->phy.flags & PHY_HOST_MODE)
-+		return -EOPNOTSUPP;
 +	if (is_eud_debug_mode_active(phy)) {
 +		ret = msm_eusb2_phy_power(phy, true);
 +		if (ret)
@@ -13403,6 +13401,9 @@
 +		ret = -ENOMEM;
 +		goto err_ret;
 +	}
++	/* U880: static host mode (the port role is fixed in DT until UCSI role detection exists) */
++	if (of_property_read_bool(dev->of_node, "qcom,u880-host-mode"))
++		phy->phy.flags |= PHY_HOST_MODE;
 +	WRITE_ONCE(diag_probe, 2 * 10000 + EINPROGRESS);
 +	ur = devm_usb_get_repeater_by_phandle(dev, "usb-repeater", 0);
 +	if (IS_ERR(ur)) {

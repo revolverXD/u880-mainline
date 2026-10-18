@@ -1,0 +1,64 @@
+--- a/drivers/usb/repeater/repeater-qti-pmic-eusb2-uke.c	2026-10-18 23:46:13.543798467 +0000
++++ b/drivers/usb/repeater/repeater-qti-pmic-eusb2-uke.c	2026-10-18 23:46:13.575310277 +0000
+@@ -314,20 +314,19 @@
+ 	u8 status;
+ 	int ret;
+ 
+-	/* Uke experiment only supports the vendor device-mode sequence. */
+-	if (ur->flags & BIT(0))
+-		return -EOPNOTSUPP;
++	bool host = ur->flags & BIT(0);	/* PHY_HOST_MODE */
++
+ 	WRITE_ONCE(diag_init, 2 * 10000 + EINPROGRESS);
+ 	ret = eusb2_repeater_update_seq(er, er->param_override_seq,
+ 				      er->param_override_seq_cnt);
+ 	if (ret)
+ 		return ret;
+-	/* Clear retained host workaround exactly as in Xiaomi device mode. */
++	/* Device mode clears the 19.2 MHz clock workaround (Xiaomi device mode); host mode forces it on (U880: host mode enabled). */
+ 	WRITE_ONCE(diag_init, 3 * 10000 + EINPROGRESS);
+-	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_EN_5, F_CLK_19P2M_EN, 0);
++	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_EN_5, F_CLK_19P2M_EN, host ? F_CLK_19P2M_EN : 0);
+ 	if (ret)
+ 		return ret;
+-	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_VAL_5, V_CLK_19P2M_EN, 0);
++	ret = eusb2_repeater_masked_write(er, EUSB2_FORCE_VAL_5, V_CLK_19P2M_EN, host ? V_CLK_19P2M_EN : 0);
+ 	if (ret)
+ 		return ret;
+ 	WRITE_ONCE(diag_init, 4 * 10000 + EINPROGRESS);
+--- a/drivers/usb/phy/phy-msm-snps-eusb2-uke.c	2026-10-18 23:46:13.548906837 +0000
++++ b/drivers/usb/phy/phy-msm-snps-eusb2-uke.c	2026-10-18 23:46:13.575557873 +0000
+@@ -510,8 +510,6 @@
+ 	int ret;
+ 
+ 	dev_info(uphy->dev, "phy_flags:%x\n", phy->phy.flags);
+-	if (phy->phy.flags & PHY_HOST_MODE)
+-		return -EOPNOTSUPP;
+ 	if (is_eud_debug_mode_active(phy)) {
+ 		ret = msm_eusb2_phy_power(phy, true);
+ 		if (ret)
+@@ -726,6 +724,9 @@
+ 		ret = -ENOMEM;
+ 		goto err_ret;
+ 	}
++	/* U880: static host mode (the port role is fixed in DT until UCSI role detection exists) */
++	if (of_property_read_bool(dev->of_node, "qcom,u880-host-mode"))
++		phy->phy.flags |= PHY_HOST_MODE;
+ 	WRITE_ONCE(diag_probe, 2 * 10000 + EINPROGRESS);
+ 	ur = devm_usb_get_repeater_by_phandle(dev, "usb-repeater", 0);
+ 	if (IS_ERR(ur)) {
+--- a/drivers/usb/dwc3/dwc3-qcom.c	2026-10-18 23:46:13.554063557 +0000
++++ b/drivers/usb/dwc3/dwc3-qcom.c	2026-10-18 23:46:13.575766847 +0000
+@@ -670,9 +670,10 @@
+ 
+ 	qcom->dev = &pdev->dev;
+ 	qcom->uke = of_device_is_compatible(dev->of_node, "qcom,sm7675-dwc3");
+-	if (qcom->uke && usb_get_dr_mode(dev) != USB_DR_MODE_PERIPHERAL)
++	if (qcom->uke && usb_get_dr_mode(dev) != USB_DR_MODE_PERIPHERAL &&
++	    usb_get_dr_mode(dev) != USB_DR_MODE_HOST)
+ 		return dev_err_probe(dev, -EOPNOTSUPP,
+-				     "Uke host PHY/repeater/VBUS profile is not admitted\n");
++				     "Uke OTG role switching is not admitted (fixed peripheral or host only)\n");
+ 
+ 	qcom->resets = devm_reset_control_array_get_optional_exclusive(dev);
+ 	if (IS_ERR(qcom->resets)) {
