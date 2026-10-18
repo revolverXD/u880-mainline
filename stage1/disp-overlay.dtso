@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * U880 display, stage 1: display clock controller only. The stock Cliffs dispcc uses the SM8550 register layout (verified against the live
+ * hardware: all active RCG offsets match dispcc-sm8550.c) and the SM8550 clock IDs; DPU is 10.1 so the SM8650 variant of the driver is used.
+ * PHY/DP parent clocks are unconnected for now (<0>).
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,gcc-cliffs.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+
+&dispcc {
+	compatible = "qcom,sm8650-dispcc";
+	clocks = <&rpmhcc RPMH_CXO_CLK>, <&rpmhcc RPMH_CXO_CLK_A>, <&gcc GCC_DISP_AHB_CLK>, <&sleep_clk>,
+		 <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>;
+	status = "okay";
+};

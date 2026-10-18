@@ -79872,6 +79872,17 @@
 +#define TRACE_INCLUDE_FILE trace-rpmh-uke
 +
 +#include <trace/define_trace.h>
+--- a/drivers/soc/qcom/pmic_glink_altmode.c
++++ b/drivers/soc/qcom/pmic_glink_altmode.c
+@@ -514,6 +514,8 @@
+ 
+ 	opcode = le32_to_cpu(hdr->opcode) & 0xff;
+ 	svid = le32_to_cpu(hdr->opcode) >> 16;
++	dev_info(altmode->dev, "U880DBG altmode msg opcode=%#x svid=%#x len=%zu\n", opcode, svid, len);
++	print_hex_dump(KERN_INFO, "U880DBG altmode: ", DUMP_PREFIX_OFFSET, 16, 4, data, min_t(size_t, len, 64), false);
+ 
+ 	switch (opcode) {
+ 	case USBC_CMD_WRITE_REQ:
 --- a/drivers/soc/qcom/pmic_glink.c
 +++ b/drivers/soc/qcom/pmic_glink.c
 @@ -389,6 +389,20 @@
@@ -79879,9 +79890,9 @@
  }
  
 +/* Keep the fixed USB peripheral route independent of unqualified role drivers. */
-+/* U880: battery + UCSI (Type-C roles); no altmode client yet */
++/* U880: battery + UCSI (Type-C roles) + altmode (DisplayPort HPD / pin assignment) */
 +static const struct pmic_glink_data pmic_glink_u880_data = {
-+	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT) | BIT(PMIC_GLINK_CLIENT_UCSI),
++	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT) | BIT(PMIC_GLINK_CLIENT_UCSI) | BIT(PMIC_GLINK_CLIENT_ALTMODE),
 +	.charger_pdr_service_name = "tms/servreg",
 +	.charger_pdr_service_path = "msm/adsp/charger_pd",
 +};

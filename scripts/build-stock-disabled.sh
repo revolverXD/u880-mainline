@@ -252,3 +252,11 @@ otg)
   fdtput -c $O $C/ports/port@0/endpoint; fdtput -t x $O $C/ports/port@0/endpoint remote-endpoint 0x7f000500 ;;
 esac
 echo "USB mode: $USB_MODE"
+
+# 7 Display stage 1 (DISP=1): mainline SM8650-variant dispcc on the stock Cliffs display clock controller (stage1/disp-overlay.dtso).
+if [ "${DISP:-0}" = 1 ]; then
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp-overlay.dtso > $S/disp-overlay.pp.dts
+  dtc -q -@ -I dts -O dtb -o $S/disp-overlay.dtbo $S/disp-overlay.pp.dts
+  fdtoverlay -i $O -o $S/dtb2-disabled.disp.dtb $S/disp-overlay.dtbo && mv $S/dtb2-disabled.disp.dtb $O && echo "disp overlay applied"
+  fdtput -d $O /soc/clock-controller@af00000 clock-names vdd_mm-supply vdd_mxa-supply
+fi
