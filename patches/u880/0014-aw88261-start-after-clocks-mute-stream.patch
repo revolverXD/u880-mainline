@@ -1,0 +1,51 @@
+--- a/sound/soc/codecs/aw88261.c	2026-10-18 21:48:45.873655789 +0000
++++ b/sound/soc/codecs/aw88261.c	2026-10-18 22:23:02.906023027 +0000
+@@ -9,6 +9,7 @@
+ //
+ 
+ #include <linux/i2c.h>
++#include <linux/delay.h>
+ #include <linux/firmware.h>
+ #include <linux/bitops.h>
+ #include <linux/regmap.h>
+@@ -864,7 +865,31 @@
+ 	return 0;
+ }
+ 
++static int aw88261_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
++{
++	struct aw88261 *aw88261 = snd_soc_component_get_drvdata(dai->component);
++	int i;
++
++	if (mute)
++		return 0;
++
++	/* U880: the DSP only starts BCLK/WS some 0.5-1 s after the CPU DAI trigger; the PLL check itself waits ~20 ms. */
++	for (i = 0; i < 60; i++) {
++		mutex_lock(&aw88261->lock);
++		aw88261_start(aw88261);
++		mutex_unlock(&aw88261->lock);
++		if (aw88261->aw_pa->status == AW88261_DEV_PW_ON)
++			break;
++		msleep(50);
++	}
++
++	return 0;
++}
++
+ static const struct snd_soc_dai_ops aw88261_dai_ops = {
++	.mute_stream = aw88261_mute_stream,
++	.mute_unmute_on_trigger = 1,
++	.no_capture_mute = 1,
+ 	.set_fmt = aw88261_set_fmt,
+ 	.hw_params = aw88261_hw_params,
+ 	.set_tdm_slot = aw88261_set_tdm_slot,
+@@ -1041,7 +1066,7 @@
+ 	mutex_lock(&aw88261->lock);
+ 	switch (event) {
+ 	case SND_SOC_DAPM_PRE_PMU:
+-		aw88261_start(aw88261);
++		/* started from .mute_stream: the PLL needs BCLK/WS, which only run once the CPU DAI has triggered */
+ 		break;
+ 	case SND_SOC_DAPM_POST_PMD:
+ 		aw88261_dev_stop(aw88261->aw_pa);

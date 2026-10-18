@@ -1,0 +1,16 @@
+diff --git a/compositor/src/bin/deniald/wayland_frontend/handlers.rs b/compositor/src/bin/deniald/wayland_frontend/handlers.rs
+index 5c257ee..5a43f0e 100644
+--- a/compositor/src/bin/deniald/wayland_frontend/handlers.rs
++++ b/compositor/src/bin/deniald/wayland_frontend/handlers.rs
+@@ -1430,7 +1430,10 @@ impl CompositorHandler for RuntimeState {
+                     managed.flush_pending_resize();
+                 }
+                 #[cfg(feature = "flutter")]
+-                if frontend.mobile_shell && frontend.exact_window_geometry(&window).is_none() {
++                // exact_window_geometry() reports the mobile target in mobile
++                // mode, so it cannot gate this. configure_mobile_window only
++                // sends a configure when the size or states change.
++                if frontend.mobile_shell {
+                     frontend.configure_mobile_window(&window);
+                 }
+                 frontend.reconcile_committed_window_geometry(&window);

@@ -1,0 +1,10 @@
+--- a/drivers/regulator/qcom-rpmh-regulator-uke.c
++++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
+@@ -2003,6 +2003,7 @@
+ 	    strcmp(aggr_vreg->resource_name, "ldob17") &&
+ 	    strcmp(aggr_vreg->resource_name, "smpb2") &&
+ 	    strcmp(aggr_vreg->resource_name, "smpb1") &&
+ 	    strcmp(aggr_vreg->resource_name, "smpb3") &&
++	    strcmp(aggr_vreg->resource_name, "smpe3") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldod1") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob5") &&

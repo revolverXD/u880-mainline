@@ -1,0 +1,35 @@
+--- a/drivers/remoteproc/qcom_q6v5_pas.c
++++ b/drivers/remoteproc/qcom_q6v5_pas.c
+@@ -888,7 +888,8 @@
+ 
+ 	rproc->has_iommu = of_property_present(pdev->dev.of_node, "iommus");
+ 	rproc->auto_boot = desc->auto_boot;
+-	if (of_machine_is_compatible("xiaomi,uke") &&
++	if ((of_machine_is_compatible("xiaomi,uke") ||
++	     of_machine_is_compatible("qcom,cliffsp")) &&
+ 	    of_device_is_compatible(pdev->dev.of_node, "qcom,cliffs-adsp-pas")) {
+ 		rproc->auto_boot = true;
+ 		rproc->recovery_disabled = true;
+--- a/drivers/soc/qcom/qcom_pd_mapper.c
++++ b/drivers/soc/qcom/qcom_pd_mapper.c
+@@ -638,6 +638,8 @@
+ 	{ .compatible = "qcom,x1e80100", .data = x1e80100_domains, },
+ 	{ .compatible = "qcom,x1p42100", .data = x1e80100_domains, },
+ 	{ .compatible = "xiaomi,uke", .data = uke_domains, },
++	/* U880: ABL replaces the board compatible with the Cliffs QRD one. */
++	{ .compatible = "qcom,cliffsp", .data = uke_domains, },
+ 	{},
+ };
+ 
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -1782,7 +1782,8 @@
+ 	init_completion(&battmgr->ack);
+ 
+ 	match = of_match_device(qcom_battmgr_of_variants, dev->parent);
+-	if (of_machine_is_compatible("xiaomi,uke")) {
++	if (of_machine_is_compatible("xiaomi,uke") ||
++	    of_machine_is_compatible("qcom,cliffsp")) {
+ 		battmgr->variant = QCOM_BATTMGR_UKE;
+ 		battmgr->unit = QCOM_BATTMGR_UNIT_mAh;
+ 	} else if (match)

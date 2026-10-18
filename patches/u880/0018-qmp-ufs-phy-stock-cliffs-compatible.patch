@@ -1,0 +1,13 @@
+--- a/drivers/phy/qualcomm/phy-qcom-qmp-ufs.c	2026-10-18 23:16:43.086308375 +0000
++++ b/drivers/phy/qualcomm/phy-qcom-qmp-ufs.c	2026-10-18 23:16:43.108141764 +0000
+@@ -2438,6 +2438,10 @@
+ 		.compatible = "qcom,sm7675-qmp-ufs-phy",
+ 		.data = &sm7675_ufsphy_cfg,
+ 	}, {
++		/* U880: the stock board overlay applied by the ABL rewrites compatible to this */
++		.compatible = "qcom,ufs-phy-qmp-v4-cliffs",
++		.data = &sm7675_ufsphy_cfg,
++	}, {
+ 		.compatible = "qcom,sm8750-qmp-ufs-phy",
+ 		.data = &sm8750_ufsphy_cfg,
+ 	},

@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/* U880 GPU: reuse the uke project's Adreno 732 translation of the stock Cliffs GPU nodes (same SoC). */
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/clock/qcom,gcc-cliffs.h>
+#include "sm7675-uke-adreno732.dtsi"

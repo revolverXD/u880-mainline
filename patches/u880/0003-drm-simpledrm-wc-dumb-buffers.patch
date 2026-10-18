@@ -1,0 +1,31 @@
+--- a/drivers/gpu/drm/sysfb/simpledrm.c
++++ b/drivers/gpu/drm/sysfb/simpledrm.c
+@@ -896,8 +896,28 @@
+ 
+ DEFINE_DRM_GEM_FOPS(simpledrm_fops);
+ 
++/*
++ * Dumb buffers may be rendered into by a separate, non-coherent GPU (Mesa kmsro pairs
++ * simpledrm with e.g. msm and the GPU writes straight into these pages). simpledrm then
++ * copies them to the firmware framebuffer with the CPU; through a cached mapping it can
++ * read stale cache lines (seen as 16-pixel garbage dashes on SM7675). Map them
++ * write-combined so CPU reads always see memory.
++ */
++static struct drm_gem_object *simpledrm_gem_create_object(struct drm_device *dev, size_t size)
++{
++	struct drm_gem_shmem_object *shmem;
++
++	shmem = kzalloc(sizeof(*shmem), GFP_KERNEL);
++	if (!shmem)
++		return ERR_PTR(-ENOMEM);
++	shmem->map_wc = true;
++
++	return &shmem->base;
++}
++
+ static struct drm_driver simpledrm_driver = {
+ 	DRM_GEM_SHMEM_DRIVER_OPS,
++	.gem_create_object	= simpledrm_gem_create_object,
+ 	DRM_FBDEV_SHMEM_DRIVER_OPS,
+ 	.name			= DRIVER_NAME,
+ 	.desc			= DRIVER_DESC,

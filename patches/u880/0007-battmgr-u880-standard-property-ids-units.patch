@@ -1,0 +1,45 @@
+--- a/drivers/power/supply/qcom_battmgr.c
++++ b/drivers/power/supply/qcom_battmgr.c
+@@ -364,8 +364,16 @@
+ }
+ 
+ /* Uke inserts BATT_CONSTANT_CURRENT at wire ID 12 in the OEM protocol. */
++/*
++ * Xiaomi Uke firmware quirks: an OEM property slot at BATT_TEMP, charge counter in mAh and
++ * current negative while charging. U880 (qcom,cliffsp) firmware has none of them.
++ */
++static bool qcom_battmgr_uke_oem = true;
++
+ static int qcom_battmgr_uke_battery_property(int property, bool to_wire)
+ {
++	if (!qcom_battmgr_uke_oem)
++		return (property < 0 || property > BATT_CHG_CTRL_END_THR) ? -EINVAL : property;
+ 	if (to_wire) {
+ 		if (property < 0 || property > BATT_CHG_CTRL_END_THR)
+ 			return -EINVAL;
+@@ -1533,7 +1541,7 @@
+ 			break;
+ 		case BATT_CURR_NOW:
+ 			val = le32_to_cpu(resp->intval.value);
+-			if (battmgr->variant == QCOM_BATTMGR_UKE) {
++			if (battmgr->variant == QCOM_BATTMGR_UKE && qcom_battmgr_uke_oem) {
+ 				/* OEM gauge current is negative while charging; Linux is positive. */
+ 				if ((int)val == INT_MIN) {
+ 					battmgr->error = -ERANGE;
+@@ -1555,7 +1563,7 @@
+ 			break;
+ 		case BATT_CHG_COUNTER:
+ 			val = le32_to_cpu(resp->intval.value);
+-			if (battmgr->variant == QCOM_BATTMGR_UKE) {
++			if (battmgr->variant == QCOM_BATTMGR_UKE && qcom_battmgr_uke_oem) {
+ 				/* Exact Uke firmware reports mAh; the power-supply ABI uses uAh. */
+ 				if (val > INT_MAX / 1000) {
+ 					battmgr->error = -ERANGE;
+@@ -1785,6 +1793,7 @@
+ 	if (of_machine_is_compatible("xiaomi,uke") ||
+ 	    of_machine_is_compatible("qcom,cliffsp")) {
+ 		battmgr->variant = QCOM_BATTMGR_UKE;
++		qcom_battmgr_uke_oem = of_machine_is_compatible("xiaomi,uke");
+ 		battmgr->unit = QCOM_BATTMGR_UNIT_mAh;
+ 	} else if (match)
+ 		battmgr->variant = (unsigned long)match->data;

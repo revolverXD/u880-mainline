@@ -1,0 +1,21 @@
+--- a/drivers/power/reset/nvmem-reboot-mode.c	2026-10-18 23:06:15.918685534 +0000
++++ b/drivers/power/reset/nvmem-reboot-mode.c	2026-10-18 23:06:15.934779901 +0000
+@@ -55,6 +55,9 @@
+ 	nvmem_rbm->reboot.write = nvmem_reboot_mode_write;
+ 
+ 	nvmem_rbm->cell = devm_nvmem_cell_get(&pdev->dev, "reboot-mode");
++	/* U880: the stock board overlay names the same SDAM cell "restart_reason" */
++	if (PTR_ERR(nvmem_rbm->cell) == -ENOENT)
++		nvmem_rbm->cell = devm_nvmem_cell_get(&pdev->dev, "restart_reason");
+ 	if (IS_ERR(nvmem_rbm->cell)) {
+ 		return dev_err_probe(&pdev->dev, PTR_ERR(nvmem_rbm->cell),
+ 				     "failed to get the nvmem cell reboot-mode\n");
+@@ -69,6 +72,8 @@
+ 
+ static const struct of_device_id nvmem_reboot_mode_of_match[] = {
+ 	{ .compatible = "nvmem-reboot-mode" },
++	/* U880: downstream node from the stock board overlay */
++	{ .compatible = "qcom,reboot-reason" },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, nvmem_reboot_mode_of_match);

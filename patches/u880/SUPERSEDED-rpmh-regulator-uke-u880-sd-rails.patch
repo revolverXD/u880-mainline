@@ -1,0 +1,14 @@
+--- a/drivers/regulator/qcom-rpmh-regulator-uke.c
++++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
+@@ -2007,7 +2007,10 @@
+ 	    strcmp(aggr_vreg->resource_name, "ldod1") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob5") &&
+ 	    strcmp(aggr_vreg->resource_name, "ldob12") &&
+-	    strcmp(aggr_vreg->resource_name, "ldod3"))
++	    strcmp(aggr_vreg->resource_name, "ldod3") &&
++	    /* U880 (Alldocube iPlay 70 mini Ultra): microSD vdd (L13B) and vdd-io (L23B) */
++	    strcmp(aggr_vreg->resource_name, "ldob13") &&
++	    strcmp(aggr_vreg->resource_name, "ldob23"))
+ 		return -ENODEV;
+ 
+ 	aggr_vreg->addr = cmd_db_read_addr(aggr_vreg->resource_name);

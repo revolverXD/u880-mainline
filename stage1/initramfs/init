@@ -1,0 +1,46 @@
+#!/bin/busybox sh
+# Stage 2 init (v9). Default: rescue = root shell on USB serial (ttyGS0), usb0 172.16.42.2/24 (PC is .1),
+# kernel log pages on screen. With "u880root=sd" on the cmdline: mount microSD p1 and switch_root into its /sbin/init.
+/bin/busybox --install -s /bin
+for a in httpd telnetd udhcpd; do ln -sf busybox-extras /bin/$a; done   # nc comes from the main busybox
+mount -t devtmpfs dev /dev
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mkdir -p /tmp; mount -t tmpfs tmp /tmp
+export PATH=/bin HOME=/ TERM=linux PS1='u880# '
+
+if grep -q 'u880root=sd' /proc/cmdline; then
+  for i in $(seq 1 20); do [ -b /dev/mmcblk1p1 ] && break; sleep 1; done
+  if mount -t ext4 -o rw,noatime /dev/mmcblk1p1 /newroot && [ -e /newroot/sbin/init ]; then
+    umount /tmp; umount /sys; umount /proc
+    mount --move /dev /newroot/dev
+    exec switch_root /newroot /sbin/init
+  fi
+  echo "u880: SD root failed, staying in rescue" > /dev/kmsg
+  umount /newroot 2>/dev/null
+fi
+
+(for i in $(seq 1 30); do [ -e /sys/class/net/usb0 ] && break; sleep 1; done
+ ifconfig usb0 172.16.42.2 netmask 255.255.255.0 up) &
+(while true; do [ -e /dev/ttyGS0 ] && setsid -c sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1; sleep 2; done) &
+# "u880dump": after 90 s in rescue, software-reset (keeps DRAM) so LineageOS can show this console
+# (the ramoops console zone appears there as /sys/fs/pstore/pmsg-ramoops-0). A Power+VolDown hard reset loses it.
+if grep -q 'u880dump' /proc/cmdline; then
+  (sleep 90; echo "u880: rescue dump reset" > /dev/kmsg; sync; echo b > /proc/sysrq-trigger) &
+fi
+exec >/dev/tty0 2>&1
+# First page: only the lines that usually explain a failed boot (one photo is enough).
+FILTER='smmu|iommu|mmc|sdhci|dwc3|a600000|usb|defer|error|fail|unable|timeout|warn|oops|panic|u880'
+printf '\033[2J\033[H'
+echo "== U880 rescue $(uname -r) | SUMMARY (full log pages follow in 30 s) =="
+dmesg | grep -iE "$FILTER" | tail -66
+sleep 30
+while true; do
+  dmesg > /tmp/d; n=$(wc -l < /tmp/d); pages=$(( (n + 69) / 70 )); p=1
+  while [ $p -le $pages ]; do
+    printf '\033[2J\033[H'
+    echo "== U880 rescue $(uname -r) | cpus $(cat /sys/devices/system/cpu/online) | usb0: $(ifconfig usb0 2>/dev/null | grep -o 'inet addr:[0-9.]*') | page $p/$pages =="
+    sed -n "$(( (p-1)*70 + 1 )),$(( p*70 ))p" /tmp/d
+    sleep 20; p=$((p+1))
+  done
+done

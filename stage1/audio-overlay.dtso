@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/* U880 audio step A: AudioReach services over the stock GPR channel + LPASS LPI pinctrl (sm8550 layout, same pins as stock). */
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/soc/qcom,gpr.h>
+#include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
+
+&{/soc/remoteproc-adsp@03000000/glink-edge/qcom,gpr} {
+	qcom,domain = <GPR_DOMAIN_ID_ADSP>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	q6apm: service@1 {
+		compatible = "qcom,q6apm";
+		reg = <GPR_APM_MODULE_IID>;
+		#sound-dai-cells = <0>;
+		qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
+
+		q6apmdai: dais {
+			compatible = "qcom,q6apm-dais";
+			/* stock msm-audio-ion streams; the apps SMMU is admitted for them by kernel patch 0013 */
+			iommus = <&apps_smmu 0x1001 0x80>, <&apps_smmu 0x1061 0x0>;
+		};
+
+		q6apmbedai: bedais {
+			compatible = "qcom,q6apm-lpass-dais";
+			#sound-dai-cells = <1>;
+		};
+	};
+
+	q6prm: service@2 {
+		compatible = "qcom,q6prm";
+		reg = <GPR_PRM_MODULE_IID>;
+		qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
+
+		q6prmcc: clock-controller {
+			compatible = "qcom,q6prm-lpass-clocks";
+			#clock-cells = <2>;
+		};
+	};
+};
+
+&{/soc} {
+	lpass_tlmm: pinctrl@6e80000 {
+		compatible = "qcom,sm8550-lpass-lpi-pinctrl";
+		reg = <0x06e80000 0x20000>, <0x07250000 0x10000>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-ranges = <&lpass_tlmm 0 0 23>;
+		clocks = <&q6prmcc LPASS_HW_MACRO_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
+			 <&q6prmcc LPASS_HW_DCODEC_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		clock-names = "core", "audio";
+
+		/* stock lpi_i2s1_*_active: gpio6 clk, gpio7 ws, gpio8/9 data (func2 = i2s1_*) */
+		pri_mi2s_active: quin-mi2s-active-state {
+			clk-pins {
+				pins = "gpio6";
+				function = "i2s1_clk";
+				drive-strength = <8>;
+				bias-disable;
+				output-high;
+			};
+			ws-pins {
+				pins = "gpio7";
+				function = "i2s1_ws";
+				drive-strength = <8>;
+				bias-disable;
+				output-high;
+			};
+			data-pins {
+				pins = "gpio8", "gpio9";
+				function = "i2s1_data";
+				drive-strength = <8>;
+				bias-disable;
+				output-high;
+			};
+		};
+	};
+};
+
+&{/} {
+	sound {
+		compatible = "qcom,sm8550-sndcard", "qcom,sm8450-sndcard";
+		model = "U880";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pri_mi2s_active>;
+		clocks = <&q6prmcc LPASS_HW_MACRO_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
+			 <&q6prmcc LPASS_HW_DCODEC_VOTE LPASS_CLK_ATTRIBUTE_COUPLE_NO>,
+			 <&q6prmcc LPASS_CLK_ID_VA_CORE_MCLK LPASS_CLK_ATTRIBUTE_COUPLE_NO>;
+		clock-names = "macro", "dcodec", "va_mclk";
+
+		pri-mi2s-playback-dai-link {
+			link-name = "Primary MI2S Playback";
+			format = "i2s";
+
+			cpu {
+				sound-dai = <&q6apmbedai PRIMARY_MI2S_RX>;
+			};
+
+			codec {
+				/* amp phandles are assigned by build-stock-disabled.sh (the nodes come from the ABL overlay) */
+				sound-dai = <0x7f000410>, <0x7f000411>;
+			};
+
+			platform {
+				sound-dai = <&q6apm>;
+			};
+		};
+	};
+};

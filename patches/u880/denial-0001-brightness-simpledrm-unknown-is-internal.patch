@@ -1,0 +1,14 @@
+diff --git a/compositor/src/bin/deniald/system_controls/brightness.rs b/compositor/src/bin/deniald/system_controls/brightness.rs
+index ddf0dd3..cfdae0b 100644
+--- a/compositor/src/bin/deniald/system_controls/brightness.rs
++++ b/compositor/src/bin/deniald/system_controls/brightness.rs
+@@ -240,7 +240,8 @@ fn read_u32(path: &Path) -> Result<u32, String> {
+ }
+ 
+ fn internal_connector(name: &str) -> bool {
+-    ["eDP-", "LVDS-", "DSI-"]
++    // U880 local change: simpledrm (firmware framebuffer) exposes the built-in panel as "Unknown-N".
++    ["eDP-", "LVDS-", "DSI-", "Unknown-"]
+         .iter()
+         .any(|prefix| name.starts_with(prefix))
+ }

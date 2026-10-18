@@ -1,0 +1,13 @@
+--- a/drivers/cpufreq/qcom-cpufreq-hw.c
++++ b/drivers/cpufreq/qcom-cpufreq-hw.c
+@@ -213,7 +213,9 @@
+ 	struct qcom_cpufreq_data *drv_data = policy->driver_data;
+ 	const struct qcom_cpufreq_soc_data *soc_data = qcom_cpufreq.soc_data;
+ 	/* SM7675 EPSS uses core counts, not the older count-one turbo sentinel. */
+-	bool core_count_boost = of_machine_is_compatible("qcom,sm7675");
++	/* qcom,cliffsp: SM7675 boards whose ABL dtbo forces the downstream root compatible (U880) */
++	bool core_count_boost = of_machine_is_compatible("qcom,sm7675") ||
++				of_machine_is_compatible("qcom,cliffsp");
+ 
+ 	table = kzalloc_objs(*table, soc_data->lut_max_entries + 1);
+ 	if (!table)

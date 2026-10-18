@@ -1,0 +1,132 @@
+--- a/drivers/input/touchscreen/novatek-nvt-ts.c
++++ b/drivers/input/touchscreen/novatek-nvt-ts.c
+@@ -49,10 +49,24 @@
+ 
+ struct nvt_ts_i2c_chip_data {
+ 	u8 chip_id;
++	/*
++	 * Newer NT365xx firmware keeps the event/parameter map at this SRAM address
++	 * instead of the default page; it must be selected (command 0xff) after
++	 * every firmware boot. 0 = default page (NT11205, NT36672A).
++	 */
++	u32 event_buf_addr;
++	unsigned int reset_delay_ms;
++	/*
++	 * Override the firmware's IRQ type. The NT36523N holds its INT line low until
++	 * the event buffer is read; with the reported falling edge, an edge that fires
++	 * before the IRQ is armed leaves the line stuck low forever.
++	 */
++	unsigned long irq_trigger;
+ };
+ 
+ struct nvt_ts_data {
+ 	struct i2c_client *client;
++	const struct nvt_ts_i2c_chip_data *chip;
+ 	struct input_dev *input;
+ 	struct gpio_desc *reset_gpio;
+ 	struct regulator_bulk_data regulators[2];
+@@ -87,6 +101,24 @@
+ 	return 0;
+ }
+ 
++static int nvt_ts_set_page(struct nvt_ts_data *data)
++{
++	u32 addr = data->chip->event_buf_addr;
++	u8 cmd[3] = { 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff };
++	int ret;
++
++	if (!addr)
++		return 0;
++
++	ret = i2c_master_send(data->client, cmd, sizeof(cmd));
++	if (ret != sizeof(cmd)) {
++		dev_err(&data->client->dev, "Error selecting event page: %d\n", ret);
++		return (ret < 0) ? ret : -EIO;
++	}
++
++	return 0;
++}
++
+ static irqreturn_t nvt_ts_irq(int irq, void *dev_id)
+ {
+ 	struct nvt_ts_data *data = dev_id;
+@@ -95,6 +127,10 @@
+ 	bool active;
+ 	u8 *touch;
+ 
++	error = nvt_ts_set_page(data);
++	if (error)
++		return IRQ_HANDLED;
++
+ 	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
+ 				 data->max_touches * NVT_TS_TOUCH_SIZE);
+ 	if (error)
+@@ -107,6 +143,9 @@
+ 			continue;
+ 
+ 		slot = touch[0] >> NVT_TS_TOUCH_SLOT_SHIFT;
++		/* id 0 = non-finger record (NT365xx sends them at the scan rate); vendor driver skips them */
++		if (slot == 0)
++			continue;
+ 		if (slot < 1 || slot > data->max_touches) {
+ 			dev_warn(dev, "slot %d out of range, ignoring\n", slot);
+ 			continue;
+@@ -214,6 +253,7 @@
+ 		return -EINVAL;
+ 
+ 	data->client = client;
++	data->chip = chip;
+ 	i2c_set_clientdata(client, data);
+ 
+ 	/*
+@@ -243,9 +283,11 @@
+ 	}
+ 
+ 	/* Wait for controller to come out of reset before params read */
+-	msleep(100);
+-	error = nvt_ts_read_data(data->client, NVT_TS_PARAMETERS_START,
+-				 data->buf, NVT_TS_PARAMS_SIZE);
++	msleep(chip->reset_delay_ms ?: 100);
++	error = nvt_ts_set_page(data);
++	if (!error)
++		error = nvt_ts_read_data(data->client, NVT_TS_PARAMETERS_START,
++					 data->buf, NVT_TS_PARAMS_SIZE);
+ 	gpiod_set_value_cansleep(data->reset_gpio, 1); /* Put back in reset */
+ 	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
+ 	if (error)
+@@ -294,7 +336,7 @@
+ 
+ 	error = devm_request_threaded_irq(dev, client->irq, NULL, nvt_ts_irq,
+ 					  IRQF_ONESHOT | IRQF_NO_AUTOEN |
+-						nvt_ts_irq_type[irq_type],
++						(chip->irq_trigger ?: nvt_ts_irq_type[irq_type]),
+ 					  client->name, data);
+ 	if (error) {
+ 		dev_err(dev, "failed to request irq: %d\n", error);
+@@ -318,9 +360,18 @@
+ 	.chip_id = 0x08,
+ };
+ 
++/* NT36523N on I2C, e.g. Alldocube iPlay 70 mini Ultra (event map found at 0x2fd00) */
++static const struct nvt_ts_i2c_chip_data nvt_nt36523n_ts_data = {
++	.chip_id = 0x08,
++	.event_buf_addr = 0x2fd00,
++	.reset_delay_ms = 500,
++	.irq_trigger = IRQF_TRIGGER_LOW,
++};
++
+ static const struct of_device_id nvt_ts_of_match[] = {
+ 	{ .compatible = "novatek,nt11205-ts", .data = &nvt_nt11205_ts_data },
+ 	{ .compatible = "novatek,nt36672a-ts", .data = &nvt_nt36672a_ts_data },
++	{ .compatible = "novatek,nt36523n-ts", .data = &nvt_nt36523n_ts_data },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, nvt_ts_of_match);
+@@ -328,6 +379,7 @@
+ static const struct i2c_device_id nvt_ts_i2c_id[] = {
+ 	{ .name = "nt11205-ts", .driver_data = (unsigned long)&nvt_nt11205_ts_data },
+ 	{ .name = "nt36672a-ts", .driver_data = (unsigned long)&nvt_nt36672a_ts_data },
++	{ .name = "nt36523n-ts", .driver_data = (unsigned long)&nvt_nt36523n_ts_data },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, nvt_ts_i2c_id);

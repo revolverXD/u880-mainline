@@ -1,0 +1,16 @@
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c	2026-10-18 21:44:46.632397382 +0000
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c	2026-10-18 21:44:46.649368553 +0000
+@@ -826,7 +826,13 @@
+ 		return -EINVAL;
+ 	for (i = 0; i < fwspec->num_ids; i++) {
+ 		u32 sid = fwspec->ids[i];
++		/* U880: ADSP audio (q6apm-dais) streams 0x1001/0x1061; the ACTLR table is only a prefetch tuning. */
++		bool audio = (FIELD_GET(ARM_SMMU_SMR_ID, sid) == 0x1001 ||
++			      FIELD_GET(ARM_SMMU_SMR_ID, sid) == 0x1061) &&
++			     of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
+ 
++		if (audio)
++			continue;
+ 		if (sid != 0x40 && sid != 0xb6 &&
+ 		    !((sid == 0x60 || sid == 0xa3 || sid == 0x423 ||
+ 		       sid == 0x436 || sid == 0x11400 ||

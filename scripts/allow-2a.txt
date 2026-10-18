@@ -1,0 +1,50 @@
+# Stage 2a: core infrastructure only (drivers from the uke 7.2.9 series)
+qcom,cliffs-gcc
+qcom,cliffs-pinctrl
+qcom,rpmh-rsc
+qcom,cmd-db
+qcom,tcsr-mutex
+qcom,smem
+qcom,aoss-qmp
+qcom,spmi-pmic-arb
+qcom,pineapple-tcsrcc
+qcom,cliffs-aggre1_noc
+qcom,cliffs-aggre2_noc
+qcom,cliffs-clk_virt
+qcom,cliffs-cnoc_cfg
+qcom,cliffs-cnoc_main
+qcom,cliffs-gem_noc
+qcom,cliffs-mc_virt
+qcom,cliffs-system_noc
+# only apps_rsc: camera and display RSCs stay off (display RSC could disturb the firmware framebuffer)
+!/soc/rsc@add4000
+!/soc/rsc@af20000
+# 2a.2: PDC wakeup irqchip (TLMM/SPMI wakeup-parent) + IPCC mailbox (AOSS QMP)
+qcom,pdc
+# qcom,ipcc   (2a.2 with PDC+IPCC reset the tablet; testing PDC alone)
+# 2a.3: PDC alone reset the tablet - suspect SPMI/PMIC children probing once PDC exists; keep SPMI off
+# !/soc/qcom,spmi@c42d000   (2026-10-18: SPMI re-enabled; the earlier resets were the TLMM)
+# !/soc/qcom,spmi@c432000
+# 2b GPU: GPU clock controller, SCM (zap shader via TZ), IPCC for aoss_qmp (GMU qcom,qmp); compute IPCC stays off
+qcom,cliffs-gpucc
+qcom,scm
+qcom,ipcc
+!/soc/qcom,ipcc_compute_l0@443000
+# 2c touch: QUP0 serial-engine wrapper (touch I2C SE4 @ a90000 lives under it); QUP1 (BT UART SE10) on since 4c
+qcom,geni-se-qup
+# 3a power: EPSS CPU frequency scaling, TSENS temperature sensors, stock thermal zones untouched
+qcom,cpufreq-epss
+qcom,tsens-v2
++/thermal-zones
+# 4a charging: ADSP (runs the charger/fuel-gauge/USB-PD firmware), its SMP2P, LPASS NoCs for its interconnect votes.
+# Battery access is the uke battery-only pmic-glink node added by build-stock-disabled.sh; stock pmic_glink stays off.
+qcom,cliffs-adsp-pas
+qcom,smp2p
+!/soc/qcom,smp2p-cdsp
+!/soc/qcom,smp2p-modem
+qcom,cliffs-lpass_ag_noc
+qcom,cliffs-lpass_lpiaon_noc
+qcom,cliffs-lpass_lpicx_noc
+# 4b Wi-Fi: WPSS remoteproc (WCN6750 firmware) + its SMP2P; the apps SMMU and wcn6750 node are switched on by
+# build-stock-disabled.sh (their stock compatibles have no mainline driver).
+qcom,cliffs-wpss-pas

@@ -1,0 +1,23 @@
+# Whitelist: only our own sources and notes. Kernel tree, build output, images, vendor firmware and private keys stay out.
+/*
+!/.gitignore
+!/NOTES.md
+!/scripts/
+!/patches/
+!/kernel/
+!/topology/
+!/ucm/
+!/tools/
+!/stock-dt/
+!/stage1/
+/stage1/*
+!/stage1/*.dtso
+!/stage1/initramfs/
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+modules.order
+Module.symvers
+.tmp_versions/

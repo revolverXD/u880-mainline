@@ -1,0 +1,24 @@
+--- a/sound/soc/codecs/aw88261.c	2026-10-18 22:38:07.300207577 +0000
++++ b/sound/soc/codecs/aw88261.c	2026-10-18 22:38:07.317121116 +0000
+@@ -1316,6 +1316,7 @@
+ static int aw88261_i2c_probe(struct i2c_client *i2c)
+ {
+ 	struct aw88261 *aw88261;
++	u32 ch;
+ 	int ret;
+ 
+ 	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_I2C))
+@@ -1336,6 +1337,13 @@
+ 	aw88261->md_value = AW88261_I2SMD_PHILIPS_STANDARD_VALUE;
+ 	aw88261->rxr_slotvld_mask = 1 << AW88261_I2S_RXR_SLOTVLD_START_BIT;
+ 
++	/*
++	 * Stock "sound-channel" (0 = left, 1 = right): each mono amp plays one I2S slot. U880 has two amps on one data line,
++	 * the right one must take slot 1 instead of slot 0.
++	 */
++	if (!device_property_read_u32(&i2c->dev, "sound-channel", &ch) && ch == 1)
++		aw88261->rxl_slotvld_mask = 1 << AW88261_I2S_RXL_SLOTVLD_START_BIT;
++
+ 	mutex_init(&aw88261->lock);
+ 
+ 	i2c_set_clientdata(i2c, aw88261);

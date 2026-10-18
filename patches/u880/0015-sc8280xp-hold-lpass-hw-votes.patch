@@ -1,0 +1,28 @@
+--- a/sound/soc/qcom/sc8280xp.c	2026-10-18 21:53:46.355542669 +0000
++++ b/sound/soc/qcom/sc8280xp.c	2026-10-18 21:56:40.490974090 +0000
+@@ -2,6 +2,7 @@
+ // Copyright (c) 2022, Linaro Limited
+ 
+ #include <dt-bindings/sound/qcom,q6afe.h>
++#include <linux/clk.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <sound/soc.h>
+@@ -140,7 +141,16 @@
+ 	struct snd_soc_card *card;
+ 	struct sc8280xp_snd_data *data;
+ 	struct device *dev = &pdev->dev;
+-	int ret;
++	struct clk_bulk_data *clks;
++	int ret, nclks;
++
++	/*
++	 * U880 (VA-LPAIF MI2S speakers): the LPASS hw votes and the interface clocks listed in DT are held for the life of the card
++	 * (the ADSP does not enable them by itself on this firmware).
++	 */
++	nclks = devm_clk_bulk_get_all_enabled(dev, &clks);
++	if (nclks < 0)
++		return dev_err_probe(dev, nclks, "card clocks\n");
+ 
+ 	card = devm_kzalloc(dev, sizeof(*card), GFP_KERNEL);
+ 	if (!card)

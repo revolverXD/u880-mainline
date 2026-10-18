@@ -1,0 +1,28 @@
+--- a/drivers/leds/rgb/leds-qcom-lpg.c
++++ b/drivers/leds/rgb/leds-qcom-lpg.c
+@@ -1819,6 +1819,17 @@
+ 	},
+ };
+ 
++/* PMXR2230 (PM7550 family) LPG: four channels; e.g. the U880 LCD backlight is the 4th (0xeb00) */
++static const struct lpg_data pmxr2230_pwm_data = {
++	.num_channels = 4,
++	.channels = (const struct lpg_channel_data[]) {
++		{ .base = 0xe800 },
++		{ .base = 0xe900 },
++		{ .base = 0xea00 },
++		{ .base = 0xeb00 },
++	},
++};
++
+ static const struct of_device_id lpg_of_table[] = {
+ 	{ .compatible = "qcom,pm660l-lpg", .data = &pm660l_lpg_data },
+ 	{ .compatible = "qcom,pm8150b-lpg", .data = &pm8150b_lpg_data },
+@@ -1833,6 +1844,7 @@
+ 	{ .compatible = "qcom,pmi8998-lpg", .data = &pmi8998_lpg_data },
+ 	{ .compatible = "qcom,pmc8180c-lpg", .data = &pm8150l_lpg_data },
+ 	{ .compatible = "qcom,pmk8550-pwm", .data = &pmk8550_pwm_data },
++	{ .compatible = "qcom,pmxr2230-pwm", .data = &pmxr2230_pwm_data },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, lpg_of_table);

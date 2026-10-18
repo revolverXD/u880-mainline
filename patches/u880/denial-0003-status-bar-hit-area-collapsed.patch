@@ -1,0 +1,37 @@
+diff --git a/plugins/denial_desktop/lib/src/widgets/shade/status_bar.dart b/plugins/denial_desktop/lib/src/widgets/shade/status_bar.dart
+index 6fcd370..ac1caa1 100644
+--- a/plugins/denial_desktop/lib/src/widgets/shade/status_bar.dart
++++ b/plugins/denial_desktop/lib/src/widgets/shade/status_bar.dart
+@@ -54,16 +54,25 @@ class ShadeStatusBar extends ConsumerWidget {
+     const collapsedHeight = ReferenceShellMetrics.statusBarHeight - 18;
+     final expandedTop = math.max(40 * referenceScale, topPadding);
+     final expandedHeight = 18 * referenceScale;
+-    final hitHeight = math.max(
+-      topPadding + ReferenceShellMetrics.statusBarHeight,
++    final collapsedHitHeight =
++        topPadding + ReferenceShellMetrics.statusBarHeight;
++    final expandedHitHeight = math.max(
++      collapsedHitHeight,
+       expandedTop + expandedHeight,
+     );
+ 
+-    return Positioned(
+-      left: 0,
+-      right: 0,
+-      top: 0,
+-      height: hitHeight,
++    // The expanded geometry scales with the viewport (2.6x on a 1067 dp wide
++    // tablet). Only claim it while the shade is open; a closed shade keeps the
++    // status-bar strip so the top row of home icons stays tappable.
++    return AnimatedBuilder(
++      animation: progress,
++      builder: (context, child) => Positioned(
++        left: 0,
++        right: 0,
++        top: 0,
++        height: progress.value > 0.0 ? expandedHitHeight : collapsedHitHeight,
++        child: child!,
++      ),
+       child: GestureDetector(
+         behavior: HitTestBehavior.opaque,
+         onVerticalDragStart: (details) {

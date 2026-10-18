@@ -1,0 +1,11 @@
+--- a/drivers/soc/qcom/ubwc_config.c
++++ b/drivers/soc/qcom/ubwc_config.c
+@@ -303,6 +303,8 @@
+ 	{ .compatible = "qcom,sm8350", .data = &sm8350_data, },
+ 	{ .compatible = "qcom,sm8450", .data = &sm8350_data, },
+ 	{ .compatible = "qcom,sm7675", .data = &sm7675_data, },
++	/* Cliffs7P (SM7675) boards whose ABL dtbo forces the downstream root compatible, e.g. Alldocube U880 */
++	{ .compatible = "qcom,cliffsp", .data = &sm7675_data, },
+ 	{ .compatible = "qcom,sm8550", .data = &sm8550_data, },
+ 	{ .compatible = "qcom,sm8650", .data = &sm8550_data, },
+ 	{ .compatible = "qcom,sm8750", .data = &sm8750_data, },

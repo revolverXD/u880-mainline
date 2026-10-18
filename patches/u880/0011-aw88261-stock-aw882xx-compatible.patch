@@ -1,0 +1,9 @@
+--- a/sound/soc/codecs/aw88261.c
++++ b/sound/soc/codecs/aw88261.c
+@@ -1343,5 +1343,7 @@
+ static const struct of_device_id aw88261_of_table[] = {
+ 	{ .compatible = "awinic,aw88261" },
++	/* U880: stock downstream compatible from the ABL-applied board overlay (the chip ID is 0x2113 = AW88261). */
++	{ .compatible = "awinic,aw882xx_smartpa" },
+ 	{ }
+ };

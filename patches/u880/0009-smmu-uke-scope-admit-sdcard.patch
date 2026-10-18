@@ -1,0 +1,13 @@
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -829,7 +829,9 @@
+ 
+ 		if (sid != 0x40 && sid != 0xb6 &&
+ 		    !((sid == 0x60 || sid == 0xa3 || sid == 0x423 ||
+-		       sid == 0x436 || sid == 0x11400) &&
++		       sid == 0x436 || sid == 0x11400 ||
++		       /* U880: microSD (sdhc_2), the root filesystem. */
++		       sid == 0x140) &&
+ 		      of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu")))
+ 			return dev_err_probe(dev, -EOPNOTSUPP, "outside Uke boot SMMU scope\n");
+ 		/* None of these streams has an ACTLR override in OEM Cliffs DT. */

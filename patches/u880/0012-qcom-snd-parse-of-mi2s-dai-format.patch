@@ -1,0 +1,19 @@
+--- a/sound/soc/qcom/common.c	2026-10-18 21:15:50.747487272 +0000
++++ b/sound/soc/qcom/common.c	2026-10-18 21:15:50.764480337 +0000
+@@ -159,6 +159,16 @@
+ 			link->nonatomic = 1;
+ 		}
+ 
++		/*
++		 * MI2S backends: "format" gives the wire format. dai_fmt is the codec's view, so CBC_CFC = codec consumes
++		 * the clocks the CPU (LPAIF) provides, which is what the AudioReach I2S module needs (internal WS source).
++		 */
++		if (of_property_present(np, "format")) {
++			link->dai_fmt = snd_soc_daifmt_parse_format(np, NULL);
++			link->dai_fmt |= of_property_read_bool(np, "codec-clock-provider") ?
++					 SND_SOC_DAIFMT_CBP_CFP : SND_SOC_DAIFMT_CBC_CFC;
++		}
++
+ 		link->stream_name = link->name;
+ 		link++;
+ 	}

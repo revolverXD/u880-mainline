@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * U880 USB2 peripheral first (adapted from the uke project's sm7675-uke-usb2.dtso; same Cliffs stock graph).
+ * Host/OTG, USB3 (QMP combo + ONNN redriver) and DP alt mode are NOT part of this step.
+ * The ABL applies the board overlay after us (it re-adds usb-repeater, usb-role-switch, a port graph, ...).
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,tcsrcc-pineapple.h>
+
+&gcc_usb30_prim_gdsc {
+	compatible = "qcom,sm7675-usb-gdsc";
+	reg = <0x00139004 8>;
+	qcom,clock-controller = <&gcc>;
+	regulator-always-on;
+	status = "okay";
+};
+
+&eusb2_phy0 {
+	compatible = "qcom,usb-snps-eusb2-phy";
+	clocks = <&rpmhcc RPMH_CXO_PAD_CLK>, <&tcsrcc TCSR_USB2_CLKREF_EN>;
+	clock-names = "ref_clk_src", "ref_clk";
+	status = "okay";
+};
+
+&usb0 {
+	compatible = "qcom,sm7675-dwc3";
+	usb-psy-name = "qcom-battmgr-usb";
+	gdsc-supply = <&gcc_usb30_prim_gdsc>;
+	usb-phy = <&eusb2_phy0>;
+	iommus = <&apps_smmu 0x40 0>;
+	dma-coherent;
+	interrupts = <0 133 4>;
+	interrupt-names = "dwc_usb3";
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	qcom,select-utmi-as-pipe-clk;
+	interconnects = <&aggre1_noc 49 &mc_virt 512>,
+			<&gem_noc 2 &cnoc_cfg 547>;
+	interconnect-names = "usb-ddr", "apps-usb";
+	snps,disable-clk-gating;
+	snps,dis-u1-entry-quirk;
+	snps,dis-u2-entry-quirk;
+	snps,dis_u2_susphy_quirk;
+	snps,usb2-lpm-disable;
+	snps,usb2-gadget-lpm-disable;
+	status = "okay";
+
+	dwc3@a600000 { status = "disabled"; };
+};
+
+&qupv3_se0_i2c {
+	compatible = "qcom,geni-i2c";
+	clock-names = "se";
+	status = "okay";
+};
+
+&wcd_usbss {
+	compatible = "qcom,sm7675-wcd939x-usb2";
+	reset-gpios = <&tlmm 119 1>;
+	status = "okay";
+};
