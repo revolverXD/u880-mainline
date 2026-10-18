@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * U880 display stage 2 (DISP=2): mainline-style MDSS + DPU nodes next to the (disabled) downstream SDE node. No DSI/DP ports yet,
+ * no iommus / power domains / interconnects / OPP table: the splash scans out of physical memory with firmware-held rails and the DPU
+ * must not change the MDP clock rate. The driver keeps the DPU runtime-resumed (patch 0022) so the splash survives.
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,gcc-cliffs.h>
+#include <dt-bindings/clock/qcom,sm8550-dispcc.h>
+
+&{/soc} {
+	mdss: display-subsystem@ae00000 {
+		compatible = "alldocube,u880-mdss", "qcom,sm8650-mdss";
+		reg = <0xae00000 0x1000>;
+		reg-names = "mdss";
+		interrupts = <0 83 4>;
+		clocks = <&dispcc DISP_CC_MDSS_AHB_CLK>,
+			 <&gcc GCC_DISP_HF_AXI_CLK>,
+			 <&dispcc DISP_CC_MDSS_MDP_CLK>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		status = "okay";
+
+		mdss_mdp: display-controller@ae01000 {
+			compatible = "qcom,sm7675-dpu";
+			reg = <0xae01000 0x8f000>, <0xaeb0000 0x2008>;
+			reg-names = "mdp", "vbif";
+			interrupts-extended = <&mdss 0>;
+			clocks = <&gcc GCC_DISP_HF_AXI_CLK>,
+				 <&dispcc DISP_CC_MDSS_AHB_CLK>,
+				 <&dispcc DISP_CC_MDSS_MDP_LUT_CLK>,
+				 <&dispcc DISP_CC_MDSS_MDP_CLK>,
+				 <&dispcc DISP_CC_MDSS_VSYNC_CLK>;
+			clock-names = "nrt_bus", "iface", "lut", "core", "vsync";
+			status = "okay";
+		};
+	};
+};

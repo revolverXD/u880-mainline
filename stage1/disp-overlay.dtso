@@ -12,6 +12,7 @@
 
 &dispcc {
 	compatible = "alldocube,u880-dispcc", "qcom,sm8650-dispcc";
+	#power-domain-cells = <1>;
 	clocks = <&rpmhcc RPMH_CXO_CLK>, <&rpmhcc RPMH_CXO_CLK_A>, <&gcc GCC_DISP_AHB_CLK>, <&sleep_clk>,
 		 <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>;
 	status = "okay";

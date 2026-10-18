@@ -254,9 +254,16 @@ esac
 echo "USB mode: $USB_MODE"
 
 # 7 Display stage 1 (DISP=1): mainline SM8650-variant dispcc on the stock Cliffs display clock controller (stage1/disp-overlay.dtso).
-if [ "${DISP:-0}" = 1 ]; then
+if [ "${DISP:-0}" -ge 1 ]; then
   cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp-overlay.dtso > $S/disp-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp-overlay.dtbo $S/disp-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp.dtb $S/disp-overlay.dtbo && mv $S/dtb2-disabled.disp.dtb $O && echo "disp overlay applied"
   fdtput -d $O /soc/clock-controller@af00000 clock-names vdd_mm-supply vdd_mxa-supply
+fi
+
+# 7b Display stage 2 (DISP=2): MDSS + DPU nodes (stage1/disp2-overlay.dtso). Needs kernel patch 0022 and dispcc from stage 1.
+if [ "${DISP:-0}" -ge 2 ]; then
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp2-overlay.dtso > $S/disp2-overlay.pp.dts
+  dtc -q -@ -I dts -O dtb -o $S/disp2-overlay.dtbo $S/disp2-overlay.pp.dts
+  fdtoverlay -i $O -o $S/dtb2-disabled.disp2.dtb $S/disp2-overlay.dtbo && mv $S/dtb2-disabled.disp2.dtb $O && echo "disp2 overlay applied"
 fi
