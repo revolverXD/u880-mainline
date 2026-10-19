@@ -253,6 +253,18 @@ otg)
 esac
 echo "USB mode: $USB_MODE"
 
+# 6c USB3=1: SuperSpeed through the QMP combo PHY + NB7VPQ904M redriver (stage1/usb3-overlay.dtso; needs USB_MODE=otg).
+if [ "${USB3:-0}" = 1 ]; then
+  [ "$USB_MODE" = otg ] || { echo "USB3=1 needs USB_MODE=otg"; exit 1; }
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/usb3-overlay.dtso > $S/usb3-overlay.pp.dts
+  dtc -q -@ -I dts -O dtb -o $S/usb3-overlay.dtbo $S/usb3-overlay.pp.dts
+  fdtoverlay -i $O -o $S/dtb2-disabled.usb3.dtb $S/usb3-overlay.dtbo && mv $S/dtb2-disabled.usb3.dtb $O
+  # The PIPE clock now comes from the QMP PHY, not UTMI; GPI stays non-coherent like the other DMA masters here.
+  fdtput -d $O /soc/ssusb@a600000 qcom,select-utmi-as-pipe-clk
+  fdtput -d $O /soc/qcom,gpi-dma@a00000 dma-coherent
+  echo "usb3 overlay applied"
+fi
+
 # 4e Sensors: mainline FastRPC on the ADSP glink edge (stock msm-fastrpc-rpmsg child), compute context banks = stock adsprpc-smd
 # cb10-cb14 (apps SMMU 0x12a; SIDs admitted by kernel patch in arm-smmu-qcom.c). hexagonrpcd serves the sensors PD's registry/config
 # files through it. No dma-coherent (it broke USB/SD DMA on this platform; non-coherent is the safe side).
