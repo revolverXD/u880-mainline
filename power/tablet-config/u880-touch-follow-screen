@@ -6,7 +6,8 @@ B=/sys/class/backlight/u880-backlight/bl_power
 I=$(grep -l nt36523n /sys/class/input/input*/name | head -1)
 [ -n "$I" ] && [ -f "$B" ] || exit 1
 I=${I%/name}/inhibited
-trap 'echo 0 > "$I"' EXIT INT TERM
+# Re-enable touch and EXIT on stop (a TERM trap that does not exit kept the loop alive: 90 s shutdown hang).
+trap 'echo 0 > "$I"; exit 0' INT TERM
 last=
 while :; do
 	if [ "$(cat "$B")" = 0 ]; then want=0; else want=1; fi
