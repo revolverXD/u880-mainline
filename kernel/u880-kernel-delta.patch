@@ -91436,7 +91436,7 @@
  	{ .compatible = "qcom,adreno",
  			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
  	{ .compatible = "qcom,adreno-gmu",
-@@ -739,6 +745,135 @@
+@@ -739,6 +745,141 @@
   * Do not add any more qcom,SOC-smmu-500 entries to this list, unless they need
   * special handling and can not be covered by the qcom,smmu-500 entry.
   */
@@ -91533,7 +91533,13 @@
 +			      FIELD_GET(ARM_SMMU_SMR_ID, sid) == 0x1061) &&
 +			     of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
 +
-+		if (audio)
++		/* U880: ADSP FastRPC compute context banks (stock adsprpc-smd cb10-cb14), used by the sensors PD. */
++		u32 id = FIELD_GET(ARM_SMMU_SMR_ID, sid);
++		bool fastrpc = ((id >= 0x1003 && id <= 0x1007) || (id >= 0x1043 && id <= 0x1047) ||
++				id == 0x1067 || id == 0x1087) &&
++			       of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
++
++		if (audio || fastrpc)
 +			continue;
 +		if (sid != 0x40 && sid != 0xb6 &&
 +		    !((sid == 0x60 || sid == 0xa3 || sid == 0x423 ||
@@ -91572,7 +91578,7 @@
  static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
  	{ .compatible = "qcom,msm8996-smmu-v2", .data = &msm8996_smmu_data },
  	{ .compatible = "qcom,msm8998-smmu-v2", .data = &qcom_smmu_v2_data },
-@@ -765,6 +900,8 @@
+@@ -765,6 +906,8 @@
  	{ .compatible = "qcom,sm8350-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,sm8450-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu_500_impl0_data },
