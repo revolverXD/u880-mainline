@@ -253,6 +253,25 @@ otg)
 esac
 echo "USB mode: $USB_MODE"
 
+# 4e Sensors: mainline FastRPC on the ADSP glink edge (stock msm-fastrpc-rpmsg child), compute context banks = stock adsprpc-smd
+# cb10-cb14 (apps SMMU 0x12a; SIDs admitted by kernel patch in arm-smmu-qcom.c). hexagonrpcd serves the sensors PD's registry/config
+# files through it. No dma-coherent (it broke USB/SD DMA on this platform; non-coherent is the safe side).
+F=/soc/remoteproc-adsp@03000000/glink-edge/qcom,msm_fastrpc_rpmsg
+fdtput -t s $O $F compatible qcom,fastrpc
+fdtput -t s $O $F label adsp
+fdtput $O $F qcom,non-secure-domain ""
+fdtput -t u $O $F '#address-cells' 1
+fdtput -t u $O $F '#size-cells' 0
+for cb in "3 0x12a 0x1003 0x80 0x12a 0x1043 0x20" "4 0x12a 0x1004 0x80 0x12a 0x1044 0x20" "5 0x12a 0x1005 0x80 0x12a 0x1045 0x20" \
+          "6 0x12a 0x1006 0x80 0x12a 0x1046 0x20" "7 0x12a 0x1007 0x40 0x12a 0x1067 0x0 0x12a 0x1087 0x0"; do
+  set -- $cb; n=$1; shift
+  fdtput -c $O $F/compute-cb@$n
+  fdtput -t s $O $F/compute-cb@$n compatible qcom,fastrpc-compute-cb
+  fdtput -t u $O $F/compute-cb@$n reg $n
+  fdtput -t x $O $F/compute-cb@$n iommus "$@"
+done
+echo "fastrpc (adsp) nodes added"
+
 # 7d Native display (DISP=4): full takeover - MDSS handoff + DPU + bonded C-PHY DSI + BOE panel (stage1/disp4-overlay.dtso).
 # Replaces stages 1-3 (none of their overlays are applied). Kernel: uke providers + panel-alldocube-u880.
 if [ "${DISP:-0}" = 4 ]; then

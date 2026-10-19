@@ -1,0 +1,12 @@
+--- /root/output_topology.rs.orig	2026-10-19 14:58:37.383498634 +0000
++++ src/bin/deniald/output_topology.rs	2026-10-19 14:58:37.402734042 +0000
+@@ -135,7 +135,8 @@
+ }
+ 
+ fn orientation_sensor_output(name: &str) -> bool {
+-    output_policy::is_internal_panel(name)
++    // U880 local change: simpledrm (firmware framebuffer) exposes the built-in panel as "Unknown-N".
++    output_policy::is_internal_panel(name) || name.starts_with("Unknown-")
+ }
+ 
+ fn connector_name(connector: &connector::Info) -> String {

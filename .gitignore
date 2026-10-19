@@ -21,3 +21,8 @@
 modules.order
 Module.symvers
 .tmp_versions/
+
+# vendor/device sensor data (stock vendor.img configs, persist registry/calibration): local only, not redistributable
+sensors/vendor/
+sensors/persist/
+sensors/stage/
