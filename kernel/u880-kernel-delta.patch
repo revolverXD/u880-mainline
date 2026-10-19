@@ -19904,7 +19904,7 @@
 +MODULE_LICENSE("GPL");
 --- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-alldocube-u880.c
-@@ -0,0 +1,308 @@
+@@ -0,0 +1,329 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Alldocube iPlay 70 mini Ultra (U880) BOE 1600x2560 LCD, Novatek TDDI (NT36523N touch side).
@@ -19943,6 +19943,8 @@
 +{
 +	return container_of(panel, struct u880_panel, panel);
 +}
++
++extern unsigned int u880_dbg;	/* msm bring-up switches (drivers/gpu/drm/msm/msm_drv.h) */
 +
 +static void u880_on(struct mipi_dsi_multi_context *ctx)
 +{
@@ -20011,8 +20013,27 @@
 +		 ctx->dsc.first_line_bpg_offset, ctx->dsc.nfl_bpg_offset, ctx->dsc.slice_bpg_offset,
 +		 ctx->dsc.final_offset);
 +	/* vendor order (dsi_display_enable): ON command set first, then the PPS, which overrides the Novatek 0x91 values */
-+	u880_on(&dsi_ctx);
-+	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
++	if (u880_dbg & 0x100000) {
++		/* switch 0x100000: the same sequence unicast on each link (msm then neither drops nor broadcasts) */
++		int i;
++
++		for (i = 0; i < 2 && !dsi_ctx.accum_err; i++) {
++			struct mipi_dsi_multi_context lc = { .dsi = ctx->dsi[i] };
++
++			/* 0x200000: link 0 only, 0x400000: link 1 only (bisecting which link's commands matter) */
++			if ((u880_dbg & 0x200000) && i != 0)
++				continue;
++			if ((u880_dbg & 0x400000) && i != 1)
++				continue;
++
++			u880_on(&lc);
++			mipi_dsi_picture_parameter_set_multi(&lc, &pps);
++			dsi_ctx.accum_err = lc.accum_err;
++		}
++	} else {
++		u880_on(&dsi_ctx);
++		mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
++	}
 +	dev_info(panel->dev, "panel on sequence done: %d\n", dsi_ctx.accum_err);
 +	if (dsi_ctx.accum_err) {
 +		gpiod_direction_output(ctx->reset_gpio, 1);
@@ -20541,7 +20562,7 @@
  DECLARE_FAULT_ATTR(fail_gem_iova);
 --- a/drivers/gpu/drm/msm/msm_drv.h
 +++ b/drivers/gpu/drm/msm/msm_drv.h
-@@ -545,4 +545,16 @@
+@@ -545,4 +545,18 @@
  
  bool msm_gpu_no_components(void);
  
@@ -20554,6 +20575,8 @@
 + * 0x4000 restore bootloader-only INTF bits, 0x8000 start slave+master timing engines back to back.
 + * 0x40000 vendor hardware DSI command broadcast (slave armed, master triggers), 0x80000 C-PHY resync FIFO toggle
 + * (CLK_EN_SEL kept) + DSI soft reset after the link clocks run.
++ * 0x100000 unicast DSI commands per link (panel sends ON+PPS to DSI0 then DSI1; no sync broadcast).
++ *   + 0x200000 only DSI0 gets the sequence, + 0x400000 only DSI1.
 + */
 +extern unsigned int u880_dbg;
 +
@@ -84413,12 +84436,29 @@
  
  	bridge = &dsi_bridge->base;
  
-@@ -543,6 +631,15 @@
- 	if (IS_SYNC_NEEDED() && (id == DSI_0))
+@@ -494,7 +582,8 @@
+ 	struct msm_dsi *msm_dsi0 = dsi_mgr_get_dsi(DSI_0);
+ 	struct mipi_dsi_host *host = msm_dsi->host;
+ 	bool is_read = (msg->rx_buf && msg->rx_len);
+-	bool need_sync = (IS_SYNC_NEEDED() && !is_read);
++	/* U880 switch 0x100000: every command goes to its own link only (panel driver sends the sequence per link) */
++	bool need_sync = (IS_SYNC_NEEDED() && !is_read && !(u880_dbg & 0x100000));
+ 	int ret;
+ 
+ 	if (!msg->tx_buf || !msg->tx_len)
+@@ -540,10 +629,21 @@
+ 	struct msm_dsi *msm_dsi0 = dsi_mgr_get_dsi(DSI_0);
+ 	struct mipi_dsi_host *host = msm_dsi->host;
+ 
+-	if (IS_SYNC_NEEDED() && (id == DSI_0))
++	bool sync = IS_SYNC_NEEDED() && !(u880_dbg & 0x100000);
++
++	if (sync && (id == DSI_0))
  		return false;
  
+-	if (IS_SYNC_NEEDED() && msm_dsi0)
 +	/* U880 switch 0x40000: vendor order - arm the slave, then the master trigger starts both links together */
-+	if (IS_SYNC_NEEDED() && msm_dsi0 && (u880_dbg & 0x40000)) {
++	if (sync && msm_dsi0 && (u880_dbg & 0x40000)) {
 +		msm_dsi_host_u880_broadcast(msm_dsi0->host, true, true);
 +		msm_dsi_host_u880_broadcast(host, true, false);
 +		msm_dsi_host_cmd_xfer_commit(host, dma_base, len);
@@ -84426,9 +84466,10 @@
 +		return true;
 +	}
 +
- 	if (IS_SYNC_NEEDED() && msm_dsi0)
++	if (sync && msm_dsi0)
  		msm_dsi_host_cmd_xfer_commit(msm_dsi0->host, dma_base, len);
  
+ 	msm_dsi_host_cmd_xfer_commit(host, dma_base, len);
 --- a/drivers/gpu/drm/msm/dsi/dsi.h
 +++ b/drivers/gpu/drm/msm/dsi/dsi.h
 @@ -66,6 +66,7 @@
