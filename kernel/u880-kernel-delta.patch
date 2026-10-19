@@ -4681,6 +4681,157 @@
 +obj-$(CONFIG_QCOM_RPMH_UKE) += clk-rpmh-uke.o
 +obj-$(CONFIG_QCOM_RPMH_UKE) += tcsrcc-uke.o
 --- /dev/null
++++ b/drivers/clk/qcom/uke-dispcc-votes.c
+@@ -0,0 +1,148 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
++ * SM7675 voltage tables from OEM dispcc-pineapple.c / Cliffs fixup, commit
++ * 5712080a4b0c0b1a879e6d145c601c649ddaddfd. Include in dispcc-sm8550.c.
++ * Use the already ported regulator aggregator, never a second RPMh writer.
++ */
++#include "vdd-level.h"
++
++static DEFINE_VDD_REGULATORS(uke_vdd_mm, VDD_HIGH + 1, 1, vdd_corner);
++static DEFINE_VDD_REGULATORS(uke_vdd_mxa, VDD_HIGH + 1, 1, vdd_corner);
++static struct clk_vdd_class *uke_dispcc_regulators[] = { &uke_vdd_mm, &uke_vdd_mxa };
++static bool uke_dispcc_proxy_active;
++module_param_named(uke_proxy_active, uke_dispcc_proxy_active, bool, 0444);
++
++static unsigned long uke_pll_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 615000000, [VDD_LOW] = 1100000000,
++	[VDD_LOW_L1] = 1600000000, [VDD_NOMINAL] = 2000000000,
++};
++static unsigned long uke_mdp_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 155000000, [VDD_LOWER] = 200000000,
++	[VDD_LOW] = 342000000, [VDD_LOW_L1] = 402000000,
++	[VDD_NOMINAL] = 514000000, [VDD_HIGH] = 600000000,
++};
++static unsigned long uke_byte_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 140630000, [VDD_LOWER] = 187500000,
++	[VDD_LOW] = 300000000, [VDD_LOW_L1] = 358000000,
++};
++static unsigned long uke_pixel_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 225000000, [VDD_LOWER] = 300000000,
++	[VDD_LOW] = 480000000, [VDD_LOW_L1] = 625000000,
++};
++/* OEM Cliffs DPTX0 tables, bounded to Uke's HBR2 source limit. */
++static unsigned long uke_dp_link_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 19200000, [VDD_LOWER] = 270000000,
++	[VDD_LOW_L1] = 540000000,
++};
++static unsigned long uke_dp_pixel_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 19200000, [VDD_LOWER] = 337500000,
++	[VDD_LOW_L1] = 405000000, [VDD_NOMINAL] = 675000000,
++};
++static unsigned long uke_dp_aux_rates[VDD_NUM] = {
++	[VDD_LOWER_D1] = 19200000,
++};
++static struct clk_ops uke_pll_ops, uke_shared_ops, uke_byte_ops, uke_pixel_ops;
++static struct clk_ops uke_dp_ops, uke_aux_ops;
++static struct clk_init_data uke_clock_inits[11];
++
++static int uke_pll_prepare(struct clk_hw *hw)
++{
++	int ret = clk_prepare_regmap(hw);
++
++	if (ret)
++		return ret;
++	ret = clk_alpha_pll_reset_lucid_ole_ops.prepare(hw);
++	if (ret)
++		clk_unprepare_regmap(hw);
++	return ret;
++}
++
++static void uke_dispcc_add_votes(struct clk_regmap *clock, unsigned long *rates,
++				 const struct clk_ops *ops, bool mm_only, unsigned int index)
++{
++	clock->vdd_data = (struct clk_vdd_class_data) {
++		.num_rate_max = VDD_NUM, .rate_max = rates,
++	};
++	if (mm_only)
++		clock->vdd_data.vdd_class = &uke_vdd_mm;
++	else {
++		clock->vdd_data.vdd_classes = uke_dispcc_regulators;
++		clock->vdd_data.num_vdd_classes = ARRAY_SIZE(uke_dispcc_regulators);
++	}
++	uke_clock_inits[index] = *clock->hw.init;
++	uke_clock_inits[index].ops = ops;
++	clock->hw.init = &uke_clock_inits[index];
++}
++
++static void uke_dispcc_voltage_release(void *data)
++{
++	struct device *dev = data;
++
++	if (uke_dispcc_proxy_active) {
++		if (clk_vdd_proxy_unvote(dev, &disp_cc_sm8550_desc))
++			return;
++		uke_dispcc_proxy_active = false;
++	}
++	clk_regulator_deinit(&disp_cc_sm8550_desc);
++}
++
++static int uke_dispcc_voltage_init(struct device *dev)
++{
++	struct clk_ops *ops[] = { &uke_pll_ops, &uke_shared_ops, &uke_byte_ops,
++		&uke_pixel_ops, &uke_dp_ops, &uke_aux_ops };
++	int ret;
++
++	/* Supply names must remain OEM vdd_mm/vdd_mxa, not the private C names. */
++	uke_vdd_mm.class_name = "vdd_mm";
++	uke_vdd_mxa.class_name = "vdd_mxa";
++	uke_vdd_mm.regulator_names[0] = "vdd_mm";
++	uke_vdd_mxa.regulator_names[0] = "vdd_mxa";
++	uke_pll_ops = clk_alpha_pll_reset_lucid_ole_ops;
++	uke_shared_ops = clk_rcg2_shared_no_init_park_ops; /* U880: never park the live MDP RCG */
++	uke_byte_ops = clk_byte2_ops;
++	uke_pixel_ops = clk_pixel_ops;
++	uke_dp_ops = clk_dp_ops;
++	uke_aux_ops = clk_rcg2_ops;
++	uke_pll_ops.prepare = uke_pll_prepare;
++	for (int i = 0; i < ARRAY_SIZE(ops); i++) {
++		if (i)
++			ops[i]->prepare = clk_prepare_regmap;
++		ops[i]->unprepare = clk_unprepare_regmap;
++		ops[i]->pre_rate_change = clk_pre_change_regmap;
++		ops[i]->post_rate_change = clk_post_change_regmap;
++	}
++	uke_dispcc_add_votes(&disp_cc_pll0.clkr, uke_pll_rates, &uke_pll_ops, true, 0);
++	uke_dispcc_add_votes(&disp_cc_pll1.clkr, uke_pll_rates, &uke_pll_ops, true, 1);
++	uke_dispcc_add_votes(&disp_cc_mdss_mdp_clk_src.clkr, uke_mdp_rates, &uke_shared_ops, false, 2);
++	uke_dispcc_add_votes(&disp_cc_mdss_byte0_clk_src.clkr, uke_byte_rates, &uke_byte_ops, false, 3);
++	uke_dispcc_add_votes(&disp_cc_mdss_byte1_clk_src.clkr, uke_byte_rates, &uke_byte_ops, false, 4);
++	uke_dispcc_add_votes(&disp_cc_mdss_pclk0_clk_src.clkr, uke_pixel_rates, &uke_pixel_ops, false, 5);
++	uke_dispcc_add_votes(&disp_cc_mdss_pclk1_clk_src.clkr, uke_pixel_rates, &uke_pixel_ops, false, 6);
++	uke_dispcc_add_votes(&disp_cc_mdss_dptx0_aux_clk_src.clkr, uke_dp_aux_rates, &uke_aux_ops, true, 7);
++	uke_dispcc_add_votes(&disp_cc_mdss_dptx0_link_clk_src.clkr, uke_dp_link_rates, &uke_byte_ops, false, 8);
++	uke_dispcc_add_votes(&disp_cc_mdss_dptx0_pixel0_clk_src.clkr, uke_dp_pixel_rates, &uke_dp_ops, false, 9);
++	uke_dispcc_add_votes(&disp_cc_mdss_dptx0_pixel1_clk_src.clkr, uke_dp_pixel_rates, &uke_dp_ops, false, 10);
++	disp_cc_sm8550_desc.clk_regulators = uke_dispcc_regulators;
++	disp_cc_sm8550_desc.num_clk_regulators = ARRAY_SIZE(uke_dispcc_regulators);
++	ret = clk_regulator_init(dev, &disp_cc_sm8550_desc);
++	if (ret)
++		return ret;
++	ret = devm_add_action_or_reset(dev, uke_dispcc_voltage_release, dev);
++	if (ret)
++		return ret;
++	ret = clk_vdd_proxy_vote(dev, &disp_cc_sm8550_desc);
++	if (!ret)
++		uke_dispcc_proxy_active = true;
++	return ret;
++}
++
++static void uke_dispcc_sync_state(struct device *dev)
++{
++	if (!of_device_is_compatible(dev->of_node, "alldocube,u880-dispcc"))
++		return;
++	if (clk_sync_state(dev))
++		return;
++	if (uke_dispcc_proxy_active && !clk_vdd_proxy_unvote(dev, &disp_cc_sm8550_desc))
++		uke_dispcc_proxy_active = false;
++}
+--- /dev/null
 +++ b/drivers/clk/qcom/tcsrcc-uke.c
 @@ -0,0 +1,189 @@
 +// SPDX-License-Identifier: GPL-2.0-only
@@ -6845,7 +6996,28 @@
  	},
  };
  
-@@ -622,7 +622,7 @@
+@@ -599,6 +599,20 @@
+ 	{ }
+ };
+ 
++/* U880 (Cliffs, DPU 10.1): OEM MDP rates, from the uke native display port. */
++static const struct freq_tbl ftbl_disp_cc_mdss_mdp_clk_src_sm7675[] = {
++	F(19200000, P_BI_TCXO, 1, 0, 0),
++	F(85714286, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(100000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(155000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(200000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(342000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(402000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(514000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	F(600000000, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
++	{ }
++};
++
+ static const struct freq_tbl ftbl_disp_cc_mdss_mdp_clk_src_sm8650[] = {
+ 	F(19200000, P_BI_TCXO, 1, 0, 0),
+ 	F(85714286, P_DISP_CC_PLL0_OUT_MAIN, 3, 0, 0),
+@@ -622,7 +636,7 @@
  		.parent_data = disp_cc_parent_data_8,
  		.num_parents = ARRAY_SIZE(disp_cc_parent_data_8),
  		.flags = CLK_SET_RATE_PARENT,
@@ -6854,7 +7026,16 @@
  	},
  };
  
-@@ -1758,6 +1758,7 @@
+@@ -1744,7 +1758,7 @@
+ 	.fast_io = true,
+ };
+ 
+-static const struct qcom_cc_desc disp_cc_sm8550_desc = {
++static struct qcom_cc_desc disp_cc_sm8550_desc = {
+ 	.config = &disp_cc_sm8550_regmap_config,
+ 	.clks = disp_cc_sm8550_clocks,
+ 	.num_clks = ARRAY_SIZE(disp_cc_sm8550_clocks),
+@@ -1758,15 +1772,25 @@
  	{ .compatible = "qcom,sar2130p-dispcc" },
  	{ .compatible = "qcom,sm8550-dispcc" },
  	{ .compatible = "qcom,sm8650-dispcc" },
@@ -6862,7 +7043,25 @@
  	{ }
  };
  MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
-@@ -1781,7 +1782,8 @@
++
++#include "uke-dispcc-votes.c"
+ 
+ static int disp_cc_sm8550_probe(struct platform_device *pdev)
+ {
+ 	struct regmap *regmap;
+ 	int ret;
+ 
++	/* U880: MMCX/MXA votes only in the native display build (DISP=4 DT has the supplies). */
++	if (of_device_is_compatible(pdev->dev.of_node, "alldocube,u880-dispcc") &&
++	    of_property_present(pdev->dev.of_node, "vdd_mm-supply")) {
++		ret = uke_dispcc_voltage_init(&pdev->dev);
++		if (ret)
++			return ret;
++	}
+ 	ret = devm_pm_runtime_enable(&pdev->dev);
+ 	if (ret)
+ 		return ret;
+@@ -1781,9 +1805,12 @@
  		goto err_put_rpm;
  	}
  
@@ -6870,9 +7069,14 @@
 +	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sm8650-dispcc") ||
 +	    of_device_is_compatible(pdev->dev.of_node, "alldocube,u880-dispcc")) {
  		lucid_ole_vco[0].max_freq = 2100000000;
- 		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sm8650;
+-		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sm8650;
++		disp_cc_mdss_mdp_clk_src.freq_tbl =
++			of_device_is_compatible(pdev->dev.of_node, "alldocube,u880-dispcc") ?
++			ftbl_disp_cc_mdss_mdp_clk_src_sm7675 : ftbl_disp_cc_mdss_mdp_clk_src_sm8650;
  		disp_cc_mdss_dptx1_usb_router_link_intf_clk.clkr.hw.init->parent_hws[0] =
-@@ -1794,11 +1796,17 @@
+ 			&disp_cc_mdss_dptx1_link_div_clk_src.clkr.hw;
+ 	} else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sar2130p-dispcc")) {
+@@ -1794,11 +1821,17 @@
  		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sar2130p;
  	}
  
@@ -6895,6 +7099,14 @@
  
  	/* Keep some clocks always-on */
  	qcom_branch_set_clk_en(regmap, 0xe054); /* DISP_CC_XO_CLK */
+@@ -1821,6 +1854,7 @@
+ 	.probe = disp_cc_sm8550_probe,
+ 	.driver = {
+ 		.name = "disp_cc-sm8550",
++		.sync_state = uke_dispcc_sync_state,
+ 		.of_match_table = disp_cc_sm8550_match_table,
+ 	},
+ };
 --- /dev/null
 +++ b/drivers/clk/qcom/gcc-cliffs.c
 @@ -0,0 +1,3222 @@
@@ -10513,6 +10725,107 @@
  		if (ret)
  			dev_info(dev, "Failed to program QoS: %d\n", ret);
  	}
+--- /dev/null
++++ b/drivers/interconnect/qcom/cliffs-display-icc.h
+@@ -0,0 +1,98 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
++ * Primary-display HLOS routes adapted from Xiaomi cliffs.c to Linux 7.2.10.
++ * OEM commit: 5712080a4b0c0b1a879e6d145c601c649ddaddfd.
++ * Included in the isolated native-display qnoc-cliffs-usb.c.
++ * Reuses the existing LLCC/DDR and configuration nodes, not parallel providers.
++ * No display-voter aliases or camera/DP paths are admitted here.
++ */
++#define MASTER_MDP 21
++#define MASTER_MNOC_HF_MEM_NOC 23
++#define SLAVE_DISPLAY_CFG 524
++#define SLAVE_MNOC_HF_MEM_NOC 559
++
++static struct qcom_icc_node qns_mem_noc_hf;
++static struct qcom_icc_node qnm_mnoc_hf;
++
++static const struct qcom_icc_qosbox qnm_mdp_qos = {
++	.num_ports = 2,
++	.port_offsets = { 0xad000, 0xae000 },
++	.prio = 0,
++	.urg_fwd = 1,
++	.prio_fwd_disable = 0,
++};
++
++static struct qcom_icc_node qnm_mdp = {
++	.name = "qnm_mdp",
++	.channels = 2,
++	.buswidth = 32,
++	.qosbox = &qnm_mdp_qos,
++	.num_links = 1,
++	.link_nodes = { &qns_mem_noc_hf },
++};
++
++static struct qcom_icc_node qns_mem_noc_hf = {
++	.name = "qns_mem_noc_hf",
++	.channels = 2,
++	.buswidth = 32,
++	.num_links = 1,
++	.link_nodes = { &qnm_mnoc_hf },
++};
++
++static const struct qcom_icc_qosbox qnm_mnoc_hf_qos = {
++	.num_ports = 2,
++	.port_offsets = { 0x33000, 0x73000 },
++	.prio = 0,
++	.urg_fwd = 1,
++	.prio_fwd_disable = 0,
++};
++
++static struct qcom_icc_node qnm_mnoc_hf = {
++	.name = "qnm_mnoc_hf",
++	.channels = 2,
++	.buswidth = 32,
++	.qosbox = &qnm_mnoc_hf_qos,
++	.num_links = 2,
++	.link_nodes = { &qns_gem_noc_cnoc, &qns_llcc },
++};
++
++static struct qcom_icc_node qhs_display_cfg = {
++	.name = "qhs_display_cfg",
++	.channels = 1,
++	.buswidth = 4,
++	.num_links = 0,
++};
++
++/* OEM keepalive_early has no v6.12 field. Do not silently replace it with
++ * permanent keepalive: early splash bandwidth needs a separate handoff policy.
++ */
++static struct qcom_icc_bcm bcm_mm0 = {
++	.name = "MM0",
++	.num_nodes = 1,
++	.nodes = { &qns_mem_noc_hf },
++};
++
++static struct qcom_icc_node * const mmss_noc_nodes[] = {
++	[MASTER_MDP] = &qnm_mdp,
++	[SLAVE_MNOC_HF_MEM_NOC] = &qns_mem_noc_hf,
++};
++
++static struct qcom_icc_bcm * const mmss_noc_bcms[] = {
++	&bcm_mm0,
++};
++
++static const struct qcom_icc_desc cliffs_mmss_noc = {
++	.config = &cliffs_icc_regmap_config,
++	.nodes = mmss_noc_nodes,
++	.num_nodes = ARRAY_SIZE(mmss_noc_nodes),
++	.bcms = mmss_noc_bcms,
++	.num_bcms = ARRAY_SIZE(mmss_noc_bcms),
++	.qos_required = true,
++};
++
++/* Integration must add qnm_mnoc_hf to gem_noc_nodes and bcm_sh1;
++ * add qhs_display_cfg to cnoc_cfg_nodes, qsm_cfg.links and bcm_cn1;
++ * and register cliffs_mmss_noc on the existing stock mmss_noc provider.
++ * These declarations alone intentionally do not register another provider.
++ */
 --- a/drivers/interconnect/qcom/Makefile
 +++ b/drivers/interconnect/qcom/Makefile
 @@ -73,6 +73,7 @@
@@ -10553,7 +10866,7 @@
  	depends on INTERCONNECT_QCOM_RPMH_POSSIBLE
 --- /dev/null
 +++ b/drivers/interconnect/qcom/qnoc-cliffs-usb.c
-@@ -0,0 +1,709 @@
+@@ -0,0 +1,714 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -10646,6 +10959,8 @@
 +static struct qcom_icc_node qns_lpass_ag_noc_gemnoc;
 +static struct qcom_icc_node qnm_lpass_gemnoc;
 +
++#include "cliffs-display-icc.h"
++
 +static const struct qcom_icc_qosbox qhm_qup0_qos = {
 +	.num_ports = 1,
 +	.port_offsets = { 0xd000 },
@@ -10726,8 +11041,8 @@
 +	.name = "qsm_cfg",
 +	.channels = 1,
 +	.buswidth = 4,
-+	.num_links = 4,
-+	.link_nodes = { &qhs_qup0, &qhs_qup1, &qhs_usb3_0, &qhs_ufs_mem_cfg },
++	.num_links = 5,
++	.link_nodes = { &qhs_qup0, &qhs_qup1, &qhs_usb3_0, &qhs_ufs_mem_cfg, &qhs_display_cfg },
 +};
 +
 +static struct qcom_icc_node qnm_gemnoc_cnoc = {
@@ -10986,8 +11301,8 @@
 +
 +static struct qcom_icc_bcm bcm_cn1 = {
 +	.name = "CN1",
-+	.num_nodes = 1,
-+	.nodes = { &qhs_qup0 },
++	.num_nodes = 2,
++	.nodes = { &qhs_qup0, &qhs_display_cfg },
 +};
 +
 +static struct qcom_icc_bcm bcm_lp0 = {
@@ -11021,8 +11336,8 @@
 +static struct qcom_icc_bcm bcm_sh1 = {
 +	.name = "SH1",
 +	.enable_mask = 0x1,
-+	.num_nodes = 4,
-+	.nodes = { &chm_apps, &qnm_gpu, &qnm_snoc_sf, &qns_gem_noc_cnoc },
++	.num_nodes = 5,
++	.nodes = { &chm_apps, &qnm_gpu, &qnm_snoc_sf, &qns_gem_noc_cnoc, &qnm_mnoc_hf },
 +};
 +
 +static struct qcom_icc_bcm bcm_sn0 = {
@@ -11100,6 +11415,7 @@
 +};
 +
 +static struct qcom_icc_node * const cnoc_cfg_nodes[] = {
++	[SLAVE_DISPLAY_CFG] = &qhs_display_cfg,
 +	[MASTER_CNOC_CFG] = &qsm_cfg,
 +	[SLAVE_QUP_0] = &qhs_qup0,
 +	[SLAVE_QUP_1] = &qhs_qup1,
@@ -11137,6 +11453,7 @@
 +};
 +
 +static struct qcom_icc_node * const gem_noc_nodes[] = {
++	[MASTER_MNOC_HF_MEM_NOC] = &qnm_mnoc_hf,
 +	[MASTER_APPSS_PROC] = &chm_apps,
 +	[MASTER_GFX3D] = &qnm_gpu,
 +	[MASTER_LPASS_GEM_NOC] = &qnm_lpass_gemnoc,
@@ -11235,6 +11552,7 @@
 +};
 +
 +static const struct of_device_id cliffs_usb_of_match[] = {
++	{ .compatible = "qcom,cliffs-mmss_noc", .data = &cliffs_mmss_noc },
 +	{ .compatible = "qcom,cliffs-aggre1_noc", .data = &cliffs_aggre1_noc },
 +	{ .compatible = "qcom,cliffs-aggre2_noc", .data = &cliffs_aggre2_noc },
 +	{ .compatible = "qcom,cliffs-clk_virt", .data = &cliffs_clk_virt },
@@ -13742,7 +14060,7 @@
 +obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += qcom-proxy-consumer-uke.o
 --- /dev/null
 +++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
-@@ -0,0 +1,2133 @@
+@@ -0,0 +1,2137 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
 +/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
@@ -13762,6 +14080,7 @@
 +#include <linux/regulator/driver.h>
 +#include <linux/regulator/machine.h>
 +#include <linux/regulator/of_regulator.h>
++#include <linux/qcom-uke-display.h>
 +#include <linux/regulator/proxy-consumer.h>
 +
 +#include <soc/qcom/cmd-db.h>
@@ -15754,7 +16073,10 @@
 +	    strcmp(aggr_vreg->resource_name, "ldod1") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob5") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob12") &&
-+	    strcmp(aggr_vreg->resource_name, "ldod3"))
++	    strcmp(aggr_vreg->resource_name, "ldod3") &&
++	    /* U880 native display (DISP=4 DT only): dispcc vdd_mm and panel vddio. Other builds leave them to firmware. */
++	    !(of_machine_u880_native_display() &&
++	      (!strcmp(aggr_vreg->resource_name, "mmcx.lvl") || !strcmp(aggr_vreg->resource_name, "ldob8"))))
 +		return -ENODEV;
 +
 +	aggr_vreg->addr = cmd_db_read_addr(aggr_vreg->resource_name);
@@ -16843,76 +17165,2648 @@
  	DRM_FBDEV_SHMEM_DRIVER_OPS,
  	.name			= DRIVER_NAME,
  	.desc			= DRIVER_DESC,
---- a/drivers/gpu/drm/msm/msm_drv.c
-+++ b/drivers/gpu/drm/msm/msm_drv.c
-@@ -1071,6 +1071,9 @@
- 		ret = add_mdp_components(master_dev, &match);
- 		if (ret)
- 			return ret;
-+		/* U880: a DPU node without any described output (no DSI/DP ports yet) must not reach the component framework with a NULL match */
-+		if (!match && msm_gpu_no_components())
-+			return dev_err_probe(master_dev, -ENODEV, "no display outputs described\n");
- 	}
- 
- 	if (!msm_gpu_no_components()) {
---- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
-+++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
-@@ -794,6 +794,7 @@
- 
- #include "catalog/dpu_10_0_sm8650.h"
- #include "catalog/dpu_10_2_milos.h"
-+#include "catalog/dpu_10_1_sm7675.h"
- 
- #include "catalog/dpu_12_0_sm8750.h"
- #include "catalog/dpu_12_2_glymur.h"
---- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
-+++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
-@@ -1279,7 +1279,12 @@
- 
- 	dpu_vbif_init_memtypes(dpu_kms);
- 
--	pm_runtime_put_sync(&dpu_kms->pdev->dev);
-+	/*
-+	 * U880: the bootloader splash keeps scanning out through the DPU/MDSS clocks and power; never let runtime PM turn them off
-+	 * (keep the reference taken above) until a real mode set has taken over the display.
-+	 */
-+	if (!of_device_is_compatible(dpu_kms->pdev->dev.of_node, "qcom,sm7675-dpu"))
-+		pm_runtime_put_sync(&dpu_kms->pdev->dev);
- 
- 	return 0;
- 
-@@ -1511,6 +1516,7 @@
- 	{ .compatible = "qcom,sm8350-dpu", .data = &dpu_sm8350_cfg, },
- 	{ .compatible = "qcom,sm8450-dpu", .data = &dpu_sm8450_cfg, },
- 	{ .compatible = "qcom,sm8550-dpu", .data = &dpu_sm8550_cfg, },
-+	{ .compatible = "qcom,sm7675-dpu", .data = &dpu_sm7675_cfg, },
- 	{ .compatible = "qcom,sm8650-dpu", .data = &dpu_sm8650_cfg, },
- 	{ .compatible = "qcom,sm8750-dpu", .data = &dpu_sm8750_cfg, },
- 	{ .compatible = "qcom,x1e80100-dpu", .data = &dpu_x1e80100_cfg, },
---- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
-+++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
-@@ -794,6 +794,7 @@
- extern const struct dpu_mdss_cfg dpu_sm8450_cfg;
- extern const struct dpu_mdss_cfg dpu_sa8775p_cfg;
- extern const struct dpu_mdss_cfg dpu_sm8550_cfg;
-+extern const struct dpu_mdss_cfg dpu_sm7675_cfg;
- extern const struct dpu_mdss_cfg dpu_sm8650_cfg;
- extern const struct dpu_mdss_cfg dpu_sm8750_cfg;
- extern const struct dpu_mdss_cfg dpu_x1e80100_cfg;
 --- /dev/null
-+++ b/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_10_1_sm7675.h
-@@ -0,0 +1,380 @@
++++ b/drivers/gpu/drm/panel/o82-data.h
+@@ -0,0 +1,936 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
++/* Generated from the pinned Uke OEM DT; packet types and delays retained. */
++static const struct o82_command o82_36_02_0a_120_on[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd0, 0x31, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd1, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd2, 0x38, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xde, 0x43, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xdf, 0x2, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0x24, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xc, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x10, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x80, 0x57, 0x9, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x84, 0x2d, 0x0, } },
++	{ 57, 0, 0, 0, 0, 3, (const u8[]) { 0x88, 0x2d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0x80, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x84, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5, 0xf6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x11, 0x3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x12, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x15, 0xd0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x29, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x31, 0xfe, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x32, 0xfd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0xf8, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x35, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x36, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x37, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x38, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x39, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3a, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0xec, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3d, 0xe9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3f, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x40, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x41, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0x13, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x45, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x46, 0xf4, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x47, 0xe7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x48, 0xda, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x49, 0xcd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4a, 0xc0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0xb3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4e, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4f, 0x95, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x79, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x51, 0x5c, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x54, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x59, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xf7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5d, 0xe3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5e, 0xd9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5f, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x62, 0xc9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x63, 0xb9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0xac, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0xaa, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0x67, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xf, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfa, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1c, 0x11, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0x1f, 0x0, 0x0, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x24, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x0, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x26, 0x26, 0xf, 0xd, 0xe, 0xc, 0x27, 0x28, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x2, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x26, 0x26, 0xf, 0xd, 0xe, 0xc, 0x27, 0x28, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc5, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1f, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x23, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x24, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x26, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x19, 0x11, 0x12, 0x12, 0x12, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x1a, 0xae, 0xfa, 0xfa, 0xfa, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x1c, 0xd1, 0x1d, 0x1d, 0x1d, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x2a, 0x11, 0x12, 0x12, 0x12, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x2b, 0xa9, 0xf5, 0xf5, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x5e, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3d, 0x0, 0x22, 0xa, 0x0, 0x20, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x56, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x69, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6a, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x73, 0x49, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0x84, 0x20, 0x20, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x7b, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x20, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0xc, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x9, 0x41, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xd, 0x3d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x13, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x14, 0x11, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x83, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x31, 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x83, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x77, 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x96, 0x83, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xe2, 0xfc, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x18, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1a, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1c, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x85, 0x1e, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0xae, 0x0, 0x0, 0xc0, 0x30, 0x0, 0x0, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0xaf, 0x41, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xbc, 0x77, 0x7, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xc5, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x51, 0xf, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x24, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3b, 0x3, 0x94, 0x1a, 0x4, 0x4, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x90, 0x3, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x91, 0xab, 0x28, 0x0, 0x18, 0xd2, 0x0, 0x2, 0xb2, 0x2, 0x9f, 0x0, 0xb, 0x4, 0x86, 0x2, 0xdc, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x92, 0x10, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x9d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb3, 0x40, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb2, 0x91, } },
++	{ 57, 0, 0, 0, 120, 1, (const u8[]) { 0x11, } },
++	{ 57, 0, 0, 0, 0, 1, (const u8[]) { 0x29, } },
++};
++static const struct o82_command o82_36_02_0a_120_switch[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb2, 0x91, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb3, 0x40, } },
++};
++static const struct o82_command o82_36_02_0a_120_off[] = {
++	{ 5, 0, 0, 0, 20, 1, (const u8[]) { 0x28, } },
++	{ 5, 0, 0, 0, 100, 1, (const u8[]) { 0x10, } },
++	{ 5, 0, 0, 0, 0, 1, (const u8[]) { 0x4f, } },
++};
++static const struct o82_command o82_36_02_0a_144_on[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd0, 0x31, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd1, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd2, 0x38, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xde, 0x43, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xdf, 0x2, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0x24, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xc, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x10, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x80, 0x57, 0x9, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x84, 0x2d, 0x0, } },
++	{ 57, 0, 0, 0, 0, 3, (const u8[]) { 0x88, 0x2d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0x80, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x84, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5, 0xf6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x11, 0x3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x12, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x15, 0xd0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x29, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x31, 0xfe, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x32, 0xfd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0xf8, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x35, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x36, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x37, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x38, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x39, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3a, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0xec, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3d, 0xe9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3f, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x40, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x41, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0x13, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x45, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x46, 0xf4, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x47, 0xe7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x48, 0xda, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x49, 0xcd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4a, 0xc0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0xb3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4e, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4f, 0x95, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x79, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x51, 0x5c, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x54, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x59, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xf7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5d, 0xe3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5e, 0xd9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5f, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x62, 0xc9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x63, 0xb9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0xac, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0xaa, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0x67, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xf, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfa, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1c, 0x11, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0x1f, 0x0, 0x0, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x24, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x0, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x26, 0x26, 0xf, 0xd, 0xe, 0xc, 0x27, 0x28, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x2, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x26, 0x26, 0xf, 0xd, 0xe, 0xc, 0x27, 0x28, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc5, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1f, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x23, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x24, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x26, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x19, 0x11, 0x12, 0x12, 0x12, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x1a, 0xae, 0xfa, 0xfa, 0xfa, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x1c, 0xd1, 0x1d, 0x1d, 0x1d, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x2a, 0x11, 0x12, 0x12, 0x12, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x2b, 0xa9, 0xf5, 0xf5, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x5e, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3d, 0x0, 0x22, 0xa, 0x0, 0x20, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x56, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x69, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6a, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x73, 0x49, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0x84, 0x20, 0x20, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x7b, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x20, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0xc, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x9, 0x41, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xd, 0x3d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x13, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x14, 0x11, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x83, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x31, 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x83, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x77, 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x96, 0x83, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xe2, 0xfc, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x18, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1a, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1c, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x85, 0x1e, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0xae, 0x0, 0x0, 0xc0, 0x30, 0x0, 0x0, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0xaf, 0x41, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xbc, 0x77, 0x7, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xc5, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x51, 0xf, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x24, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3b, 0x3, 0x94, 0x1a, 0x4, 0x4, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x90, 0x3, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x91, 0xab, 0x28, 0x0, 0x18, 0xd2, 0x0, 0x2, 0xb2, 0x2, 0x9f, 0x0, 0xb, 0x4, 0x86, 0x2, 0xdc, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x92, 0x10, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x9d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb3, 0x0, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 120, 1, (const u8[]) { 0x11, } },
++	{ 57, 0, 0, 0, 0, 1, (const u8[]) { 0x29, } },
++};
++static const struct o82_command o82_36_02_0a_144_switch[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb3, 0x0, } },
++};
++static const struct o82_command o82_36_02_0a_144_off[] = {
++	{ 5, 0, 0, 0, 20, 1, (const u8[]) { 0x28, } },
++	{ 5, 0, 0, 0, 100, 1, (const u8[]) { 0x10, } },
++	{ 5, 0, 0, 0, 0, 1, (const u8[]) { 0x4f, } },
++};
++static const struct o82_command o82_36_02_0a_90_on[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd0, 0x31, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd1, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd2, 0x38, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xde, 0x43, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xdf, 0x2, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0x24, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xc, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x10, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x80, 0x57, 0x9, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x84, 0x2d, 0x0, } },
++	{ 57, 0, 0, 0, 0, 3, (const u8[]) { 0x88, 0x2d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0x80, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x84, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5, 0xf6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x11, 0x3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x12, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x15, 0xd0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x29, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x31, 0xfe, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x32, 0xfd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0xf8, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x35, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x36, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x37, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x38, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x39, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3a, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0xec, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3d, 0xe9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3f, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x40, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x41, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0x13, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x45, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x46, 0xf4, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x47, 0xe7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x48, 0xda, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x49, 0xcd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4a, 0xc0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0xb3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4e, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4f, 0x95, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x79, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x51, 0x5c, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x54, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x59, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xf7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5d, 0xe3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5e, 0xd9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5f, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x62, 0xc9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x63, 0xb9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0xac, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0xaa, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0x67, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xf, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfa, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1c, 0x11, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0x1f, 0x0, 0x0, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x24, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x0, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x26, 0x26, 0xf, 0xd, 0xe, 0xc, 0x27, 0x28, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x2, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x26, 0x26, 0xf, 0xd, 0xe, 0xc, 0x27, 0x28, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc5, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1f, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x23, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x24, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x26, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x19, 0x11, 0x12, 0x12, 0x12, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x1a, 0xae, 0xfa, 0xfa, 0xfa, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x1c, 0xd1, 0x1d, 0x1d, 0x1d, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x2a, 0x11, 0x12, 0x12, 0x12, } },
++	{ 57, 0, 0, 64, 0, 5, (const u8[]) { 0x2b, 0xa9, 0xf5, 0xf5, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x5e, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3d, 0x0, 0x22, 0xa, 0x0, 0x20, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x56, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x69, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6a, 0x49, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x73, 0x49, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0x84, 0x20, 0x20, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x7b, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x20, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0xc, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x9, 0x41, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xd, 0x3d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x13, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x14, 0x11, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x83, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x31, 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x83, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x77, 0x2b, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x96, 0x83, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xe2, 0xfc, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x18, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1a, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1c, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x85, 0x1e, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0xae, 0x0, 0x0, 0xc0, 0x30, 0x0, 0x0, } },
++	{ 57, 0, 0, 64, 0, 4, (const u8[]) { 0xaf, 0x41, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xbc, 0x77, 0x7, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xc5, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x51, 0xf, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x24, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3b, 0x3, 0x94, 0x1a, 0x4, 0x4, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x90, 0x3, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x91, 0xab, 0x28, 0x0, 0x18, 0xd2, 0x0, 0x2, 0xb2, 0x2, 0x9f, 0x0, 0xb, 0x4, 0x86, 0x2, 0xdc, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x92, 0x10, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x9d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb3, 0x80, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 120, 1, (const u8[]) { 0x11, } },
++	{ 57, 0, 0, 0, 0, 1, (const u8[]) { 0x29, } },
++};
++static const struct o82_command o82_36_02_0a_90_switch[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb3, 0x80, } },
++};
++static const struct o82_command o82_36_02_0a_90_off[] = {
++	{ 5, 0, 0, 0, 20, 1, (const u8[]) { 0x28, } },
++	{ 5, 0, 0, 0, 100, 1, (const u8[]) { 0x10, } },
++	{ 5, 0, 0, 0, 0, 1, (const u8[]) { 0x4f, } },
++};
++static const struct o82_profile o82_36_02_0a_profiles[] = {
++	{ o82_36_02_0a_120_on, ARRAY_SIZE(o82_36_02_0a_120_on), o82_36_02_0a_120_switch, ARRAY_SIZE(o82_36_02_0a_120_switch), o82_36_02_0a_120_off, ARRAY_SIZE(o82_36_02_0a_120_off) },
++	{ o82_36_02_0a_144_on, ARRAY_SIZE(o82_36_02_0a_144_on), o82_36_02_0a_144_switch, ARRAY_SIZE(o82_36_02_0a_144_switch), o82_36_02_0a_144_off, ARRAY_SIZE(o82_36_02_0a_144_off) },
++	{ o82_36_02_0a_90_on, ARRAY_SIZE(o82_36_02_0a_90_on), o82_36_02_0a_90_switch, ARRAY_SIZE(o82_36_02_0a_90_switch), o82_36_02_0a_90_off, ARRAY_SIZE(o82_36_02_0a_90_off) },
++};
++static const struct o82_command o82_42_02_0b_120_on[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd0, 0x31, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd1, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd2, 0x38, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xde, 0x43, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xdf, 0x2, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0x24, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xc, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x10, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x80, 0x57, 0x9, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x84, 0x2d, 0x0, } },
++	{ 57, 0, 0, 0, 0, 3, (const u8[]) { 0x88, 0x2d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0x80, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x84, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5, 0xf6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x11, 0x3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x12, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x15, 0xd0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x29, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x31, 0xfe, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x32, 0xfd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0xf8, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x35, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x36, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x37, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x38, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x39, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3a, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0xec, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3d, 0xe9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3f, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x40, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x41, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0x13, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x45, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x46, 0xf4, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x47, 0xe7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x48, 0xda, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x49, 0xcd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4a, 0xc0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0xb3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4e, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4f, 0x95, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x79, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x51, 0x5c, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x54, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x59, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xf7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5d, 0xe3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5e, 0xd9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5f, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x62, 0xc9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x63, 0xb9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0xac, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0xaa, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0x67, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xf, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc4, 0x82, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x26, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x22, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc4, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfa, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x51, 0xf, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x24, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3b, 0x3, 0x94, 0x1a, 0x4, 0x4, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x90, 0x3, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x91, 0xab, 0x28, 0x0, 0x18, 0xd2, 0x0, 0x2, 0xb2, 0x2, 0x9f, 0x0, 0xb, 0x4, 0x86, 0x2, 0xdc, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x92, 0x10, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x9d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb3, 0x40, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb2, 0x91, } },
++	{ 57, 0, 0, 0, 120, 1, (const u8[]) { 0x11, } },
++	{ 57, 0, 0, 0, 0, 1, (const u8[]) { 0x29, } },
++};
++static const struct o82_command o82_42_02_0b_120_switch[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb2, 0x91, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb3, 0x40, } },
++};
++static const struct o82_command o82_42_02_0b_120_off[] = {
++	{ 5, 0, 0, 0, 20, 1, (const u8[]) { 0x28, } },
++	{ 5, 0, 0, 0, 100, 1, (const u8[]) { 0x10, } },
++	{ 5, 0, 0, 0, 0, 1, (const u8[]) { 0x4f, } },
++};
++static const struct o82_command o82_42_02_0b_144_on[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd0, 0x31, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd1, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd2, 0x38, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xde, 0x43, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xdf, 0x2, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0x24, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xc, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x10, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x80, 0x57, 0x9, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x84, 0x2d, 0x0, } },
++	{ 57, 0, 0, 0, 0, 3, (const u8[]) { 0x88, 0x2d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0x80, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x84, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5, 0xf6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x11, 0x3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x12, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x15, 0xd0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x29, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x31, 0xfe, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x32, 0xfd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0xf8, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x35, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x36, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x37, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x38, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x39, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3a, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0xec, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3d, 0xe9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3f, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x40, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x41, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0x13, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x45, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x46, 0xf4, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x47, 0xe7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x48, 0xda, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x49, 0xcd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4a, 0xc0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0xb3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4e, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4f, 0x95, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x79, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x51, 0x5c, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x54, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x59, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xf7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5d, 0xe3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5e, 0xd9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5f, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x62, 0xc9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x63, 0xb9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0xac, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0xaa, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0x67, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xf, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc4, 0x82, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x26, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x22, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc4, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfa, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x51, 0xf, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x24, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3b, 0x3, 0x94, 0x1a, 0x4, 0x4, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x90, 0x3, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x91, 0xab, 0x28, 0x0, 0x18, 0xd2, 0x0, 0x2, 0xb2, 0x2, 0x9f, 0x0, 0xb, 0x4, 0x86, 0x2, 0xdc, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x92, 0x10, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x9d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb3, 0x0, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 120, 1, (const u8[]) { 0x11, } },
++	{ 57, 0, 0, 0, 0, 1, (const u8[]) { 0x29, } },
++};
++static const struct o82_command o82_42_02_0b_144_switch[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb3, 0x0, } },
++};
++static const struct o82_command o82_42_02_0b_144_off[] = {
++	{ 5, 0, 0, 0, 20, 1, (const u8[]) { 0x28, } },
++	{ 5, 0, 0, 0, 100, 1, (const u8[]) { 0x10, } },
++	{ 5, 0, 0, 0, 0, 1, (const u8[]) { 0x4f, } },
++};
++static const struct o82_command o82_42_02_0b_90_on[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x27, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd0, 0x31, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd1, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xd2, 0x38, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xde, 0x43, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xdf, 0x2, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x8, 0x24, 0xa, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0xc, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x10, 0x1e, 0x0, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x80, 0x57, 0x9, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x84, 0x2d, 0x0, } },
++	{ 57, 0, 0, 0, 0, 3, (const u8[]) { 0x88, 0x2d, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x0, 0x80, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x1, 0x84, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5, 0xf6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x6, 0x2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x11, 0x3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x12, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x15, 0xd0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x16, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x29, 0xa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x31, 0xfe, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x32, 0xfd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x33, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x34, 0xf8, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x35, 0xf5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x36, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x37, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x38, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x39, 0xf2, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3a, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0xec, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3d, 0xe9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3f, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x40, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x41, 0xe5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x2a, 0x13, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x45, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x46, 0xf4, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x47, 0xe7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x48, 0xda, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x49, 0xcd, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4a, 0xc0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0xb3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4c, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4d, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4e, 0xb1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4f, 0x95, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x50, 0x79, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x51, 0x5c, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x52, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x54, 0x58, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x23, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x58, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x59, 0xfb, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5a, 0xf7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5b, 0xf3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5c, 0xef, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5d, 0xe3, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5e, 0xd9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x5f, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x60, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x61, 0xd7, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x62, 0xc9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x63, 0xb9, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x64, 0xac, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x65, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x66, 0xaa, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0x67, 0xaa, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x25, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xf, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x2a, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc4, 0x82, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x26, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x3b, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x4b, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x22, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xc4, 0x6, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfa, 0x5, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x76, 0x16, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x20, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x30, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x51, 0xf, 0xff, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x53, 0x24, } },
++	{ 57, 0, 0, 64, 0, 7, (const u8[]) { 0x3b, 0x3, 0x94, 0x1a, 0x4, 0x4, 0x0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x90, 0x3, } },
++	{ 57, 0, 0, 64, 0, 17, (const u8[]) { 0x91, 0xab, 0x28, 0x0, 0x18, 0xd2, 0x0, 0x2, 0xb2, 0x2, 0x9f, 0x0, 0xb, 0x4, 0x86, 0x2, 0xdc, } },
++	{ 57, 0, 0, 64, 0, 3, (const u8[]) { 0x92, 0x10, 0xf0, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0x9d, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb3, 0x80, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 120, 1, (const u8[]) { 0x11, } },
++	{ 57, 0, 0, 0, 0, 1, (const u8[]) { 0x29, } },
++};
++static const struct o82_command o82_42_02_0b_90_switch[] = {
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xff, 0x10, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xfb, 0x1, } },
++	{ 57, 0, 0, 64, 0, 2, (const u8[]) { 0xb2, 0x0, } },
++	{ 57, 0, 0, 0, 0, 2, (const u8[]) { 0xb3, 0x80, } },
++};
++static const struct o82_command o82_42_02_0b_90_off[] = {
++	{ 5, 0, 0, 0, 20, 1, (const u8[]) { 0x28, } },
++	{ 5, 0, 0, 0, 100, 1, (const u8[]) { 0x10, } },
++	{ 5, 0, 0, 0, 0, 1, (const u8[]) { 0x4f, } },
++};
++static const struct o82_profile o82_42_02_0b_profiles[] = {
++	{ o82_42_02_0b_120_on, ARRAY_SIZE(o82_42_02_0b_120_on), o82_42_02_0b_120_switch, ARRAY_SIZE(o82_42_02_0b_120_switch), o82_42_02_0b_120_off, ARRAY_SIZE(o82_42_02_0b_120_off) },
++	{ o82_42_02_0b_144_on, ARRAY_SIZE(o82_42_02_0b_144_on), o82_42_02_0b_144_switch, ARRAY_SIZE(o82_42_02_0b_144_switch), o82_42_02_0b_144_off, ARRAY_SIZE(o82_42_02_0b_144_off) },
++	{ o82_42_02_0b_90_on, ARRAY_SIZE(o82_42_02_0b_90_on), o82_42_02_0b_90_switch, ARRAY_SIZE(o82_42_02_0b_90_switch), o82_42_02_0b_90_off, ARRAY_SIZE(o82_42_02_0b_90_off) },
++};
++static const struct o82_timing o82_modes[] = {
++	{ .group = 2, .mode = { .clock = 804988, .hdisplay = 3200, .hsync_start = 3808, .hsync_end = 3840, .htotal = 3872, .vdisplay = 2136, .vsync_start = 6782, .vsync_end = 6784, .vtotal = 6930, .width_mm = 237, .height_mm = 158 } },
++	{ .group = 2, .mode = { .clock = 804988, .hdisplay = 3200, .hsync_start = 3808, .hsync_end = 3840, .htotal = 3872, .vdisplay = 2136, .vsync_start = 4183, .vsync_end = 4185, .vtotal = 4331, .width_mm = 237, .height_mm = 158 } },
++	{ .group = 2, .mode = { .clock = 804988, .hdisplay = 3200, .hsync_start = 3808, .hsync_end = 3840, .htotal = 3872, .vdisplay = 2136, .vsync_start = 4010, .vsync_end = 4012, .vtotal = 4158, .width_mm = 237, .height_mm = 158 } },
++	{ .group = 0, .mode = { .clock = 967428, .hdisplay = 3200, .hsync_start = 3426, .hsync_end = 3458, .htotal = 3490, .vdisplay = 2136, .vsync_start = 4472, .vsync_end = 4474, .vtotal = 4620, .width_mm = 237, .height_mm = 158 } },
++	{ .group = 2, .mode = { .clock = 804988, .hdisplay = 3200, .hsync_start = 3808, .hsync_end = 3840, .htotal = 3872, .vdisplay = 2136, .vsync_start = 2162, .vsync_end = 2164, .vtotal = 2310, .width_mm = 237, .height_mm = 158 } },
++	{ .group = 0, .mode = { .clock = 967428, .hdisplay = 3200, .hsync_start = 3426, .hsync_end = 3458, .htotal = 3490, .vdisplay = 2136, .vsync_start = 2162, .vsync_end = 2164, .vtotal = 2310, .width_mm = 237, .height_mm = 158 } },
++	{ .group = 1, .mode = { .clock = 1097712, .hdisplay = 3200, .hsync_start = 3236, .hsync_end = 3268, .htotal = 3300, .vdisplay = 2136, .vsync_start = 2162, .vsync_end = 2164, .vtotal = 2310, .width_mm = 237, .height_mm = 158 } },
++};
+--- a/drivers/gpu/drm/panel/Makefile
++++ b/drivers/gpu/drm/panel/Makefile
+@@ -131,3 +131,6 @@
+ obj-$(CONFIG_DRM_PANEL_VISIONOX_R66451) += panel-visionox-r66451.o
+ obj-$(CONFIG_DRM_PANEL_WIDECHIPS_WS2401) += panel-widechips-ws2401.o
+ obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
++
++obj-$(CONFIG_DRM_PANEL_XIAOMI_O82) += panel-xiaomi-o82.o
++obj-$(CONFIG_DRM_PANEL_ALLDOCUBE_U880) += panel-alldocube-u880.o
+--- /dev/null
++++ b/drivers/gpu/drm/panel/panel-xiaomi-o82.c
+@@ -0,0 +1,915 @@
++// SPDX-License-Identifier: GPL-2.0-only
 +/*
-+ * U880 (SM7675 "Cliffs", DPU 10.1): derived from the SM8650 (10.0) catalog. The stock Cliffs SDE description (offsets relative to the MDSS base)
-+ * equals the SM8650 map shifted by the 0x1000 MDSS->MDP offset, trimmed to: 4 CTL, 4 LM, 3 DSPP, 2 VIG + 5 DMA, 4 PP (+CWB PPs),
-+ * 4 merge_3d, 3 DSC engines (0x80000 x2, 0x81000), 1 WB, 4 INTF (DP, DSI, DSI, DP). Interrupt indices are SM8650's (unverified on 10.1).
++ * Experimental Xiaomi Pad 7 O82 dual-DSI panel candidate for Linux 7.2.9/7.2.10.
++ * Native 120 Hz output observed in development build 1.4050; other modes
++ * require separate physical tests. Not activated by the normal release.
++ * Lifecycle based on the archived O82 draft and upstream nt35950 pattern.
++ * Based on linuxgamer/uke-fedora cf4f9317a7fef3e9bdddc36bedcb257fa51b0994.
++ * OEM packet types, delays, timing groups and power sequence are retained.
 + */
++#include <linux/delay.h>
++#include <linux/backlight.h>
++#include <linux/atomic.h>
++#include <linux/gpio/consumer.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/of_graph.h>
++#include <linux/qcom-uke-display.h>
++#include <linux/regulator/consumer.h>
++#include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_connector.h>
++#include <drm/drm_crtc.h>
++#include <drm/drm_mipi_dsi.h>
++#include <drm/drm_modes.h>
++#include <drm/drm_panel.h>
++#include <drm/drm_vblank.h>
++#include <drm/drm_vblank_work.h>
++#include <drm/uke-o82-mode.h>
++#include <video/mipi_display.h>
++
++struct o82_command {
++	u8 type, last, channel, downstream_flags, delay_ms;
++	u16 len;
++	const u8 *data;
++};
++
++struct o82_profile {
++	const struct o82_command *on;
++	unsigned int on_count;
++	const struct o82_command *switch_commands;
++	unsigned int switch_count;
++	const struct o82_command *off;
++	unsigned int off_count;
++};
++struct o82_timing {
++	unsigned int group;
++	struct drm_display_mode mode;
++};
++#include "o82-data.h"
++
++struct o82_panel {
++	struct drm_panel panel;
++	struct mipi_dsi_device *dsi[2];
++	struct drm_dsc_config dsc;
++	struct regulator *supplies[3];
++	struct gpio_desc *reset;
++	struct drm_connector *connector;
++	struct backlight_device *backlight;
++	struct drm_vblank_work first_frame_work;
++	struct drm_crtc *first_frame_crtc;
++	u64 first_frame_target;
++	struct mutex lock;
++	const struct o82_profile *profiles, *active;
++	unsigned int enabled_supplies;
++	unsigned int loaded_supplies;
++	bool reset_output;
++	bool prepared;
++	bool first_frame_initialized;
++	bool removing;
++	bool initial_60hz_only;
++	bool initial_120hz_only;
++	bool oem_refresh_modes;
++	atomic64_t touch_state;
++};
++
++static void o82_touch_state(struct o82_panel *ctx, bool reset, bool ready)
++{
++	u64 state = (u64)atomic64_read(&ctx->touch_state) & ~1ULL;
++
++	/* Lifecycle writers are serialized; readers receive one generation/ready pair. */
++	if (reset)
++		state += 2;
++	atomic64_set(&ctx->touch_state, state | ready);
++	sysfs_notify(&ctx->dsi[0]->dev.kobj, NULL, "touch_reset_state");
++}
++
++static int o82_send(struct o82_panel *ctx, const struct o82_command *cmd, bool lpm)
++{
++	struct mipi_dsi_msg msg = {
++		.channel = cmd->channel,
++		.type = cmd->type,
++		.flags = lpm ? MIPI_DSI_MSG_USE_LPM : 0,
++		.tx_len = cmd->len,
++		.tx_buf = cmd->data,
++	};
++	int i;
++	ssize_t ret = 0;
++
++	/* OEM flag 0x40 batches commands, not ACK. Serialize instead. In MSM
++	 * sync mode DSI0 writes are acknowledged without transmission; DSI1
++	 * triggers both links. Sending to both also supports non-sync hosts.
++	 */
++	for (i = 0; i < ARRAY_SIZE(ctx->dsi); i++) {
++		struct mipi_dsi_host *host = ctx->dsi[i]->host;
++
++		ret = host->ops->transfer(host, &msg);
++		/* MSM returns padded DMA packet bytes; other hosts return payload bytes. */
++		if (ret < cmd->len) {
++			dev_err(&ctx->dsi[i]->dev,
++				"O82 transfer failed: link=%d type=%#x opcode=%#x len=%u lpm=%d result=%zd\n",
++				i, cmd->type, cmd->data[0], cmd->len, lpm, ret);
++			if (ret >= 0)
++				ret = -EIO;
++			break;
++		}
++	}
++	/* A failed transfer may have reached the panel: preserve settle delays. */
++	if (cmd->delay_ms)
++		msleep(cmd->delay_ms);
++	return ret < 0 ? ret : 0;
++}
++
++static int o82_off(struct o82_panel *ctx)
++{
++	int i, ret, first_error = 0;
++
++	for (i = 0; i < ctx->active->off_count; i++) {
++		ret = o82_send(ctx, &ctx->active->off[i], true);
++		if (ret && !first_error)
++			first_error = ret;
++	}
++	return first_error;
++}
++
++static int o82_lp_batch(struct o82_panel *ctx,
++			const struct o82_command *commands, unsigned int count)
++{
++	struct mipi_dsi_msg msgs[4] = { };
++	unsigned int i;
++
++	if (!(ctx->initial_120hz_only || ctx->oem_refresh_modes) ||
++	    (ctx->active != &ctx->profiles[0] &&
++	     !(ctx->oem_refresh_modes && (ctx->active == &ctx->profiles[1] ||
++					ctx->active == &ctx->profiles[2]))) ||
++	    (count != 2 && count != 4))
++		return -EINVAL;
++	for (i = 0; i < count; i++) {
++		const struct o82_command *cmd = &commands[i];
++
++		if (cmd->delay_ms || cmd->downstream_flags != (i == count - 1 ? 0 : BIT(6)))
++			return -EINVAL;
++		msgs[i] = (struct mipi_dsi_msg) {
++			.channel = cmd->channel, .type = cmd->type,
++			.flags = MIPI_DSI_MSG_USE_LPM, .tx_len = cmd->len,
++			.tx_buf = cmd->data,
++		};
++	}
++	return qcom_uke_dsi_lp_batch(ctx->dsi[0], msgs, count);
++}
++
++static int o82_on_batch(struct o82_panel *ctx)
++{
++	struct mipi_dsi_msg msgs[31] = { };
++	const struct o82_profile *profile = ctx->active;
++	unsigned int i, count = 0, bytes = 0, chunks = 0, total = 0;
++	int ret;
++
++	if (!(ctx->initial_120hz_only || ctx->oem_refresh_modes) ||
++	    (profile != &ctx->profiles[0] &&
++	     !(ctx->oem_refresh_modes && (profile == &ctx->profiles[1] ||
++					profile == &ctx->profiles[2]))) ||
++	    profile->on_count != 108)
++		return -EINVAL;
++	/* Reject changed metadata before the first ON chunk can reach the panel. */
++	for (i = 0; i < profile->on_count; i++) {
++		const struct o82_command *cmd = &profile->on[i];
++		bool terminal = i == 6 || i == 12 || i == 74 || i >= 105;
++
++		if (cmd->type != MIPI_DSI_DCS_LONG_WRITE || cmd->channel ||
++		    !cmd->data || !cmd->len || cmd->len > 17 ||
++		    cmd->downstream_flags != (terminal ? 0 : BIT(6)) ||
++		    cmd->delay_ms != (i == 106 ? 120 : 0))
++			return -EINVAL;
++		count++;
++		bytes += ALIGN(cmd->len + 4, 4);
++		if (terminal || bytes > 240) {
++			if (count > ARRAY_SIZE(msgs) || bytes > 248)
++				return -E2BIG;
++			chunks++;
++			total += bytes;
++			count = bytes = 0;
++		}
++	}
++	if (count || chunks != 8 || total != 884)
++		return -EINVAL;
++	chunks = total = 0;
++	for (i = 0; i < profile->on_count; i++) {
++		const struct o82_command *cmd = &profile->on[i];
++
++		if (count == ARRAY_SIZE(msgs))
++			return -E2BIG;
++		msgs[count++] = (struct mipi_dsi_msg) {
++			.channel = cmd->channel, .type = cmd->type,
++			.flags = MIPI_DSI_MSG_USE_LPM, .tx_len = cmd->len,
++			.tx_buf = cmd->data,
++		};
++		bytes += ALIGN(cmd->len + 4, 4);
++		/* OEM includes the nonterminal packet crossing240 in this DMA. */
++		if (!(cmd->downstream_flags & BIT(6)) || bytes > 240) {
++			ret = qcom_uke_dsi_on_batch(ctx->dsi[0], msgs, count);
++			/* A failed DMA may still reach the panel; preserve its settle delay. */
++			if (cmd->delay_ms)
++				msleep(cmd->delay_ms);
++			if (ret) {
++				dev_err(&ctx->dsi[0]->dev,
++					"O82 ON batch failed: command=%u chunk=%u bytes=%u result=%d\n",
++					i, chunks, bytes, ret);
++				return ret;
++			}
++			chunks++;
++			total += bytes;
++			count = bytes = 0;
++		}
++	}
++	dev_info(&ctx->dsi[0]->dev,
++		 "Uke O82 LP ON batching complete: commands=108 chunks=%u bytes=%u\n",
++		 chunks, total);
++	return 0;
++}
++
++static int o82_power_off(struct o82_panel *ctx)
++{
++	int i, ret, first_error = 0;
++
++	o82_touch_state(ctx, false, false);
++	if (ctx->reset_output)
++		gpiod_set_value_cansleep(ctx->reset, 0);
++	for (i = ARRAY_SIZE(ctx->supplies) - 1; i >= 0; i--) {
++		if (ctx->enabled_supplies & BIT(i)) {
++			ret = regulator_disable(ctx->supplies[i]);
++			if (ret && !first_error)
++				first_error = ret;
++			if (!ret)
++				ctx->enabled_supplies &= ~BIT(i);
++		}
++		if (!(ctx->enabled_supplies & BIT(i)) && (ctx->loaded_supplies & BIT(i))) {
++			ret = regulator_set_load(ctx->supplies[i], 0);
++			if (ret && !first_error)
++				first_error = ret;
++			if (!ret)
++				ctx->loaded_supplies &= ~BIT(i);
++		}
++		msleep(2);
++	}
++	return first_error;
++}
++
++static void o82_readback(struct o82_panel *ctx, bool post_frame)
++{
++	static const u8 registers[] = {
++		0xda, MIPI_DCS_GET_POWER_MODE, MIPI_DCS_GET_PIXEL_FORMAT,
++		MIPI_DCS_GET_DISPLAY_MODE, MIPI_DCS_GET_SIGNAL_MODE,
++		MIPI_DCS_GET_DIAGNOSTIC_RESULT,
++		MIPI_DCS_GET_CONTROL_DISPLAY,
++	};
++	/* Exact Uke OEM reads use command-master DSI0, not the secondary link. */
++	struct mipi_dsi_device *dsi = ctx->dsi[0];
++	unsigned int count = post_frame ? ARRAY_SIZE(registers) : 2;
++	int i;
++
++	/* Isolate initial120 optics from advisory bus-turnaround traffic. */
++	if (ctx->initial_120hz_only || ctx->oem_refresh_modes)
++		return;
++
++	for (i = 0; i < count; i++) {
++		unsigned long mode_flags = dsi->mode_flags;
++		u8 value = 0;
++		ssize_t ret;
++
++		/* OEM build-ID reads use HS; restore the original flags afterward. */
++		dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
++		ret = mipi_dsi_dcs_read(dsi, registers[i], &value, sizeof(value));
++		dsi->mode_flags = mode_flags;
++		if (ret == 1)
++			dev_info(&dsi->dev,
++				 "O82 readback: link=0 cmd=%#x hs result=%zd value=%#x phase=%s\n",
++				 registers[i], ret, value, post_frame ? "post-frame" : "pre-video");
++		else
++			dev_warn(&dsi->dev,
++				 "O82 readback: link=0 cmd=%#x hs result=%zd value=unavailable phase=%s\n",
++				 registers[i], ret, post_frame ? "post-frame" : "pre-video");
++		if (post_frame && ret != 1)
++			return;
++	}
++}
++
++static int o82_read_initial_mode(struct o82_panel *ctx, struct device_node *node)
++{
++	ctx->initial_60hz_only = of_property_read_bool(node, "xiaomi,initial-60hz-only");
++	ctx->initial_120hz_only = of_property_read_bool(node, "xiaomi,initial-120hz-only");
++	ctx->oem_refresh_modes = of_property_read_bool(node, "xiaomi,oem-refresh-modes");
++	if ((ctx->initial_60hz_only && ctx->initial_120hz_only) ||
++	    (ctx->oem_refresh_modes && (ctx->initial_60hz_only || ctx->initial_120hz_only)) ||
++	    ((ctx->initial_120hz_only || ctx->oem_refresh_modes) &&
++	     !of_device_is_compatible(node, "xiaomi,o82-42-02-0b")))
++		return -EINVAL;
++	return 0;
++}
++
++static int o82_prepare_locked(struct drm_panel *panel)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++	struct drm_dsc_picture_parameter_set pps;
++	const struct o82_command pps_cmd = {
++		.type = MIPI_DSI_PICTURE_PARAMETER_SET,
++		.len = sizeof(pps), .data = (const u8 *)&pps,
++	};
++	int i, ret;
++	const struct drm_display_mode *mode;
++	const struct o82_profile *profile = NULL;
++
++	if (ctx->removing)
++		return -ESHUTDOWN;
++	if (!ctx->connector || !ctx->connector->state ||
++	    !ctx->connector->state->crtc || !ctx->connector->state->crtc->state) {
++		dev_err(&ctx->dsi[0]->dev, "O82 prepare has no active connector state\n");
++		return -EINVAL;
++	}
++	mode = &ctx->connector->state->crtc->state->adjusted_mode;
++	for (i = 0; i < ARRAY_SIZE(o82_modes); i++) {
++		/* The isolated OEM 120 Hz comparison must not power another mode. */
++		if (ctx->initial_120hz_only && drm_mode_vrefresh(&o82_modes[i].mode) != 120)
++			continue;
++		if (drm_mode_equal(mode, &o82_modes[i].mode)) {
++			profile = &ctx->profiles[o82_modes[i].group];
++			break;
++		}
++	}
++	if (!profile) {
++		dev_err(&ctx->dsi[0]->dev, "O82 prepare mode rejected: %dx%d clock=%d htotal=%d vtotal=%d\n",
++			mode->hdisplay, mode->vdisplay, mode->clock, mode->htotal, mode->vtotal);
++		return -EINVAL;
++	}
++
++	if (ctx->prepared)
++		return ctx->active == profile ? 0 : -EBUSY;
++	if (ctx->dsc.pic_width != 3200 || ctx->dsc.pic_height != 2136 ||
++	    ctx->dsc.slice_width != 800 || ctx->dsc.slice_height != 24 ||
++	    ctx->dsc.rc_model_size != 8192 || ctx->dsc.initial_dec_delay != 690 ||
++	    ctx->dsc.first_line_bpg_offset != 13 ||
++	    ctx->dsc.rc_range_params[0].range_max_qp != 8)
++		return -EINVAL;
++	/* Do not accumulate enable references after a failed power-down. */
++	if (ctx->enabled_supplies || ctx->loaded_supplies)
++		return -EBUSY;
++	ret = backlight_disable(ctx->backlight);
++	if (ret)
++		return ret;
++	ctx->active = profile;
++	for (i = 0; i < ARRAY_SIZE(ctx->supplies); i++) {
++		ret = regulator_set_load(ctx->supplies[i], 300000);
++		if (ret < 0) {
++			dev_err(&ctx->dsi[0]->dev, "O82 supply[%d] load failed: %d\n", i, ret);
++			goto rollback_supplies;
++		}
++		ctx->loaded_supplies |= BIT(i);
++		ret = regulator_enable(ctx->supplies[i]);
++		if (ret) {
++			dev_err(&ctx->dsi[0]->dev, "O82 supply[%d] enable failed: %d\n", i, ret);
++			goto rollback_supplies;
++		}
++		ctx->enabled_supplies |= BIT(i);
++		msleep(2);
++	}
++	/* ASIS at probe preserves splash; establish direction before first toggle. */
++	/* O82 RESX is also the NT36532 reset; firmware must follow completed DSI setup. */
++	o82_touch_state(ctx, true, false);
++	ret = gpiod_direction_output(ctx->reset, 0);
++	if (ret) {
++		dev_err(&ctx->dsi[0]->dev, "O82 reset direction failed: %d\n", ret);
++		goto rollback_supplies;
++	}
++	ctx->reset_output = true;
++	msleep(10);
++	gpiod_set_value_cansleep(ctx->reset, 1);
++	msleep(3);
++	gpiod_set_value_cansleep(ctx->reset, 0);
++	msleep(3);
++	gpiod_set_value_cansleep(ctx->reset, 1);
++	msleep(15);
++	if (ctx->initial_120hz_only || ctx->oem_refresh_modes) {
++		ret = o82_on_batch(ctx);
++		if (ret)
++			goto failed_on;
++	} else {
++		for (i = 0; i < profile->on_count; i++) {
++			ret = o82_send(ctx, &profile->on[i], true);
++			if (ret) {
++				dev_err(&ctx->dsi[0]->dev, "O82 prepare command[%d] failed: %d\n", i, ret);
++				goto failed_on;
++			}
++		}
++	}
++	/* OEM panel PPS describes the full picture, independently of encoder split. */
++	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
++	ret = o82_send(ctx, &pps_cmd, true);
++	if (ret) {
++		o82_off(ctx);
++		o82_power_off(ctx);
++		return ret;
++	}
++	o82_readback(ctx, false);
++	ctx->prepared = true;
++	return 0;
++
++failed_on:
++	dev_err(&ctx->dsi[0]->dev, "O82 prepare ON failed: result=%d\n", ret);
++	o82_off(ctx);
++	o82_power_off(ctx);
++	return ret;
++rollback_supplies:
++	o82_power_off(ctx);
++	return ret;
++}
++
++static int o82_prepare(struct drm_panel *panel)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++	int ret;
++
++	mutex_lock(&ctx->lock);
++	ret = o82_prepare_locked(panel);
++	mutex_unlock(&ctx->lock);
++	return ret;
++}
++
++static void o82_cancel_first_frame(struct o82_panel *ctx)
++{
++	if (ctx->first_frame_initialized) {
++		drm_vblank_work_cancel_sync(&ctx->first_frame_work);
++		ctx->first_frame_initialized = false;
++		ctx->first_frame_crtc = NULL;
++	}
++}
++
++static void o82_first_frame(struct kthread_work *work)
++{
++	struct drm_vblank_work *vblank_work = to_drm_vblank_work(work);
++	struct o82_panel *ctx = container_of(vblank_work, struct o82_panel, first_frame_work);
++	const struct o82_command normal_pixels[] = {
++		{ .type = 0x15, .downstream_flags = BIT(6), .len = 2, .data = (const u8[]) { 0xff, 0x10 } },
++		{ .type = 0x39, .len = 2, .data = (const u8[]) { 0x13, 0x00 } },
++	};
++	const struct o82_command dimming_on[] = {
++		{ .type = 0x39, .downstream_flags = BIT(6), .len = 2, .data = (const u8[]) { 0xff, 0x27 } },
++		{ .type = 0x39, .downstream_flags = BIT(6), .len = 2, .data = (const u8[]) { 0xd1, 0x28 } },
++		{ .type = 0x15, .downstream_flags = BIT(6), .len = 2, .data = (const u8[]) { 0xff, 0x10 } },
++		{ .type = 0x15, .len = 2, .data = (const u8[]) { 0x53, 0x2c } },
++	};
++	const char *stage = "prepared";
++	int i = -1, ret, blank_ret, brightness;
++
++	dev_info(&ctx->dsi[0]->dev,
++		 "O82 first-frame boundary: target=%llu current=%llu\n",
++		 (unsigned long long)ctx->first_frame_target,
++		 (unsigned long long)drm_crtc_vblank_count(ctx->first_frame_crtc));
++	if (!ctx->prepared) {
++		ret = -EINVAL;
++		goto failed;
++	}
++	/* OEM starts DPU timing before its four HS TP-FPS updates. */
++	stage = "timing-switch";
++	if (ctx->initial_120hz_only || ctx->oem_refresh_modes) {
++		struct mipi_dsi_msg msgs[4] = { };
++
++		if (ctx->active->switch_count != ARRAY_SIZE(msgs)) {
++			ret = -EINVAL;
++			goto failed;
++		}
++		for (i = 0; i < ARRAY_SIZE(msgs); i++) {
++			const struct o82_command *cmd = &ctx->active->switch_commands[i];
++
++			if (cmd->delay_ms || cmd->downstream_flags != (i == 3 ? 0 : BIT(6))) {
++				ret = -EINVAL;
++				goto failed;
++			}
++			msgs[i].channel = cmd->channel;
++			msgs[i].type = cmd->type;
++			msgs[i].tx_len = cmd->len;
++			msgs[i].tx_buf = cmd->data;
++		}
++		i = -1;
++		ret = qcom_uke_dsi_tp_fps_batch(ctx->dsi[0], msgs);
++		if (ret)
++			goto failed;
++	} else {
++		for (i = 0; i < ctx->active->switch_count; i++) {
++			ret = o82_send(ctx, &ctx->active->switch_commands[i], false);
++			if (ret)
++				goto failed;
++		}
++	}
++	i = -1;
++	stage = "normal-pixels";
++	if (ctx->initial_120hz_only || ctx->oem_refresh_modes) {
++		i = -1;
++		ret = o82_lp_batch(ctx, normal_pixels, ARRAY_SIZE(normal_pixels));
++		if (ret)
++			goto failed;
++	} else {
++		for (i = 0; i < ARRAY_SIZE(normal_pixels); i++) {
++			ret = o82_send(ctx, &normal_pixels[i], true);
++			if (ret)
++				goto failed;
++		}
++	}
++	dev_info(&ctx->dsi[0]->dev, "O82 first-frame normal-pixels complete\n");
++	if (ctx->initial_120hz_only || ctx->oem_refresh_modes) {
++		/* Installed OEM uses a separate four-packet LP dimming group. */
++		stage = "dimming-on";
++		i = -1;
++		ret = o82_lp_batch(ctx, dimming_on, ARRAY_SIZE(dimming_on));
++		if (ret)
++			goto failed;
++		dev_info(&ctx->dsi[0]->dev, "O82 first-frame dimming-on complete\n");
++	}
++	/* Keep the LCD dark until both links leave the initialization state. */
++	stage = "backlight";
++	ret = backlight_enable(ctx->backlight);
++	if (ret)
++		goto failed;
++	brightness = backlight_get_brightness(ctx->backlight);
++	if (brightness <= 0) {
++		ret = -ERANGE;
++		goto failed;
++	}
++	dev_info(&ctx->dsi[0]->dev,
++		 "O82 first-frame checked backlight: brightness=%d result=0\n", brightness);
++	o82_touch_state(ctx, false, true);
++	return;
++
++failed:
++	o82_touch_state(ctx, false, false);
++	blank_ret = backlight_disable(ctx->backlight);
++	dev_err(&ctx->dsi[0]->dev,
++		"O82 first-frame restoration failed: stage=%s command=%d result=%d blank_result=%d\n",
++		stage, i, ret, blank_ret);
++}
++
++static int o82_enable_locked(struct drm_panel *panel)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++	struct drm_crtc *crtc;
++	int ret;
++
++	if (ctx->removing)
++		return -ESHUTDOWN;
++	if (!ctx->prepared || !ctx->backlight || !ctx->connector ||
++	    !ctx->connector->state || !ctx->connector->state->crtc)
++		return -EINVAL;
++	if (ctx->first_frame_initialized)
++		return -EBUSY;
++	crtc = ctx->connector->state->crtc;
++	/* MSM kicks off after panel enable, so the first-frame gate must not block. */
++	ctx->first_frame_crtc = crtc;
++	ctx->first_frame_target = drm_crtc_vblank_count(crtc) + 1;
++	drm_vblank_work_init(&ctx->first_frame_work, crtc, o82_first_frame);
++	ctx->first_frame_initialized = true;
++	dev_info(&ctx->dsi[0]->dev, "O82 first-frame arm: target=%llu\n",
++		 (unsigned long long)ctx->first_frame_target);
++	ret = drm_vblank_work_schedule(&ctx->first_frame_work,
++				       ctx->first_frame_target, true);
++	if (ret <= 0) {
++		o82_cancel_first_frame(ctx);
++		ret = ret < 0 ? ret : -EIO;
++		dev_err(&ctx->dsi[0]->dev, "O82 first-frame schedule refused: %d\n",
++			ret);
++		return ret;
++	}
++	return 0;
++}
++
++static int o82_enable(struct drm_panel *panel)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++	int ret;
++
++	mutex_lock(&ctx->lock);
++	ret = o82_enable_locked(panel);
++	mutex_unlock(&ctx->lock);
++	return ret;
++}
++
++static void o82_disable_locked(struct o82_panel *ctx)
++{
++	int ret;
++
++	o82_cancel_first_frame(ctx);
++	o82_touch_state(ctx, false, false);
++	ret = backlight_disable(ctx->backlight);
++	if (ret)
++		dev_err(&ctx->dsi[0]->dev, "O82 backlight blank failed: %d\n", ret);
++}
++
++static int o82_disable(struct drm_panel *panel)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++
++	mutex_lock(&ctx->lock);
++	o82_disable_locked(ctx);
++	mutex_unlock(&ctx->lock);
++	return 0;
++}
++
++static int o82_unprepare(struct drm_panel *panel)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++	int ret = 0, power_ret;
++
++	mutex_lock(&ctx->lock);
++	o82_disable_locked(ctx);
++	if (!ctx->prepared && !ctx->enabled_supplies && !ctx->loaded_supplies)
++		goto out;
++	ret = ctx->prepared ? o82_off(ctx) : 0;
++	power_ret = o82_power_off(ctx);
++	ctx->prepared = false;
++	ret = ret ? ret : power_ret;
++out:
++	mutex_unlock(&ctx->lock);
++	return ret;
++}
++
++static int o82_get_modes(struct drm_panel *panel, struct drm_connector *connector)
++{
++	struct o82_panel *ctx = container_of(panel, struct o82_panel, panel);
++	int i, count = 0;
++
++	ctx->connector = connector;
++	for (i = 0; i < ARRAY_SIZE(o82_modes); i++) {
++		struct drm_display_mode *mode;
++		if (ctx->initial_60hz_only && drm_mode_vrefresh(&o82_modes[i].mode) != 60)
++			continue;
++		if (ctx->initial_120hz_only && drm_mode_vrefresh(&o82_modes[i].mode) != 120)
++			continue;
++		mode = drm_mode_duplicate(connector->dev, &o82_modes[i].mode);
++		if (!mode)
++			return -ENOMEM;
++		drm_mode_set_name(mode);
++		mode->type = DRM_MODE_TYPE_DRIVER;
++		if (drm_mode_vrefresh(mode) ==
++		    (ctx->initial_120hz_only || ctx->oem_refresh_modes ? 120 : 60))
++			mode->type |= DRM_MODE_TYPE_PREFERRED;
++		drm_mode_probed_add(connector, mode);
++		count++;
++	}
++	connector->display_info.bpc = 10;
++	connector->display_info.width_mm = 237;
++	connector->display_info.height_mm = 158;
++	qcom_uke_dsi_update_vrr(ctx->dsi[0], connector);
++	return count;
++}
++
++static bool o82_dfps_check_locked(struct o82_panel *ctx,
++		const struct drm_display_mode *old, const struct drm_display_mode *new_mode)
++{
++	int old_group = qcom_uke_o82_mode_group(old);
++
++	return qcom_uke_o82_live_change(old, new_mode) &&
++		ctx->oem_refresh_modes && ctx->profiles == o82_42_02_0b_profiles &&
++		ctx->active == &ctx->profiles[old_group] && ctx->prepared &&
++		!ctx->removing && (atomic64_read(&ctx->touch_state) & 1);
++}
++
++static bool o82_dfps_check(struct drm_panel *panel,
++		const struct drm_display_mode *old, const struct drm_display_mode *new_mode)
++{
++	struct o82_panel *ctx;
++	bool ready;
++
++	if (!panel)
++		return false;
++	ctx = container_of(panel, struct o82_panel, panel);
++	mutex_lock(&ctx->lock);
++	ready = o82_dfps_check_locked(ctx, old, new_mode);
++	mutex_unlock(&ctx->lock);
++	return ready;
++}
++
++static int o82_dfps_apply(struct drm_panel *panel,
++		const struct drm_display_mode *old, const struct drm_display_mode *new_mode,
++		bool before)
++{
++	static const u8 pen_clear[3][2] = { { 0xff, 0x10 }, { 0xfb, 0x01 }, { 0xb2, 0x80 } };
++	struct o82_panel *ctx;
++	const struct o82_profile *target;
++	struct mipi_dsi_msg msgs[4] = { };
++	int i, ret = -EAGAIN;
++
++	if (!panel)
++		return -EINVAL;
++	ctx = container_of(panel, struct o82_panel, panel);
++	mutex_lock(&ctx->lock);
++	if (!o82_dfps_check_locked(ctx, old, new_mode))
++		goto out;
++	if (before) {
++		ret = 0;
++		/* OEM clears the 60 Hz pen setting before entering another timing group. */
++		if (drm_mode_vrefresh(old) == 60 && drm_mode_vrefresh(new_mode) != 120) {
++			for (i = 0; i < ARRAY_SIZE(pen_clear); i++)
++				msgs[i] = (struct mipi_dsi_msg) {
++					.type = MIPI_DSI_DCS_LONG_WRITE,
++					.tx_len = sizeof(pen_clear[i]), .tx_buf = pen_clear[i],
++				};
++			ret = qcom_uke_dsi_pen_clear_batch(ctx->dsi[0], msgs);
++		}
++		goto out;
++	}
++	target = &ctx->profiles[qcom_uke_o82_mode_group(new_mode)];
++	if (target->switch_count != ARRAY_SIZE(msgs)) {
++		ret = -EINVAL;
++		goto out;
++	}
++	for (i = 0; i < ARRAY_SIZE(msgs); i++) {
++		const struct o82_command *cmd = &target->switch_commands[i];
++
++		if (cmd->delay_ms || cmd->downstream_flags != (i == 3 ? 0 : BIT(6))) {
++			ret = -EINVAL;
++			goto out;
++		}
++		msgs[i] = (struct mipi_dsi_msg) {
++			.channel = cmd->channel, .type = cmd->type,
++			.tx_len = cmd->len, .tx_buf = cmd->data,
++		};
++	}
++	/* OEM sends this group after every video timing kickoff, including VFP-only changes. */
++	ret = qcom_uke_dsi_tp_fps_batch(ctx->dsi[0], msgs);
++	if (!ret)
++		ctx->active = target;
++out:
++	mutex_unlock(&ctx->lock);
++	return ret;
++}
++
++static const struct qcom_uke_o82_dfps_ops o82_dfps_ops = {
++	.check = o82_dfps_check,
++	.apply = o82_dfps_apply,
++};
++
++static const struct drm_panel_funcs o82_funcs = {
++	.prepare = o82_prepare,
++	.enable = o82_enable,
++	.disable = o82_disable,
++	.unprepare = o82_unprepare,
++	.get_modes = o82_get_modes,
++};
++
++static ssize_t touch_reset_state_show(struct device *dev,
++				     struct device_attribute *attr, char *buf)
++{
++	struct o82_panel *ctx = dev_get_drvdata(dev);
++	u64 state = (u64)atomic64_read(&ctx->touch_state);
++
++	return sysfs_emit(buf, "%llu %u\n", state >> 1, (unsigned int)(state & 1));
++}
++static DEVICE_ATTR_RO(touch_reset_state);
++static struct attribute *o82_attrs[] = { &dev_attr_touch_reset_state.attr, NULL };
++ATTRIBUTE_GROUPS(o82);
++
++static int o82_probe(struct mipi_dsi_device *dsi)
++{
++	static const char * const supply_names[] = { "vddio", "vsp", "vsn" };
++	static const int supply_voltages[] = { 1900000, 5800000, 5800000 };
++	struct device *dev = &dsi->dev;
++	struct device_node *node;
++	struct mipi_dsi_host *host;
++	struct o82_panel *ctx;
++	const struct mipi_dsi_device_info info = { .type = "o82-secondary", .channel = 0 };
++	int i, ret;
++
++	ctx = devm_drm_panel_alloc(dev, struct o82_panel, panel, &o82_funcs,
++				 DRM_MODE_CONNECTOR_DSI);
++	if (IS_ERR(ctx))
++		return PTR_ERR(ctx);
++	mutex_init(&ctx->lock);
++	atomic64_set(&ctx->touch_state, 0);
++	ctx->dsi[0] = dsi;
++	ctx->profiles = of_device_get_match_data(dev);
++	if (!ctx->profiles)
++		return -EINVAL;
++	ctx->active = &ctx->profiles[0];
++	ret = o82_read_initial_mode(ctx, dev->of_node);
++	if (ret)
++		return dev_err_probe(dev, ret, "Invalid initial panel mode profile\n");
++	for (i = 0; i < ARRAY_SIZE(supply_names); i++) {
++		ctx->supplies[i] = devm_regulator_get(dev, supply_names[i]);
++		if (IS_ERR(ctx->supplies[i]))
++			return dev_err_probe(dev, PTR_ERR(ctx->supplies[i]), "Missing panel supply\n");
++		ret = regulator_set_voltage(ctx->supplies[i], supply_voltages[i], supply_voltages[i]);
++		if (ret)
++			return dev_err_probe(dev, ret, "Cannot set stock panel voltage\n");
++	}
++	ctx->reset = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
++	if (IS_ERR(ctx->reset))
++		return dev_err_probe(dev, PTR_ERR(ctx->reset), "Missing reset GPIO\n");
++	node = of_graph_get_remote_node(dev->of_node, 1, -1);
++	if (!node)
++		return -ENODEV;
++	host = of_find_mipi_dsi_host_by_node(node);
++	of_node_put(node);
++	if (!host)
++		return -EPROBE_DEFER;
++	ctx->dsi[1] = mipi_dsi_device_register_full(host, &info);
++	if (IS_ERR(ctx->dsi[1]))
++		return PTR_ERR(ctx->dsi[1]);
++	ctx->dsc.dsc_version_major = 1;
++	ctx->dsc.dsc_version_minor = 1;
++	ctx->dsc.slice_width = 800;
++	ctx->dsc.slice_height = 24;
++	ctx->dsc.slice_count = 2;
++	ctx->dsc.bits_per_component = 10;
++	ctx->dsc.bits_per_pixel = 8 << 4;
++	ctx->dsc.block_pred_enable = true;
++	ctx->backlight = devm_of_find_backlight(dev);
++	if (IS_ERR(ctx->backlight)) {
++		ret = PTR_ERR(ctx->backlight);
++		goto unregister_secondary;
++	}
++	if (!ctx->backlight) {
++		ret = -ENODEV;
++		goto unregister_secondary;
++	}
++	/* DSI attachment can bind MSM and replace the lit firmware scanout. */
++	ret = backlight_disable(ctx->backlight);
++	if (ret)
++		goto unregister_secondary;
++	mipi_dsi_set_drvdata(dsi, ctx);
++	ctx->panel.prepare_prev_first = true;
++	drm_panel_add(&ctx->panel);
++	for (i = 0; i < ARRAY_SIZE(ctx->dsi); i++) {
++		ctx->dsi[i]->lanes = 4;
++		/* OEM 30-bpp input retains RGB101010 on the DSC-capable wide bus. */
++		ctx->dsi[i]->format = MIPI_DSI_FMT_RGB101010;
++		/* O82 OEM does not force the clock lane to remain in HS. */
++		ctx->dsi[i]->mode_flags = MIPI_DSI_MODE_VIDEO |
++			MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM;
++		ctx->dsi[i]->dsc = &ctx->dsc;
++		ret = mipi_dsi_attach(ctx->dsi[i]);
++		if (ret)
++			goto detach_attached;
++	}
++	if (ctx->oem_refresh_modes) {
++		ret = qcom_uke_dsi_dfps_register(dsi, &ctx->panel, &o82_dfps_ops);
++		if (ret)
++			goto detach_attached;
++	}
++	return 0;
++
++detach_attached:
++	while (--i >= 0)
++		mipi_dsi_detach(ctx->dsi[i]);
++	drm_panel_remove(&ctx->panel);
++unregister_secondary:
++	mipi_dsi_device_unregister(ctx->dsi[1]);
++	return ret;
++}
++
++static void o82_remove(struct mipi_dsi_device *dsi)
++{
++	struct o82_panel *ctx = mipi_dsi_get_drvdata(dsi);
++
++	if (ctx->oem_refresh_modes)
++		qcom_uke_dsi_dfps_register(dsi, &ctx->panel, NULL);
++	mutex_lock(&ctx->lock);
++	ctx->removing = true;
++	mutex_unlock(&ctx->lock);
++	drm_panel_disable(&ctx->panel);
++	if (o82_unprepare(&ctx->panel))
++		dev_warn(&dsi->dev, "Panel power-down failed during removal\n");
++	mipi_dsi_detach(ctx->dsi[1]);
++	mipi_dsi_detach(ctx->dsi[0]);
++	drm_panel_remove(&ctx->panel);
++	mipi_dsi_device_unregister(ctx->dsi[1]);
++}
++
++static void o82_shutdown(struct mipi_dsi_device *dsi)
++{
++	struct o82_panel *ctx = mipi_dsi_get_drvdata(dsi);
++
++	if (ctx->oem_refresh_modes)
++		qcom_uke_dsi_dfps_register(dsi, &ctx->panel, NULL);
++	mutex_lock(&ctx->lock);
++	ctx->removing = true;
++	mutex_unlock(&ctx->lock);
++	drm_panel_disable(&ctx->panel);
++	if (o82_unprepare(&ctx->panel))
++		dev_warn(&dsi->dev, "Panel power-down failed during shutdown\n");
++}
++
++static const struct of_device_id o82_match[] = {
++	{ .compatible = "xiaomi,o82-36-02-0a", .data = o82_36_02_0a_profiles },
++	{ .compatible = "xiaomi,o82-42-02-0b", .data = o82_42_02_0b_profiles },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, o82_match);
++
++static struct mipi_dsi_driver o82_driver = {
++	.probe = o82_probe,
++	.remove = o82_remove,
++	.shutdown = o82_shutdown,
++	.driver = { .name = "panel-xiaomi-o82", .of_match_table = o82_match,
++		    .dev_groups = o82_groups },
++};
++module_mipi_dsi_driver(o82_driver);
++MODULE_DESCRIPTION("Xiaomi O82 dual-DSI panel with OEM timing groups");
++MODULE_LICENSE("GPL");
+--- /dev/null
++++ b/drivers/gpu/drm/panel/panel-alldocube-u880.c
+@@ -0,0 +1,277 @@
++// SPDX-License-Identifier: GPL-2.0-only
 +/*
-+ * Copyright (c) 2022. Qualcomm Innovation Center, Inc. All rights reserved.
-+ * Copyright (c) 2015-2018, 2020 The Linux Foundation. All rights reserved.
++ * Alldocube iPlay 70 mini Ultra (U880) BOE 1600x2560 LCD, Novatek TDDI (NT36523N touch side).
++ * Dual DSI, C-PHY (3 trios per link), DSC 1.1 800x20 slices 8 bpc / 8 bpp, video burst mode.
++ * Timings, power and command sequences from the stock panel node "mdss_dsi_boe_144hz_U880_video".
++ * Structure based on panel-himax-hx83121a.c.
 + */
 +
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_graph.h>
++#include <linux/regulator/consumer.h>
++
++#include <drm/display/drm_dsc.h>
++#include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_mipi_dsi.h>
++#include <drm/drm_modes.h>
++#include <drm/drm_panel.h>
++#include <drm/drm_probe_helper.h>
++
++struct u880_panel {
++	struct drm_panel panel;
++	struct mipi_dsi_device *dsi[2];
++	struct drm_dsc_config dsc;
++	struct regulator *vddio;
++	struct gpio_desc *reset_gpio;
++	struct gpio_desc *enp_gpio;
++	struct gpio_desc *enn_gpio;
++};
++
++static inline struct u880_panel *to_u880_panel(struct drm_panel *panel)
++{
++	return container_of(panel, struct u880_panel, panel);
++}
++
++static void u880_on(struct mipi_dsi_multi_context *ctx)
++{
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xff, 0xd0);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xfb, 0x01);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x00, 0x30);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x09, 0xee);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x1c, 0x99);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x1d, 0x09);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xff, 0xf0);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xfb, 0x01);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x24, 0x02);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xff, 0x2a);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xfb, 0x01);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xbc, 0x33, 0x03);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xff, 0x10);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xfb, 0x01);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x35, 0x00);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x3b, 0x03, 0x64, 0x1e, 0x04, 0x04, 0x00);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x51, 0x01, 0xff);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x53, 0x2c);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x55, 0x00);
++	/* Novatek DSC enable + register-format PPS, as sent by the stock driver */
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x90, 0x03);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x91, 0x89, 0x08, 0x00, 0x14, 0xd2, 0x00, 0x02,
++				     0xb2, 0x02, 0x2b, 0x00, 0x0b, 0x05, 0x7a, 0x03, 0x68);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0x92, 0x10, 0xe0);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xb2, 0x00);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xb3, 0x12);
++	mipi_dsi_dcs_write_seq_multi(ctx, 0xbb, 0x13);
++	mipi_dsi_dcs_exit_sleep_mode_multi(ctx);
++	mipi_dsi_msleep(ctx, 100);
++	mipi_dsi_dcs_set_display_on_multi(ctx);
++}
++
++static int u880_prepare(struct drm_panel *panel)
++{
++	struct u880_panel *ctx = to_u880_panel(panel);
++	/* Bonded + sync: msm drops writes on DSI0 and broadcasts the ones sent on DSI1. */
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi[1] };
++	struct drm_dsc_picture_parameter_set pps;
++	int ret;
++
++	ret = regulator_enable(ctx->vddio);
++	if (ret)
++		return ret;
++	msleep(20);
++	gpiod_direction_output(ctx->enp_gpio, 1);
++	usleep_range(5000, 6000);
++	gpiod_direction_output(ctx->enn_gpio, 1);
++	usleep_range(10000, 11000);
++
++	/* stock qcom,mdss-dsi-reset-sequence: high 10 ms, low 10 ms, high 10 ms */
++	gpiod_direction_output(ctx->reset_gpio, 0);
++	usleep_range(10000, 11000);
++	gpiod_direction_output(ctx->reset_gpio, 1);
++	usleep_range(10000, 11000);
++	gpiod_direction_output(ctx->reset_gpio, 0);
++	usleep_range(10000, 11000);
++
++	/* stock order: PPS first, then the ON command set */
++	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
++	dev_info(panel->dev, "DSC %ux%u slice %ux%u chunk %u init_xmit %u init_dec %u scale_inc %u scale_dec %u first_bpg %u nfl_bpg %u slice_bpg %u final_off %u\n",
++		 ctx->dsc.pic_width, ctx->dsc.pic_height, ctx->dsc.slice_width, ctx->dsc.slice_height,
++		 ctx->dsc.slice_chunk_size, ctx->dsc.initial_xmit_delay, ctx->dsc.initial_dec_delay,
++		 ctx->dsc.scale_increment_interval, ctx->dsc.scale_decrement_interval,
++		 ctx->dsc.first_line_bpg_offset, ctx->dsc.nfl_bpg_offset, ctx->dsc.slice_bpg_offset,
++		 ctx->dsc.final_offset);
++	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
++	u880_on(&dsi_ctx);
++	dev_info(panel->dev, "panel on sequence done: %d\n", dsi_ctx.accum_err);
++	if (dsi_ctx.accum_err) {
++		gpiod_direction_output(ctx->reset_gpio, 1);
++		regulator_disable(ctx->vddio);
++	}
++	return dsi_ctx.accum_err;
++}
++
++static int u880_unprepare(struct drm_panel *panel)
++{
++	struct u880_panel *ctx = to_u880_panel(panel);
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi[1] };
++
++	mipi_dsi_dcs_set_display_off_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 16);
++	mipi_dsi_dcs_enter_sleep_mode_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 50);
++	if (dsi_ctx.accum_err)
++		dev_err(panel->dev, "panel off failed: %d\n", dsi_ctx.accum_err);
++
++	gpiod_direction_output(ctx->reset_gpio, 1);
++	gpiod_direction_output(ctx->enn_gpio, 0);
++	usleep_range(5000, 6000);
++	gpiod_direction_output(ctx->enp_gpio, 0);
++	regulator_disable(ctx->vddio);
++	return 0;
++}
++
++/* Per link: 800 active, hfp 27, hsync 20, hbp 26; vfp 30, vsync 2, vbp 98 (stock timing@0, 144 Hz). */
++#define U880_HTOTAL ((800 + 27 + 20 + 26) * 2)
++#define U880_VTOTAL (2560 + 30 + 2 + 98)
++
++static const struct drm_display_mode u880_mode = {
++	.clock = U880_HTOTAL * U880_VTOTAL * 144 / 1000,
++	.hdisplay = 800 * 2,
++	.hsync_start = (800 + 27) * 2,
++	.hsync_end = (800 + 27 + 20) * 2,
++	.htotal = U880_HTOTAL,
++	.vdisplay = 2560,
++	.vsync_start = 2560 + 30,
++	.vsync_end = 2560 + 30 + 2,
++	.vtotal = U880_VTOTAL,
++	.width_mm = 118,
++	.height_mm = 190,
++	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++};
++
++static int u880_get_modes(struct drm_panel *panel, struct drm_connector *connector)
++{
++	return drm_connector_helper_get_modes_fixed(connector, &u880_mode);
++}
++
++static const struct drm_panel_funcs u880_panel_funcs = {
++	.prepare = u880_prepare,
++	.unprepare = u880_unprepare,
++	.get_modes = u880_get_modes,
++};
++
++/* Bring-up aid: DCS get_power_mode (0x0a) from DSI1; the stock ESD check expects 0x9c. */
++static ssize_t power_mode_show(struct device *dev, struct device_attribute *attr, char *buf)
++{
++	struct u880_panel *ctx = dev_get_drvdata(dev);
++	u8 mode = 0;
++	int ret = mipi_dsi_dcs_get_power_mode(ctx->dsi[1], &mode);
++
++	return ret ? ret : sysfs_emit(buf, "0x%02x\n", mode);
++}
++static DEVICE_ATTR_RO(power_mode);
++
++static const struct drm_dsc_config u880_dsc = {
++	.dsc_version_major = 1,
++	.dsc_version_minor = 1,
++	.slice_height = 20,
++	.slice_width = 800,
++	.slice_count = 1,
++	.bits_per_component = 8,
++	.bits_per_pixel = 8 << 4,
++	.block_pred_enable = true,
++};
++
++static int u880_probe(struct mipi_dsi_device *dsi)
++{
++	struct mipi_dsi_device_info dsi_info = { "dsi-secondary", 0, NULL };
++	struct device *dev = &dsi->dev;
++	struct mipi_dsi_host *dsi1_host;
++	struct device_node *dsi1;
++	struct u880_panel *ctx;
++	int ret, i;
++
++	ctx = devm_drm_panel_alloc(dev, struct u880_panel, panel, &u880_panel_funcs,
++				   DRM_MODE_CONNECTOR_DSI);
++	if (IS_ERR(ctx))
++		return PTR_ERR(ctx);
++
++	ctx->vddio = devm_regulator_get(dev, "vddio");
++	if (IS_ERR(ctx->vddio))
++		return dev_err_probe(dev, PTR_ERR(ctx->vddio), "no vddio supply\n");
++	/* ASIS: the bootloader left the panel running; do not blank it before the first modeset. */
++	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
++	if (IS_ERR(ctx->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio), "no reset gpio\n");
++	ctx->enp_gpio = devm_gpiod_get(dev, "enp", GPIOD_ASIS);
++	if (IS_ERR(ctx->enp_gpio))
++		return dev_err_probe(dev, PTR_ERR(ctx->enp_gpio), "no enp gpio\n");
++	ctx->enn_gpio = devm_gpiod_get(dev, "enn", GPIOD_ASIS);
++	if (IS_ERR(ctx->enn_gpio))
++		return dev_err_probe(dev, PTR_ERR(ctx->enn_gpio), "no enn gpio\n");
++	ctx->dsc = u880_dsc;
++
++	dsi1 = of_graph_get_remote_node(dev->of_node, 1, -1);
++	if (!dsi1)
++		return dev_err_probe(dev, -ENODEV, "no secondary DSI node\n");
++	dsi1_host = of_find_mipi_dsi_host_by_node(dsi1);
++	of_node_put(dsi1);
++	if (!dsi1_host)
++		return dev_err_probe(dev, -EPROBE_DEFER, "secondary DSI host not ready\n");
++	ctx->dsi[1] = devm_mipi_dsi_device_register_full(dev, dsi1_host, &dsi_info);
++	if (IS_ERR(ctx->dsi[1]))
++		return dev_err_probe(dev, PTR_ERR(ctx->dsi[1]), "cannot register secondary DSI device\n");
++	mipi_dsi_set_drvdata(ctx->dsi[1], ctx);
++	ctx->dsi[0] = dsi;
++	mipi_dsi_set_drvdata(dsi, ctx);
++
++	ctx->panel.prepare_prev_first = true;
++	ret = drm_panel_of_backlight(&ctx->panel);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to get backlight\n");
++	drm_panel_add(&ctx->panel);
++	device_create_file(dev, &dev_attr_power_mode);
++
++	for (i = 0; i < 2; i++) {
++		ctx->dsi[i]->lanes = 3; /* C-PHY trios */
++		ctx->dsi[i]->format = MIPI_DSI_FMT_RGB888;
++		ctx->dsi[i]->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
++					  MIPI_DSI_CLOCK_NON_CONTINUOUS | /* C-PHY: no clock lane */
++					  MIPI_DSI_MODE_LPM;
++		ctx->dsi[i]->dsc = &ctx->dsc;
++		ret = devm_mipi_dsi_attach(dev, ctx->dsi[i]);
++		if (ret < 0) {
++			drm_panel_remove(&ctx->panel);
++			return dev_err_probe(dev, ret, "failed to attach DSI%d\n", i);
++		}
++	}
++	return 0;
++}
++
++static void u880_remove(struct mipi_dsi_device *dsi)
++{
++	struct u880_panel *ctx = mipi_dsi_get_drvdata(dsi);
++
++	drm_panel_remove(&ctx->panel);
++}
++
++static const struct of_device_id u880_of_match[] = {
++	{ .compatible = "alldocube,u880-panel" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, u880_of_match);
++
++static struct mipi_dsi_driver u880_driver = {
++	.probe = u880_probe,
++	.remove = u880_remove,
++	.driver = {
++		.name = "panel-alldocube-u880",
++		.of_match_table = u880_of_match,
++	},
++};
++module_mipi_dsi_driver(u880_driver);
++
++MODULE_DESCRIPTION("Alldocube U880 BOE dual-DSI C-PHY DSC panel");
++MODULE_LICENSE("GPL");
+--- a/drivers/gpu/drm/panel/Kconfig
++++ b/drivers/gpu/drm/panel/Kconfig
+@@ -1348,4 +1348,14 @@
+ 	  Say Y here if you want to enable support for the Xinpeng
+ 	  XPP055C272 controller for 720x1280 LCD panels with MIPI/RGB/SPI
+ 	  system interfaces.
++
++config DRM_PANEL_ALLDOCUBE_U880
++	tristate "Alldocube U880 BOE dual-DSI C-PHY DSC panel"
++	depends on OF && DRM_MIPI_DSI && BACKLIGHT_CLASS_DEVICE
++	select DRM_DISPLAY_DSC_HELPER
++
++config DRM_PANEL_XIAOMI_O82
++	tristate "Xiaomi O82 dual-DSI panel (experimental)"
++	depends on OF && DRM_MIPI_DSI && BACKLIGHT_CLASS_DEVICE
++
+ endmenu
+--- /dev/null
++++ b/drivers/gpu/drm/msm/uke-mdss-handoff.c
+@@ -0,0 +1,197 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Included after struct msm_mdss in the isolated SM7675 display tree. */
++#include <linux/iopoll.h>
++#include <linux/mfd/syscon.h>
++#include <linux/of.h>
++#include <linux/qcom-uke-display.h>
++#include <linux/regmap.h>
++
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
++#include <linux/vmalloc.h>
++
++/*
++ * U880 bring-up aid: snapshot of the bootloader's working display configuration (taken before the handoff resets MDSS)
++ * and the same registers live, for diffing. /sys/kernel/debug/u880-display/{boot,live}. Read "live" only while the
++ * display is on: these blocks are unclocked otherwise and an access can hang the SoC.
++ */
++static const struct { u32 phys, len; } u880_regions[] = {
++	{ 0xae36000, 0x300 }, { 0xae37000, 0x300 },	/* INTF1, INTF2 (catalog len) */
++	/* PP/DSC (and INTF with 0x400) were in the first attempt, which reset the SoC (2026-10-19). */
++	{ 0xae94000, 0x400 }, { 0xae95000, 0xa00 },	/* DSI0, PHY0 */
++	{ 0xae96000, 0x400 }, { 0xae97000, 0xa00 },	/* DSI1, PHY1 */
++	{ 0xaf08000, 0x300 },				/* dispcc RCGs (pclk 0x80a8/0x80c0, byte 0x8108/0x8124) */
++};
++static u32 *u880_boot_regs;
++
++static u32 *u880_snapshot(void)
++{
++	size_t total = 0, n = 0;
++	u32 *buf;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(u880_regions); i++)
++		total += u880_regions[i].len / 4;
++	buf = vmalloc(total * 4);
++	if (!buf)
++		return NULL;
++	for (i = 0; i < ARRAY_SIZE(u880_regions); i++) {
++		void __iomem *io = ioremap(u880_regions[i].phys, u880_regions[i].len);
++		u32 off;
++
++		for (off = 0; off < u880_regions[i].len; off += 4)
++			buf[n++] = io ? readl(io + off) : 0xdeadbeef;
++		if (io)
++			iounmap(io);
++	}
++	return buf;
++}
++
++static int u880_regs_print(struct seq_file *m, u32 *buf)
++{
++	size_t n = 0;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(u880_regions); i++) {
++		u32 off;
++
++		for (off = 0; off < u880_regions[i].len; off += 4, n++)
++			seq_printf(m, "%08x %08x\n", u880_regions[i].phys + off, buf[n]);
++	}
++	return 0;
++}
++
++static int u880_boot_show(struct seq_file *m, void *unused)
++{
++	return u880_boot_regs ? u880_regs_print(m, u880_boot_regs) : -ENODATA;
++}
++DEFINE_SHOW_ATTRIBUTE(u880_boot);
++
++static int u880_live_show(struct seq_file *m, void *unused)
++{
++	u32 *buf = u880_snapshot();
++
++	if (!buf)
++		return -ENOMEM;
++	u880_regs_print(m, buf);
++	vfree(buf);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(u880_live);
++
++#define UKE_DISPLAY_XINS (BIT(0) | BIT(1) | BIT(4) | BIT(5) | BIT(9) | BIT(13) | BIT(14))
++
++static int uke_mdss_handoff(struct msm_mdss *mdss)
++{
++	struct device *dev = mdss->dev;
++	struct device_node *node;
++	struct platform_device *supplier;
++	struct device_link *link;
++	struct reset_control *reset;
++	struct regmap *dispcc;
++	void __iomem *vbif;
++	u32 value, saved_halt;
++	int ret;
++
++	if (of_find_property(dev->of_node, "iommus", NULL))
++		return dev_err_probe(dev, -EINVAL, "put display iommus on DPU child\n");
++	node = of_parse_phandle(dev->of_node, "qcom,display-smmu", 0);
++	if (!node)
++		return -EINVAL;
++	supplier = of_find_device_by_node(node);
++	of_node_put(node);
++	if (!supplier)
++		return -EPROBE_DEFER;
++	if (!supplier->dev.driver || !dev_get_drvdata(&supplier->dev)) {
++		ret = -EPROBE_DEFER;
++		goto put_supplier;
++	}
++	link = device_link_add(dev, &supplier->dev, DL_FLAG_AUTOREMOVE_CONSUMER);
++	if (!link) {
++		ret = -ENOMEM;
++		goto put_supplier;
++	}
++	/* Named phandle must be the same DISPCC as resets; validated by DT tests. */
++	dispcc = syscon_regmap_lookup_by_phandle(dev->of_node, "qcom,display-dispcc");
++	if (IS_ERR(dispcc)) {
++		ret = PTR_ERR(dispcc);
++		goto put_supplier;
++	}
++	reset = devm_reset_control_get_exclusive(dev, NULL);
++	if (IS_ERR(reset)) {
++		ret = PTR_ERR(reset);
++		goto put_supplier;
++	}
++	vbif = devm_platform_ioremap_resource_byname(to_platform_device(dev), "handoff-vbif");
++	if (IS_ERR(vbif)) {
++		ret = PTR_ERR(vbif);
++		goto put_supplier;
++	}
++	/* Probe owns clocks and ICC routes before retiring ABL's translations. */
++	ret = pm_runtime_resume_and_get(dev);
++	if (ret < 0)
++		goto put_supplier;
++	/* Check actual hardware revision, not merely the selected compatible. */
++	value = readl(mdss->mmio);
++	if ((value >> 16) != 0xa001) {
++		dev_err(dev, "unexpected SM7675 MDSS revision %#x\n", value);
++		ret = -ENODEV;
++		goto put_pm;
++	}
++	if (!u880_boot_regs) {
++		struct dentry *d = debugfs_create_dir("u880-display", NULL);
++
++		u880_boot_regs = u880_snapshot();
++		debugfs_create_file("boot", 0400, d, NULL, &u880_boot_fops);
++		debugfs_create_file("live", 0400, d, NULL, &u880_live_fops);
++	}
++	saved_halt = readl(vbif + 0x200);
++	writel(saved_halt | UKE_DISPLAY_XINS, vbif + 0x200);
++	ret = readl_poll_timeout(vbif + 0x204, value,
++				 (value & UKE_DISPLAY_XINS) == UKE_DISPLAY_XINS,
++				 100, 100000);
++	if (ret) {
++		/* No SMR was changed: restore the prior requests and keep firmware maps. */
++		writel(saved_halt, vbif + 0x200);
++		goto put_pm;
++	}
++	ret = reset_control_assert(reset);
++	if (ret)
++		goto restore_halt;
++	/* Generic qcom reset ops ignore regmap errors. Verify the real bit. */
++	ret = regmap_read(dispcc, 0x8000, &value);
++	if (ret || !(value & BIT(0))) {
++		if (!ret)
++			ret = -EIO;
++		goto restore_halt;
++	}
++	msleep(20);
++	ret = qcom_uke_display_release(&supplier->dev, dev);
++	if (ret) {
++		/* Leave reset asserted on release failure; never resume stale DMA. */
++		dev_err(dev, "display SMR handoff failed: %d; core remains reset\n", ret);
++		goto put_pm;
++	}
++	ret = reset_control_deassert(reset);
++	if (ret)
++		goto put_pm;
++	ret = regmap_read(dispcc, 0x8000, &value);
++	if (ret || (value & BIT(0))) {
++		if (!ret)
++			ret = -EIO;
++		goto put_pm;
++	}
++	/* Reset erased the old scanout. DPU children attach translated domains
++	 * only after this returns; no old buffer is accessed through new tables.
++	 */
++	writel(saved_halt & ~UKE_DISPLAY_XINS, vbif + 0x200);
++	mdss->uke_handoff_complete = true;
++	goto put_pm;
++restore_halt:
++	writel(saved_halt, vbif + 0x200);
++put_pm:
++	pm_runtime_put_sync(dev);
++put_supplier:
++	put_device(&supplier->dev);
++	return ret;
++}
+--- a/drivers/gpu/drm/msm/msm_mdss.c
++++ b/drivers/gpu/drm/msm/msm_mdss.c
+@@ -44,7 +44,10 @@
+ 	struct icc_path *mdp_path[2];
+ 	u32 num_mdp_paths;
+ 	struct icc_path *reg_bus_path;
+-};
++	bool uke_handoff_complete;
++};
++
++#include "uke-mdss-handoff.c"
+ 
+ static int msm_mdss_parse_data_bus_icc_path(struct device *dev,
+ 					    struct msm_mdss *msm_mdss)
+@@ -238,11 +241,16 @@
+ 	 * the interconnect is enabled (non-zero bandwidth). Let's make sure
+ 	 * that the interconnects are at least at a minimum amount.
+ 	 */
+-	for (i = 0; i < msm_mdss->num_mdp_paths; i++)
+-		icc_set_bw(msm_mdss->mdp_path[i], 0, Bps_to_icc(MIN_IB_BW));
+-
+-	icc_set_bw(msm_mdss->reg_bus_path, 0,
+-		   msm_mdss->reg_bus_bw);
++	for (i = 0; i < msm_mdss->num_mdp_paths; i++) {
++		bool uke = of_device_is_compatible(msm_mdss->dev->of_node, "qcom,sm7675-mdss");
++		ret = icc_set_bw(msm_mdss->mdp_path[i], 0,
++			Bps_to_icc(uke && !msm_mdss->uke_handoff_complete ? 8000000000ULL : MIN_IB_BW));
++		if (uke && ret)
++			return ret;
++	}
++	ret = icc_set_bw(msm_mdss->reg_bus_path, 0, msm_mdss->reg_bus_bw);
++	if (of_device_is_compatible(msm_mdss->dev->of_node, "qcom,sm7675-mdss") && ret)
++		return ret;
+ 
+ 	/*
+ 	 * TODO:
+@@ -252,6 +260,9 @@
+ 	 * correct OPP has been set in one of the MDPn or DPU drivers, or during initial probe,
+ 	 * before the RPM(H)PD sync_state is done.
+ 	 */
++	if (of_device_is_compatible(msm_mdss->dev->of_node, "qcom,sm7675-mdss") &&
++	    (!msm_mdss->num_mdp_paths || !msm_mdss->reg_bus_path))
++		return -ENODEV;
+ 	ret = clk_bulk_prepare_enable(msm_mdss->num_clocks, msm_mdss->clocks);
+ 	if (ret) {
+ 		dev_err(msm_mdss->dev, "clock enable failed, ret:%d\n", ret);
+@@ -262,7 +273,8 @@
+ 	 * Register access requires MDSS_MDP_CLK, which is not enabled by the
+ 	 * mdss on mdp5 hardware. Skip it for now.
+ 	 */
+-	if (msm_mdss->is_mdp5 || !msm_mdss->mdss_data)
++	if ((of_device_is_compatible(msm_mdss->dev->of_node, "qcom,sm7675-mdss") &&
++	     !msm_mdss->uke_handoff_complete) || msm_mdss->is_mdp5 || !msm_mdss->mdss_data)
+ 		return 0;
+ 
+ 	hw_rev = readl_relaxed(msm_mdss->mmio + REG_MDSS_HW_VERSION);
+@@ -369,7 +381,8 @@
+ 	int ret;
+ 	int irq;
+ 
+-	ret = msm_mdss_reset(&pdev->dev);
++	ret = of_device_is_compatible(pdev->dev.of_node, "qcom,sm7675-mdss") ?
++		0 : msm_mdss_reset(&pdev->dev);
+ 	if (ret)
+ 		return ERR_PTR(ret);
+ 
+@@ -478,6 +491,13 @@
+ 		return PTR_ERR(mdss);
+ 
+ 	platform_set_drvdata(pdev, mdss);
++	if (of_device_is_compatible(dev->of_node, "qcom,sm7675-mdss")) {
++		ret = uke_mdss_handoff(mdss);
++		if (ret) {
++			msm_mdss_destroy(mdss);
++			return ret;
++		}
++	}
+ 
+ 	/*
+ 	 * MDP5/DPU based devices don't have a flat hierarchy. There is a top
+@@ -525,6 +545,7 @@
+ };
+ 
+ static const struct of_device_id mdss_dt_match[] = {
++	{ .compatible = "qcom,sm7675-mdss", .data = &data_57k },
+ 	{ .compatible = "qcom,mdss", .data = &data_153k6 },
+ 	{ .compatible = "qcom,eliza-mdss", .data = &data_57k },
+ 	{ .compatible = "qcom,glymur-mdss", .data = &data_57k },
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
+@@ -793,6 +793,7 @@
+ #include "catalog/dpu_9_2_x1e80100.h"
+ 
+ #include "catalog/dpu_10_0_sm8650.h"
++#include "catalog/dpu_10_1_sm7675.h"
+ #include "catalog/dpu_10_2_milos.h"
+ 
+ #include "catalog/dpu_12_0_sm8750.h"
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
+@@ -1480,6 +1480,7 @@
+ };
+ 
+ static const struct of_device_id dpu_dt_match[] = {
++	{ .compatible = "qcom,sm7675-dpu", .data = &dpu_sm7675_cfg },
+ 	{ .compatible = "qcom,eliza-dpu", .data = &dpu_eliza_cfg, },
+ 	{ .compatible = "qcom,glymur-dpu", .data = &dpu_glymur_cfg, },
+ 	{ .compatible = "qcom,kaanapali-dpu", .data = &dpu_kaanapali_cfg, },
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_dsc_1_2.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_dsc_1_2.c
+@@ -84,6 +84,64 @@
+ 	DPU_REG_WRITE(hw, sblk->enc.base + DSC_MAIN_CONF, 0);
+ }
+ 
++static u32 dpu_hw_dsc_initial_lines_1_2(const struct drm_dsc_config *dsc,
++				     u32 num_active_slices, u32 mode)
++{
++	/* Hardent core configuration from the matching Uke OEM DSC driver. */
++	const u32 rtl_max_bpc = 10, rtl_output_data_width = 64;
++	const u32 pipeline_latency = 28;
++	u32 max_muxword_size, max_ssm_delay, mux_word_size;
++	u32 compress_bpp_group, input_ssm_out_latency, obuf_latency;
++	u32 ob_data_width, ob_data_width_4comps, ob_data_width_3comps;
++	u32 base_hs_latency, chunk_bits, output_rate_extra_budget_bits;
++	u32 multi_hs_extra_budget_bits, multi_hs_extra_latency;
++	u32 bpp, container_slice_width;
++	bool split_mux, multi_slice;
++
++	if (!dsc || !num_active_slices)
++		return 0;
++
++	bpp = drm_dsc_get_bpp_int(dsc);
++	container_slice_width = dsc->native_422 ?
++			dsc->slice_width / 2 : dsc->slice_width;
++	compress_bpp_group = dsc->native_422 ? 2 * bpp : bpp;
++	if (!container_slice_width || !compress_bpp_group)
++		return 0;
++
++	max_muxword_size = rtl_max_bpc >= 12 ? 64 : 48;
++	max_ssm_delay = 4 * (rtl_max_bpc + 1) + max_muxword_size - 1;
++	mux_word_size = dsc->bits_per_component >= 12 ? 64 : 48;
++	input_ssm_out_latency = pipeline_latency +
++			3 * (max_ssm_delay + 2) * num_active_slices;
++	ob_data_width_4comps = rtl_output_data_width >= 2 * max_muxword_size ?
++			rtl_output_data_width : 2 * rtl_output_data_width;
++	ob_data_width_3comps = rtl_output_data_width >= max_muxword_size ?
++			rtl_output_data_width : 2 * rtl_output_data_width;
++	ob_data_width = dsc->native_420 || dsc->native_422 ?
++			ob_data_width_4comps : ob_data_width_3comps;
++	if (compress_bpp_group > ob_data_width)
++		return 0;
++	obuf_latency = DIV_ROUND_UP(9 * ob_data_width + mux_word_size,
++				  compress_bpp_group) + 1;
++	base_hs_latency = dsc->initial_xmit_delay + input_ssm_out_latency +
++			obuf_latency;
++	chunk_bits = 8 * dsc->slice_chunk_size;
++	output_rate_extra_budget_bits =
++			((ob_data_width - compress_bpp_group) * chunk_bits) >>
++			(ob_data_width == 128 ? 7 : 6);
++	split_mux = (mode & DSC_MODE_SPLIT_PANEL) &&
++		    (mode & DSC_MODE_MULTIPLEX);
++	multi_slice = num_active_slices > 1 &&
++		      ob_data_width > compress_bpp_group;
++	multi_hs_extra_budget_bits = split_mux || multi_slice ?
++			chunk_bits : output_rate_extra_budget_bits;
++	multi_hs_extra_latency = DIV_ROUND_UP(multi_hs_extra_budget_bits,
++					   compress_bpp_group);
++
++	return DIV_ROUND_UP(base_hs_latency + multi_hs_extra_latency,
++			    container_slice_width);
++}
++
+ static void dpu_hw_dsc_config_1_2(struct dpu_hw_dsc *hw_dsc,
+ 				  struct drm_dsc_config *dsc,
+ 				  u32 mode,
+@@ -113,6 +171,13 @@
+ 	if (mode & DSC_MODE_MULTIPLEX)
+ 		num_active_slice_per_enc = dsc->slice_count / 2;
+ 
++	if (hw_dsc->caps->features & BIT(DPU_DSC_FULL_ICH_PREC)) {
++		initial_lines = dpu_hw_dsc_initial_lines_1_2(dsc,
++					 num_active_slice_per_enc, mode);
++		if (!initial_lines || initial_lines > 0xff)
++			return;
++	}
++
+ 	data |= (num_active_slice_per_enc & 0x3) << 7;
+ 
+ 	DPU_REG_WRITE(hw, DSC_CMN_MAIN_CNF, data);
+@@ -123,6 +188,10 @@
+ 		data |= BIT(9);
+ 
+ 	data |= (_dsc_calc_output_buf_max_addr(hw_dsc, num_active_slice_per_enc) << 18);
++
++	if ((hw_dsc->caps->features & BIT(DPU_DSC_FULL_ICH_PREC)) &&
++	    dsc->bits_per_component > 8)
++		data |= BIT(12);
+ 
+ 	DPU_REG_WRITE(hw, sblk->enc.base + ENC_DF_CTRL, data);
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
+@@ -143,10 +143,12 @@
+ /**
+  * DSC sub-blocks/features
+  * @DPU_DSC_NATIVE_42x_EN     Supports NATIVE_422_EN and NATIVE_420_EN encoding
++ * @DPU_DSC_FULL_ICH_PREC     Supports full ICH error precision above 8 bpc
+  * @DPU_DSC_MAX
+  */
+ enum {
+ 	DPU_DSC_NATIVE_42x_EN = 0x1,
++	DPU_DSC_FULL_ICH_PREC,
+ 	DPU_DSC_MAX
+ };
+ 
+@@ -795,6 +797,7 @@
+ extern const struct dpu_mdss_cfg dpu_sa8775p_cfg;
+ extern const struct dpu_mdss_cfg dpu_sm8550_cfg;
+ extern const struct dpu_mdss_cfg dpu_sm8650_cfg;
++extern const struct dpu_mdss_cfg dpu_sm7675_cfg;
+ extern const struct dpu_mdss_cfg dpu_sm8750_cfg;
+ extern const struct dpu_mdss_cfg dpu_x1e80100_cfg;
+ 
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
+@@ -3,6 +3,7 @@
+  */
+ 
+ #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
++#include <linux/of.h>
+ #include "dpu_encoder_phys.h"
+ #include "dpu_hw_interrupts.h"
+ #include "dpu_hw_merge3d.h"
+@@ -134,8 +135,8 @@
+ 		 * TODO: replace drm_dsc_get_bpp_int with logic to handle
+ 		 * fractional part if there is fraction
+ 		 */
+-		timing->width = timing->width * drm_dsc_get_bpp_int(dsc) /
+-				(dsc->bits_per_component * 3);
++		timing->width = DIV_ROUND_UP(timing->width * drm_dsc_get_bpp_int(dsc),
++					     dsc->bits_per_component * 3);
+ 		timing->xres = timing->width;
+ 		timing->dce_bytes_per_line = msm_dsc_get_bytes_per_line(dsc);
+ 	}
+@@ -661,9 +662,17 @@
+ 	if (phys_enc->enable_state == DPU_ENC_ENABLING) {
+ 		trace_dpu_enc_phys_vid_post_kickoff(DRMID(phys_enc->parent),
+ 				    phys_enc->hw_intf->idx - INTF_0);
+-		spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+-		phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
+-		spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
++		/* SM7675 CTL_INTF_MASTER synchronizes the bonded slave.
++		 * Match its OEM video path without changing older catalogs.
++		 */
++		/* U880: its bootloader enables both timing engines (only the uke OEM path is master-only). */
++		if (phys_enc->dpu_kms->catalog != &dpu_sm7675_cfg ||
++		    !of_machine_is_compatible("xiaomi,uke") ||
++		    dpu_encoder_phys_vid_is_master(phys_enc)) {
++			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
++			phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
++			spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
++		}
+ 		phys_enc->enable_state = DPU_ENC_ENABLED;
+ 	}
+ }
+--- /dev/null
++++ b/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_10_1_sm7675.h
+@@ -0,0 +1,192 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Experimental primary-display subset for SM7675, adapted to Linux 7.2.10.
++ * Derived from Palawan's dpu_10_1_palawan.h:
++ * Copyright (c) 2026, Alexandr Zubtsov
++ * Source commit: 0d9f7fdf720ae9f4ecfbee4fadaf1e3b5c442e95
++ * Register inventory checked against matching Uke stock DT.
++ * Offsets here are relative to DPU @ ae01000, not stock MDP @ ae00000.
++ * DP0 is described for a separate external-display graph; no MST, writeback or CWB.
++ * Not registered/activated by the supported build. Hardware unvalidated.
++ */
 +#ifndef _DPU_10_1_SM7675_H
 +#define _DPU_10_1_SM7675_H
 +
@@ -16923,330 +19817,155 @@
 +	.has_dim_layer = true,
 +	.has_idle_pc = true,
 +	.has_3d_merge = true,
-+	.max_linewidth = 8192,
++	.max_linewidth = 5120,
 +	.pixel_ram_size = DEFAULT_PIXEL_RAM_SIZE,
 +};
 +
-+static const struct dpu_mdp_cfg sm7675_mdp = {
-+	.name = "top_0",
-+	.base = 0, .len = 0x494,
-+	.clk_ctrls = {
-+		[DPU_CLK_CTRL_REG_DMA] = { .reg_off = 0x2bc, .bit_off = 20 },
-+	},
-+};
-+
 +static const struct dpu_ctl_cfg sm7675_ctl[] = {
-+	{
-+		.name = "ctl_0", .id = CTL_0,
-+		.base = 0x15000, .len = 0x1000,
-+		.intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 9),
-+	}, {
-+		.name = "ctl_1", .id = CTL_1,
-+		.base = 0x16000, .len = 0x1000,
-+		.intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 10),
-+	}, {
-+		.name = "ctl_2", .id = CTL_2,
-+		.base = 0x17000, .len = 0x1000,
-+		.intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 11),
-+	}, {
-+		.name = "ctl_3", .id = CTL_3,
-+		.base = 0x18000, .len = 0x1000,
-+		.intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 12),
-+	},
++	{ .name = "ctl_0", .id = CTL_0, .base = 0x15000, .len = 0x1000,
++	  .intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 9) },
++	{ .name = "ctl_1", .id = CTL_1, .base = 0x16000, .len = 0x1000,
++	  .intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 10) },
++	{ .name = "ctl_2", .id = CTL_2, .base = 0x17000, .len = 0x1000,
++	  .intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 11) },
++	{ .name = "ctl_3", .id = CTL_3, .base = 0x18000, .len = 0x1000,
++	  .intr_start = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR2, 12) },
 +};
 +
 +static const struct dpu_sspp_cfg sm7675_sspp[] = {
-+	{
-+		.name = "sspp_0", .id = SSPP_VIG0,
-+		.base = 0x4000, .len = 0x344,
-+		.features = VIG_SDM845_MASK_SDMA,
-+		.sblk = &dpu_vig_sblk_qseed3_3_3,
-+		.xin_id = 0,
-+		.type = SSPP_TYPE_VIG,
-+	}, {
-+		.name = "sspp_1", .id = SSPP_VIG1,
-+		.base = 0x6000, .len = 0x344,
-+		.features = VIG_SDM845_MASK_SDMA,
-+		.sblk = &dpu_vig_sblk_qseed3_3_3,
-+		.xin_id = 4,
-+		.type = SSPP_TYPE_VIG,
-+	}, {
-+		.name = "sspp_8", .id = SSPP_DMA0,
-+		.base = 0x24000, .len = 0x344,
-+		.features = DMA_SDM845_MASK_SDMA,
-+		.sblk = &dpu_dma_sblk,
-+		.xin_id = 1,
-+		.type = SSPP_TYPE_DMA,
-+	}, {
-+		.name = "sspp_9", .id = SSPP_DMA1,
-+		.base = 0x26000, .len = 0x344,
-+		.features = DMA_SDM845_MASK_SDMA,
-+		.sblk = &dpu_dma_sblk,
-+		.xin_id = 5,
-+		.type = SSPP_TYPE_DMA,
-+	}, {
-+		.name = "sspp_10", .id = SSPP_DMA2,
-+		.base = 0x28000, .len = 0x344,
-+		.features = DMA_SDM845_MASK_SDMA,
-+		.sblk = &dpu_dma_sblk,
-+		.xin_id = 9,
-+		.type = SSPP_TYPE_DMA,
-+	}, {
-+		.name = "sspp_11", .id = SSPP_DMA3,
-+		.base = 0x2a000, .len = 0x344,
-+		.features = DMA_SDM845_MASK_SDMA,
-+		.sblk = &dpu_dma_sblk,
-+		.xin_id = 13,
-+		.type = SSPP_TYPE_DMA,
-+	}, {
-+		.name = "sspp_12", .id = SSPP_DMA4,
-+		.base = 0x2c000, .len = 0x344,
-+		.features = DMA_CURSOR_SDM845_MASK_SDMA,
-+		.sblk = &dpu_dma_sblk,
-+		.xin_id = 14,
-+		.type = SSPP_TYPE_DMA,
-+	},
++	{ .name = "sspp_0", .id = SSPP_VIG0, .base = 0x4000, .len = 0x344,
++	  .features = VIG_SDM845_MASK_SDMA, .sblk = &dpu_vig_sblk_qseed3_3_3,
++	  .xin_id = 0, .type = SSPP_TYPE_VIG },
++	{ .name = "sspp_1", .id = SSPP_VIG1, .base = 0x6000, .len = 0x344,
++	  .features = VIG_SDM845_MASK_SDMA, .sblk = &dpu_vig_sblk_qseed3_3_3,
++	  .xin_id = 4, .type = SSPP_TYPE_VIG },
++	{ .name = "sspp_8", .id = SSPP_DMA0, .base = 0x24000, .len = 0x344,
++	  .features = DMA_SDM845_MASK_SDMA, .sblk = &dpu_dma_sblk,
++	  .xin_id = 1, .type = SSPP_TYPE_DMA },
++	{ .name = "sspp_9", .id = SSPP_DMA1, .base = 0x26000, .len = 0x344,
++	  .features = DMA_SDM845_MASK_SDMA, .sblk = &dpu_dma_sblk,
++	  .xin_id = 5, .type = SSPP_TYPE_DMA },
++	{ .name = "sspp_10", .id = SSPP_DMA2, .base = 0x28000, .len = 0x344,
++	  .features = DMA_SDM845_MASK_SDMA, .sblk = &dpu_dma_sblk,
++	  .xin_id = 9, .type = SSPP_TYPE_DMA },
++	{ .name = "sspp_11", .id = SSPP_DMA3, .base = 0x2a000, .len = 0x344,
++	  .features = DMA_SDM845_MASK_SDMA, .sblk = &dpu_dma_sblk,
++	  .xin_id = 13, .type = SSPP_TYPE_DMA },
++	{ .name = "sspp_12", .id = SSPP_DMA4, .base = 0x2c000, .len = 0x344,
++	  .features = DMA_CURSOR_SDM845_MASK_SDMA, .sblk = &dpu_dma_sblk,
++	  .xin_id = 14, .type = SSPP_TYPE_DMA },
 +};
 +
 +static const struct dpu_lm_cfg sm7675_lm[] = {
-+	{
-+		.name = "lm_0", .id = LM_0,
-+		.base = 0x44000, .len = 0x400,
-+		.features = MIXER_MSM8998_MASK,
-+		.sblk = &sdm845_lm_sblk,
-+		.lm_pair = LM_1,
-+		.pingpong = PINGPONG_0,
-+		.dspp = DSPP_0,
-+	}, {
-+		.name = "lm_1", .id = LM_1,
-+		.base = 0x45000, .len = 0x400,
-+		.features = MIXER_MSM8998_MASK,
-+		.sblk = &sdm845_lm_sblk,
-+		.lm_pair = LM_0,
-+		.pingpong = PINGPONG_1,
-+		.dspp = DSPP_1,
-+	}, {
-+		.name = "lm_2", .id = LM_2,
-+		.base = 0x46000, .len = 0x400,
-+		.features = MIXER_MSM8998_MASK,
-+		.sblk = &sdm845_lm_sblk,
-+		.lm_pair = LM_3,
-+		.pingpong = PINGPONG_2,
-+		.dspp = DSPP_2,
-+	}, {
-+		.name = "lm_3", .id = LM_3,
-+		.base = 0x47000, .len = 0x400,
-+		.features = MIXER_MSM8998_MASK,
-+		.sblk = &sdm845_lm_sblk,
-+		.lm_pair = LM_2,
-+		.pingpong = PINGPONG_3,
-+	},
++	{ .name = "lm_0", .id = LM_0, .base = 0x44000, .len = 0x400,
++	  .features = MIXER_MSM8998_MASK, .sblk = &sdm845_lm_sblk,
++	  .lm_pair = LM_1, .pingpong = PINGPONG_0, .dspp = DSPP_0 },
++	{ .name = "lm_1", .id = LM_1, .base = 0x45000, .len = 0x400,
++	  .features = MIXER_MSM8998_MASK, .sblk = &sdm845_lm_sblk,
++	  .lm_pair = LM_0, .pingpong = PINGPONG_1, .dspp = DSPP_1 },
++	{ .name = "lm_2", .id = LM_2, .base = 0x46000, .len = 0x400,
++	  .features = MIXER_MSM8998_MASK, .sblk = &sdm845_lm_sblk,
++	  .lm_pair = LM_3, .pingpong = PINGPONG_2, .dspp = DSPP_2 },
++	{ .name = "lm_3", .id = LM_3, .base = 0x47000, .len = 0x400,
++	  .features = MIXER_MSM8998_MASK, .sblk = &sdm845_lm_sblk,
++	  .lm_pair = LM_2, .pingpong = PINGPONG_3 },
 +};
 +
 +static const struct dpu_dspp_cfg sm7675_dspp[] = {
-+	{
-+		.name = "dspp_0", .id = DSPP_0,
-+		.base = 0x54000, .len = 0x1800,
-+		.sblk = &sdm845_dspp_sblk,
-+	}, {
-+		.name = "dspp_1", .id = DSPP_1,
-+		.base = 0x56000, .len = 0x1800,
-+		.sblk = &sdm845_dspp_sblk,
-+	}, {
-+		.name = "dspp_2", .id = DSPP_2,
-+		.base = 0x58000, .len = 0x1800,
-+		.sblk = &sdm845_dspp_sblk,
-+	},
++	{ .name = "dspp_0", .id = DSPP_0, .base = 0x54000, .len = 0x1800,
++	  .sblk = &sdm845_dspp_sblk },
++	{ .name = "dspp_1", .id = DSPP_1, .base = 0x56000, .len = 0x1800,
++	  .sblk = &sdm845_dspp_sblk },
++	{ .name = "dspp_2", .id = DSPP_2, .base = 0x58000, .len = 0x1800,
++	  .sblk = &sdm845_dspp_sblk },
 +};
 +
 +static const struct dpu_pingpong_cfg sm7675_pp[] = {
-+	{
-+		.name = "pingpong_0", .id = PINGPONG_0,
-+		.base = 0x69000, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_0,
-+		.intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 8),
-+	}, {
-+		.name = "pingpong_1", .id = PINGPONG_1,
-+		.base = 0x6a000, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_0,
-+		.intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 9),
-+	}, {
-+		.name = "pingpong_2", .id = PINGPONG_2,
-+		.base = 0x6b000, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_1,
-+		.intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 10),
-+	}, {
-+		.name = "pingpong_3", .id = PINGPONG_3,
-+		.base = 0x6c000, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_1,
-+		.intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 11),
-+	}, {
-+		.name = "pingpong_cwb_0", .id = PINGPONG_CWB_0,
-+		.base = 0x66000, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_3,
-+	}, {
-+		.name = "pingpong_cwb_1", .id = PINGPONG_CWB_1,
-+		.base = 0x66400, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_3,
-+	}, {
-+		.name = "pingpong_cwb_2", .id = PINGPONG_CWB_2,
-+		.base = 0x7e000, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_4,
-+	}, {
-+		.name = "pingpong_cwb_3", .id = PINGPONG_CWB_3,
-+		.base = 0x7e400, .len = 0,
-+		.sblk = &sc7280_pp_sblk,
-+		.merge_3d = MERGE_3D_4,
-+	},
++	{ .name = "pingpong_0", .id = PINGPONG_0, .base = 0x69000, .len = 0,
++	  .sblk = &sc7280_pp_sblk,
++	  .merge_3d = MERGE_3D_0, .intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 8) },
++	{ .name = "pingpong_1", .id = PINGPONG_1, .base = 0x6a000, .len = 0,
++	  .sblk = &sc7280_pp_sblk,
++	  .merge_3d = MERGE_3D_0, .intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 9) },
++	{ .name = "pingpong_2", .id = PINGPONG_2, .base = 0x6b000, .len = 0,
++	  .sblk = &sc7280_pp_sblk,
++	  .merge_3d = MERGE_3D_1, .intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 10) },
++	{ .name = "pingpong_3", .id = PINGPONG_3, .base = 0x6c000, .len = 0,
++	  .sblk = &sc7280_pp_sblk,
++	  .merge_3d = MERGE_3D_1, .intr_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 11) },
 +};
 +
 +static const struct dpu_merge_3d_cfg sm7675_merge_3d[] = {
-+	{
-+		.name = "merge_3d_0", .id = MERGE_3D_0,
-+		.base = 0x4e000, .len = 0x8,
-+	}, {
-+		.name = "merge_3d_1", .id = MERGE_3D_1,
-+		.base = 0x4f000, .len = 0x8,
-+	}, {
-+		.name = "merge_3d_3", .id = MERGE_3D_3,
-+		.base = 0x66700, .len = 0x8,
-+	}, {
-+		.name = "merge_3d_4", .id = MERGE_3D_4,
-+		.base = 0x7e700, .len = 0x8,
-+	},
++	{ .name = "merge_3d_0", .id = MERGE_3D_0, .base = 0x4e000, .len = 0x8 },
++	{ .name = "merge_3d_1", .id = MERGE_3D_1, .base = 0x4f000, .len = 0x8 },
 +};
 +
-+/*
-+ * NOTE: Each display compression engine (DCE) contains dual hard
-+ * slice DSC encoders so both share same base address but with
-+ * its own different sub block address.
-+ */
++/* Include the two OEM 4HS diagnostic words in these snapshot ranges. */
++static const struct dpu_dsc_sub_blks sm7675_dsc_sblk_0 = {
++	.enc = {.name = "enc", .base = 0x100, .len = 0x9c},
++	.ctl = {.name = "ctl", .base = 0xF00, .len = 0x18},
++};
++
++static const struct dpu_dsc_sub_blks sm7675_dsc_sblk_1 = {
++	.enc = {.name = "enc", .base = 0x200, .len = 0x9c},
++	.ctl = {.name = "ctl", .base = 0xF80, .len = 0x18},
++};
++
++/* Uke OEM MDSS >= 10 supports full ICH precision for > 8-bpc DSC. */
 +static const struct dpu_dsc_cfg sm7675_dsc[] = {
-+	{
-+		.name = "dce_0_0", .id = DSC_0,
-+		.base = 0x80000, .len = 0x6,
-+		.features = BIT(DPU_DSC_NATIVE_42x_EN),
-+		.sblk = &dsc_sblk_0,
-+	}, {
-+		.name = "dce_0_1", .id = DSC_1,
-+		.base = 0x80000, .len = 0x6,
-+		.features = BIT(DPU_DSC_NATIVE_42x_EN),
-+		.sblk = &dsc_sblk_1,
-+	}, {
-+		.name = "dce_1_0", .id = DSC_2,
-+		.base = 0x81000, .len = 0x6,
-+		.features = BIT(DPU_DSC_NATIVE_42x_EN),
-+		.sblk = &dsc_sblk_0,
-+	},
-+};
-+
-+static const struct dpu_wb_cfg sm7675_wb[] = {
-+	{
-+		.name = "wb_2", .id = WB_2,
-+		.base = 0x65000, .len = 0x2c8,
-+		.features = WB_SDM845_MASK,
-+		.format_list = wb2_formats_rgb_yuv,
-+		.num_formats = ARRAY_SIZE(wb2_formats_rgb_yuv),
-+		.xin_id = 6,
-+		.maxlinewidth = 4096,
-+		.intr_wb_done = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 4),
-+	},
-+};
-+
-+static const struct dpu_cwb_cfg sm7675_cwb[] = {
-+	{
-+		.name = "cwb_0", .id = CWB_0,
-+		.base = 0x66200, .len = 0x8,
-+	},
-+	{
-+		.name = "cwb_1", .id = CWB_1,
-+		.base = 0x66600, .len = 0x8,
-+	},
-+	{
-+		.name = "cwb_2", .id = CWB_2,
-+		.base = 0x7E200, .len = 0x8,
-+	},
-+	{
-+		.name = "cwb_3", .id = CWB_3,
-+		.base = 0x7E600, .len = 0x8,
-+	},
++	{ .name = "dce_0_0", .id = DSC_0, .base = 0x80000, .len = 0x6,
++	  .features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
++	  .sblk = &sm7675_dsc_sblk_0 },
++	{ .name = "dce_0_1", .id = DSC_1, .base = 0x80000, .len = 0x6,
++	  .features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
++	  .sblk = &sm7675_dsc_sblk_1 },
++	{ .name = "dce_1_0", .id = DSC_2, .base = 0x81000, .len = 0x6,
++	  .features = BIT(DPU_DSC_NATIVE_42x_EN) | BIT(DPU_DSC_FULL_ICH_PREC),
++	  .sblk = &dsc_sblk_0 },
 +};
 +
 +static const struct dpu_intf_cfg sm7675_intf[] = {
-+	{
-+		.name = "intf_0", .id = INTF_0,
-+		.base = 0x34000, .len = 0x280,
-+		.type = INTF_DP,
-+		.controller_id = MSM_DP_CONTROLLER_0,
-+		.prog_fetch_lines_worst_case = 24,
-+		.intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 24),
-+		.intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 25),
-+	}, {
-+		.name = "intf_1", .id = INTF_1,
-+		.base = 0x35000, .len = 0x300,
-+		.type = INTF_DSI,
-+		.controller_id = MSM_DSI_CONTROLLER_0,
-+		.prog_fetch_lines_worst_case = 24,
-+		.intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 26),
-+		.intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 27),
-+		.intr_tear_rd_ptr = DPU_IRQ_IDX(MDP_INTF1_TEAR_INTR, 2),
-+	}, {
-+		.name = "intf_2", .id = INTF_2,
-+		.base = 0x36000, .len = 0x300,
-+		.type = INTF_DSI,
-+		.controller_id = MSM_DSI_CONTROLLER_1,
-+		.prog_fetch_lines_worst_case = 24,
-+		.intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 28),
-+		.intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 29),
-+		.intr_tear_rd_ptr = DPU_IRQ_IDX(MDP_INTF2_TEAR_INTR, 2),
-+	}, {
-+		.name = "intf_3", .id = INTF_3,
-+		.base = 0x37000, .len = 0x280,
-+		.type = INTF_DP,
-+		.controller_id = MSM_DP_CONTROLLER_0,	/* pair with intf_0 for DP MST */
-+		.prog_fetch_lines_worst_case = 24,
-+		.intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 30),
-+		.intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 31),
-+	},
++	/* OEM 0x35000 relative to MDP @ ae00000 becomes 0x34000 at DPU @ ae01000. */
++	{ .name = "intf_0", .id = INTF_0, .base = 0x34000, .len = 0x300,
++	  .type = INTF_DP,
++	  .controller_id = MSM_DP_CONTROLLER_0, .prog_fetch_lines_worst_case = 24,
++	  .intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 24),
++	  .intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 25) },
++	{ .name = "intf_1", .id = INTF_1, .base = 0x35000, .len = 0x300,
++	  .type = INTF_DSI,
++	  .controller_id = MSM_DSI_CONTROLLER_0, .prog_fetch_lines_worst_case = 129, /* U880 bootloader: fetch 29 lines into the 30-line VFP */
++	  .intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 26),
++	  .intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 27),
++	  .intr_tear_rd_ptr = DPU_IRQ_IDX(MDP_INTF1_TEAR_INTR, 2) },
++	{ .name = "intf_2", .id = INTF_2, .base = 0x36000, .len = 0x300,
++	  .type = INTF_DSI,
++	  .controller_id = MSM_DSI_CONTROLLER_1, .prog_fetch_lines_worst_case = 129, /* U880 bootloader: fetch 29 lines into the 30-line VFP */
++	  .intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 28),
++	  .intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 29),
++	  .intr_tear_rd_ptr = DPU_IRQ_IDX(MDP_INTF2_TEAR_INTR, 2) },
 +};
 +
++/* Retain donor QoS tables as an explicitly unvalidated integration gate. */
 +static const struct dpu_perf_cfg sm7675_perf_data = {
-+	.max_bw_low = 17000000,
-+	.max_bw_high = 27000000,
++	.max_bw_low = 23900000,
++	.max_bw_high = 26500000,
 +	.min_core_ib = 2500000,
 +	.min_llcc_ib = 0,
 +	.min_dram_ib = 800000,
 +	.min_prefill_lines = 35,
-+	/* FIXME: lut tables */
-+	.danger_lut_tbl = {0x3ffff, 0x3ffff, 0x0},
-+	.safe_lut_tbl = {0xfe00, 0xfe00, 0xffff},
++	.danger_lut_tbl = { 0x3ffff, 0x3ffff, 0x0 },
++	.safe_lut_tbl = { 0xfe00, 0xfe00, 0xffff },
 +	.qos_lut_tbl = {
-+		{.nentry = ARRAY_SIZE(sc7180_qos_linear),
-+		.entries = sc7180_qos_linear
-+		},
-+		{.nentry = ARRAY_SIZE(sc7180_qos_macrotile),
-+		.entries = sc7180_qos_macrotile
-+		},
-+		{.nentry = ARRAY_SIZE(sc7180_qos_nrt),
-+		.entries = sc7180_qos_nrt
-+		},
-+		/* TODO: macrotile-qseed is different from macrotile */
++		{ .nentry = ARRAY_SIZE(sc7180_qos_linear), .entries = sc7180_qos_linear },
++		{ .nentry = ARRAY_SIZE(sc7180_qos_macrotile), .entries = sc7180_qos_macrotile },
++		{ .nentry = ARRAY_SIZE(sc7180_qos_nrt), .entries = sc7180_qos_nrt },
 +	},
-+	.cdp_cfg = {
-+		{.rd_enable = 1, .wr_enable = 1},
-+		{.rd_enable = 1, .wr_enable = 0}
-+	},
++	.cdp_cfg = { { .rd_enable = 1, .wr_enable = 1 }, { .rd_enable = 1, .wr_enable = 0 } },
 +	.clk_inefficiency_factor = 105,
 +	.bw_inefficiency_factor = 120,
 +};
 +
++/* Donor and OEM SDE_HW_VER_A10 (cliffs); runtime confirmation still pending. */
 +static const struct dpu_mdss_version sm7675_mdss_ver = {
 +	.core_major_ver = 10,
 +	.core_minor_ver = 1,
@@ -17255,28 +19974,15 @@
 +const struct dpu_mdss_cfg dpu_sm7675_cfg = {
 +	.mdss_ver = &sm7675_mdss_ver,
 +	.caps = &sm7675_dpu_caps,
-+	.mdp = &sm7675_mdp,
-+	.cdm = &dpu_cdm_5_x,
-+	.ctl_count = ARRAY_SIZE(sm7675_ctl),
-+	.ctl = sm7675_ctl,
-+	.sspp_count = ARRAY_SIZE(sm7675_sspp),
-+	.sspp = sm7675_sspp,
-+	.mixer_count = ARRAY_SIZE(sm7675_lm),
-+	.mixer = sm7675_lm,
-+	.dspp_count = ARRAY_SIZE(sm7675_dspp),
-+	.dspp = sm7675_dspp,
-+	.pingpong_count = ARRAY_SIZE(sm7675_pp),
-+	.pingpong = sm7675_pp,
-+	.dsc_count = ARRAY_SIZE(sm7675_dsc),
-+	.dsc = sm7675_dsc,
-+	.merge_3d_count = ARRAY_SIZE(sm7675_merge_3d),
-+	.merge_3d = sm7675_merge_3d,
-+	.wb_count = ARRAY_SIZE(sm7675_wb),
-+	.wb = sm7675_wb,
-+	.cwb_count = ARRAY_SIZE(sm7675_cwb),
-+	.cwb = sm7675_cwb,
-+	.intf_count = ARRAY_SIZE(sm7675_intf),
-+	.intf = sm7675_intf,
++	.mdp = &sm8650_mdp,
++	.ctl_count = ARRAY_SIZE(sm7675_ctl), .ctl = sm7675_ctl,
++	.sspp_count = ARRAY_SIZE(sm7675_sspp), .sspp = sm7675_sspp,
++	.mixer_count = ARRAY_SIZE(sm7675_lm), .mixer = sm7675_lm,
++	.dspp_count = ARRAY_SIZE(sm7675_dspp), .dspp = sm7675_dspp,
++	.pingpong_count = ARRAY_SIZE(sm7675_pp), .pingpong = sm7675_pp,
++	.dsc_count = ARRAY_SIZE(sm7675_dsc), .dsc = sm7675_dsc,
++	.merge_3d_count = ARRAY_SIZE(sm7675_merge_3d), .merge_3d = sm7675_merge_3d,
++	.intf_count = ARRAY_SIZE(sm7675_intf), .intf = sm7675_intf,
 +	.vbif = &sm8650_vbif,
 +	.perf = &sm7675_perf_data,
 +};
@@ -80009,6 +82715,135 @@
 +#ifdef __cplusplus
 +#endif
 +#endif /* A6XX_DESCRIPTORS_XML */
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -658,6 +658,10 @@
+ 	unsigned long pclk_rate = dsi_get_pclk_rate(mode, msm_host->dsc, is_bonded_dsi);
+ 	unsigned long pclk_bpp;
+ 
++	/* Compression adjusted the pixel clock using DSC input component depth. */
++	if (msm_host->dsc)
++		bpp = msm_host->dsc->bits_per_component * 3;
++
+ 	if (lanes == 0) {
+ 		pr_err("%s: forcing mdss_dsi lanes to 1\n", __func__);
+ 		lanes = 1;
+@@ -1108,6 +1112,16 @@
+ 		dsi_write(msm_host, REG_DSI_ACTIVE_VSYNC_VPOS,
+ 			DSI_ACTIVE_VSYNC_VPOS_START(vs_start) |
+ 			DSI_ACTIVE_VSYNC_VPOS_END(vs_end));
++		/* U880 C-PHY panel: bootloader HS TX timer (timeout 0xea60, resolution 4); the default 0xffff/0 timed out. */
++		if (msm_host->cphy_mode) {
++			struct device_node *panel = of_graph_get_remote_node(msm_host->pdev->dev.of_node, 1, -1);
++
++			if (of_device_is_compatible(panel, "alldocube,u880-panel"))
++				dsi_write(msm_host, REG_DSI_HS_TIMER_CTRL,
++					  DSI_HS_TIMER_CTRL_HS_TX_TO(0xea60) |
++					  DSI_HS_TIMER_CTRL_TIMER_RESOLUTION(4));
++			of_node_put(panel);
++		}
+ 	} else {		/* command mode */
+ 		if (msm_host->dsc)
+ 			dsi_update_dsc_timing(msm_host, true);
+@@ -1631,6 +1645,8 @@
+ 			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP0 |
+ 			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP1)) {
+ 		dsi_write(msm_host, REG_DSI_DLN0_PHY_ERR, status);
++		/* U880 bring-up: which lane-0 error (ESC/SYNC_ESC/CONTROL/CONTENTION_LP0/LP1) */
++		pr_info_ratelimited("DSI%d DLN0_PHY_ERR %#x\n", msm_host->id, status);
+ 		msm_host->err_work_state |= DSI_ERR_STATE_DLN0_PHY;
+ 	}
+ }
+@@ -1680,6 +1696,14 @@
+ {
+ 	/* disable dsi error interrupt */
+ 	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_ERROR, 0);
++	pr_err_ratelimited("dsi%d error: irq=%#x fifo=%#x ack=%#x timeout=%#x clk=%#x phy=%#x status=%#x\n",
++		msm_host->id, dsi_read(msm_host, REG_DSI_INTR_CTRL),
++		dsi_read(msm_host, REG_DSI_FIFO_STATUS),
++		dsi_read(msm_host, REG_DSI_ACK_ERR_STATUS),
++		dsi_read(msm_host, REG_DSI_TIMEOUT_STATUS),
++		dsi_read(msm_host, REG_DSI_CLK_STATUS),
++		dsi_read(msm_host, REG_DSI_DLN0_PHY_ERR),
++		dsi_read(msm_host, REG_DSI_STATUS0));
+ 
+ 	dsi_clk_status(msm_host);
+ 	dsi_fifo_status(msm_host);
+@@ -1687,6 +1711,9 @@
+ 	dsi_timeout_status(msm_host);
+ 	dsi_status(msm_host);
+ 	dsi_dln0_phy_err(msm_host);
++	pr_err_ratelimited("dsi%d cleared: irq=%#x fifo=%#x\n", msm_host->id,
++		dsi_read(msm_host, REG_DSI_INTR_CTRL),
++		dsi_read(msm_host, REG_DSI_FIFO_STATUS));
+ 
+ 	queue_work(msm_host->workqueue, &msm_host->err_work);
+ }
+@@ -1922,6 +1949,23 @@
+ 
+ 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
+ 	dsc->line_buf_depth = dsc->bits_per_component + 1;
++
++	/*
++	 * U880 C-PHY panel: the Novatek decoder is configured (stock register PPS 0x91) with the vendor's DSC values:
++	 * first_line_bpg_offset 13 (-> nfl_bpg_offset 1402, scale_increment_interval 555) and initial_dec_delay 690.
++	 */
++	if (msm_host->cphy_mode) {
++		struct device_node *panel = of_graph_get_remote_node(msm_host->pdev->dev.of_node, 1, -1);
++		bool u880 = of_device_is_compatible(panel, "alldocube,u880-panel");
++
++		of_node_put(panel);
++		if (u880) {
++			dsc->first_line_bpg_offset = 13;
++			ret = drm_dsc_compute_rc_parameters(dsc);
++			dsc->initial_dec_delay = 690;
++			return ret;
++		}
++	}
+ 
+ 	return drm_dsc_compute_rc_parameters(dsc);
+ }
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
+@@ -577,6 +577,9 @@
+ 	  .data = &dsi_phy_4nm_8550_cfgs },
+ 	{ .compatible = "qcom,sm8650-dsi-phy-4nm",
+ 	  .data = &dsi_phy_4nm_8650_cfgs },
++	/* Uke OEM: v5.2, two PHY windows and 98 mA vdds load. */
++	{ .compatible = "qcom,sm7675-dsi-phy-4nm",
++	  .data = &dsi_phy_4nm_8650_cfgs },
+ 	{ .compatible = "qcom,sm8750-dsi-phy-3nm",
+ 	  .data = &dsi_phy_3nm_8750_cfgs },
+ 	{ .compatible = "qcom,kaanapali-dsi-phy-3nm",
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
+@@ -1187,6 +1187,26 @@
+ 	/* DSI lane settings */
+ 	dsi_phy_hw_v4_0_lane_settings(phy);
+ 
++	/*
++	 * U880 (SM7675, PHY v5.2, C-PHY panel): the vendor/bootloader C-PHY setup differs from the mainline v5.2 C-PHY
++	 * values. Match the registers read back from the working bootloader state: HS-TX strength 0x88, no pre-emphasis,
++	 * rescode top 0x3d, LANE_CFG1 0x04, CTRL_2 0 (reset value 0x40), and the stock panel PHY timings
++	 * (qcom,mdss-dsi-panel-phy-timings = 00 00 00 00 1f 1a 05 19 04 02 04 ...).
++	 */
++	if (phy->cphy_mode && of_device_is_compatible(phy->pdev->dev.of_node, "qcom,sm7675-dsi-phy-4nm")) {
++		writel(0x88, base + REG_DSI_7nm_PHY_CMN_GLBL_HSTX_STR_CTRL_0);
++		writel(0x00, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_0);
++		writel(0x00, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_1);
++		writel(0x3d, base + REG_DSI_7nm_PHY_CMN_GLBL_RESCODE_OFFSET_TOP_CTRL);
++		writel(0x04, base + REG_DSI_7nm_PHY_CMN_LANE_CFG1);
++		writel(0x00, base + REG_DSI_7nm_PHY_CMN_CTRL_2);
++		writel(0x1f, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_4);
++		writel(0x1a, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_5);
++		writel(0x05, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_6);
++		writel(0x19, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_7);
++		writel(0x04, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_8);
++	}
++
+ 	DBG("DSI%d PHY enabled", phy->id);
+ 
+ 	return 0;
 --- a/drivers/input/touchscreen/novatek-nvt-ts.c
 +++ b/drivers/input/touchscreen/novatek-nvt-ts.c
 @@ -49,10 +49,24 @@
@@ -87900,7 +90735,7 @@
  	{ .compatible = "qcom,adreno",
  			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
  	{ .compatible = "qcom,adreno-gmu",
-@@ -739,6 +745,127 @@
+@@ -739,6 +745,135 @@
   * Do not add any more qcom,SOC-smmu-500 entries to this list, unless they need
   * special handling and can not be covered by the qcom,smmu-500 entry.
   */
@@ -87970,6 +90805,8 @@
 +	return 0;
 +}
 +
++#include "uke-display-smmu.c"
++
 +static int qcom_uke_smmu_alloc_context_bank(struct arm_smmu_domain *domain,
 +		struct arm_smmu_device *smmu, struct device *dev, int start)
 +{
@@ -87977,6 +90814,11 @@
 +	const __be32 *actlr;
 +	int len, i, j;
 +
++	if (qcom_uke_display_domain(smmu, dev)) {
++		if (!qcom_uke_display_actlr_matches(smmu))
++			return -EINVAL;
++		return __arm_smmu_alloc_bitmap(smmu->context_map, start, smmu->num_context_banks);
++	}
 +	/* OEM Cliffs streams, including WLAN SID 0x1400 with SMR mask 1. */
 +	if (!fwspec || !fwspec->num_ids)
 +		return -EINVAL;
@@ -88016,6 +90858,7 @@
 +}
 +
 +static const struct arm_smmu_impl qcom_uke_smmu_impl = {
++	.init_context = qcom_uke_display_init_context,
 +	.def_domain_type = qcom_uke_smmu_def_domain_type,
 +	.cfg_probe = qcom_uke_smmu_cfg_probe,
 +	.alloc_context_bank = qcom_uke_smmu_alloc_context_bank,
@@ -88028,7 +90871,7 @@
  static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
  	{ .compatible = "qcom,msm8996-smmu-v2", .data = &msm8996_smmu_data },
  	{ .compatible = "qcom,msm8998-smmu-v2", .data = &qcom_smmu_v2_data },
-@@ -765,6 +892,8 @@
+@@ -765,6 +900,8 @@
  	{ .compatible = "qcom,sm8350-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,sm8450-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu_500_impl0_data },
@@ -88047,14 +90890,146 @@
  	struct iommu_group		*group;
  	int				count;
  	enum arm_smmu_s2cr_type		type;
-@@ -316,6 +317,7 @@
+@@ -316,6 +317,8 @@
  	u32				num_context_banks;
  	u32				num_s2_context_banks;
  	DECLARE_BITMAP(context_map, ARM_SMMU_MAX_CBS);
 +	DECLARE_BITMAP(boot_context_map, ARM_SMMU_MAX_CBS);
++	bool uke_display_quiesced;
  	struct arm_smmu_cb		*cbs;
  	atomic_t			irptndx;
  
+--- /dev/null
++++ b/drivers/iommu/arm/arm-smmu/uke-display-smmu.c
+@@ -0,0 +1,128 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/* Included by arm-smmu-qcom.c in the isolated SM7675 display tree. */
++#include <linux/qcom-uke-display.h>
++#include <linux/pm_runtime.h>
++
++int qcom_uke_display_release(struct device *supplier, struct device *display)
++{
++	struct arm_smmu_device *smmu = dev_get_drvdata(supplier);
++	bool use_runtime_pm;
++	int i, ret;
++
++	if (!of_device_is_compatible(supplier->of_node, "qcom,sm7675-boot-smmu") ||
++	    !of_device_is_compatible(display->of_node, "qcom,sm7675-mdss"))
++		return -EINVAL;
++	if (!smmu)
++		return -EPROBE_DEFER;
++	use_runtime_pm = pm_runtime_enabled(supplier);
++	if (use_runtime_pm) {
++		ret = pm_runtime_resume_and_get(supplier);
++		if (ret < 0)
++			return dev_err_probe(display, ret, "display SMMU runtime resume failed\n");
++	}
++	mutex_lock(&smmu->stream_map_mutex);
++	/* Caller has verified VBIF halt acknowledgements and asserted core reset.
++	 * Only unsecure 1c00/mask-2 SMRs may retire; secure 1c01 stays untouched.
++	 * Keep old context banks reserved: firmware may share a bank with secure
++	 * streams. New display domains always allocate a different context bank.
++	 */
++	for (i = 0; i < smmu->num_mapping_groups; i++) {
++		struct arm_smmu_smr *smr = &smmu->smrs[i];
++		u32 original;
++
++		if (!smr->valid || ((smr->id ^ 0x1c00) & ~2U) || (smr->mask & ~2U))
++			continue;
++		if (!smmu->s2crs[i].boot_reserved || smmu->s2crs[i].count) {
++			ret = -EBUSY;
++			goto out;
++		}
++		original = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
++		if (original != (FIELD_PREP(ARM_SMMU_SMR_ID, smr->id) |
++				 FIELD_PREP(ARM_SMMU_SMR_MASK, smr->mask) |
++				 ARM_SMMU_SMR_VALID)) {
++			dev_err(display, "display SMR[%d] changed: %#010x\n", i, original);
++			ret = -EBUSY;
++			goto out;
++		}
++	}
++	for (i = 0; i < smmu->num_mapping_groups; i++) {
++		struct arm_smmu_smr *smr = &smmu->smrs[i];
++		u32 original, value;
++
++		if (!smr->valid || ((smr->id ^ 0x1c00) & ~2U) || (smr->mask & ~2U))
++			continue;
++		/* OEM SID release retains ID/mask for virtualized SMR ownership. */
++		original = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
++		if (original != (FIELD_PREP(ARM_SMMU_SMR_ID, smr->id) |
++				 FIELD_PREP(ARM_SMMU_SMR_MASK, smr->mask) |
++				 ARM_SMMU_SMR_VALID)) {
++			ret = -EBUSY;
++			goto out;
++		}
++		arm_smmu_gr0_write(smmu, ARM_SMMU_GR0_SMR(i), original & ~ARM_SMMU_SMR_VALID);
++		value = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
++		if (value != (original & ~ARM_SMMU_SMR_VALID)) {
++			dev_err(display, "display SMR[%d] release refused: before=%#010x after=%#010x S2CR=%#010x\n",
++				i, original, value, arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_S2CR(i)));
++			ret = -EACCES;
++			goto out;
++		}
++		smr->valid = false;
++		smmu->s2crs[i].boot_reserved = false;
++		smmu->s2crs[i].type = S2CR_TYPE_FAULT;
++		smmu->s2crs[i].cbndx = 0xff;
++	}
++	smmu->uke_display_quiesced = true;
++	ret = 0;
++out:
++	mutex_unlock(&smmu->stream_map_mutex);
++	if (use_runtime_pm) {
++		pm_runtime_mark_last_busy(supplier);
++		__pm_runtime_put_autosuspend(supplier);
++	}
++	return ret;
++}
++EXPORT_SYMBOL_GPL(qcom_uke_display_release);
++
++static bool qcom_uke_display_domain(struct arm_smmu_device *smmu,
++				    struct device *dev)
++{
++	struct iommu_fwspec *spec = dev_iommu_fwspec_get(dev);
++
++	return smmu->uke_display_quiesced &&
++		of_device_is_compatible(dev->of_node, "qcom,sm7675-dpu") &&
++		spec && spec->num_ids == 1 && spec->ids[0] == 0x00021c00;
++}
++
++static int qcom_uke_display_init_context(struct arm_smmu_domain *domain,
++				       struct io_pgtable_cfg *cfg, struct device *dev)
++{
++	struct arm_smmu_device *smmu = domain->smmu;
++	u32 value;
++
++	if (!qcom_uke_display_domain(smmu, dev))
++		return 0; /* Existing USB/GPI behavior is unchanged. */
++	if (domain->stage != ARM_SMMU_DOMAIN_S1)
++		return -EOPNOTSUPP;
++	/* OEM Cliffs ACTLR table: 1c00/mask-2 -> 1. New, stopped context only. */
++	arm_smmu_cb_write(smmu, domain->cfg.cbndx, ARM_SMMU_CB_ACTLR, 1);
++	value = arm_smmu_cb_read(smmu, domain->cfg.cbndx, ARM_SMMU_CB_ACTLR);
++	if (value != 1)
++		return dev_err_probe(dev, -EACCES, "display ACTLR write did not stick\n");
++	return 0;
++}
++
++static bool qcom_uke_display_actlr_matches(struct arm_smmu_device *smmu)
++{
++	const __be32 *rules;
++	int len, i;
++
++	rules = of_get_property(smmu->dev->of_node, "qcom,actlr", &len);
++	if (!rules || len % (3 * sizeof(u32)))
++		return false;
++	for (i = 0; i < len / sizeof(u32); i += 3)
++		if (be32_to_cpu(rules[i]) == 0x1c00 &&
++		    be32_to_cpu(rules[i + 1]) == 2)
++			return be32_to_cpu(rules[i + 2]) == 1;
++	return false;
++}
 --- /dev/null
 +++ b/net/wireless/shipped-certs.c
 @@ -0,0 +1,178 @@
@@ -106427,6 +109402,95 @@
            - enum:
                - qcom,glymur-pmic-glink
 --- /dev/null
++++ b/include/drm/uke-o82-avr.h
+@@ -0,0 +1,26 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _DRM_QCOM_UKE_O82_AVR_H
++#define _DRM_QCOM_UKE_O82_AVR_H
++
++#include <linux/math64.h>
++#include <drm/uke-o82-mode.h>
++
++/* Experimental request floor from the lowest OEM mode, not a VRR rating. */
++static inline int qcom_uke_o82_avr_lines(const struct drm_display_mode *mode,
++				      unsigned int min_hz)
++{
++	u64 lines;
++
++	if (min_hz < 30 || !qcom_uke_o82_mode(mode))
++		return -EINVAL;
++	lines = div64_u64((u64)mode->clock * 1000, (u64)mode->htotal * min_hz);
++	/* Floor keeps the longest frame at or above the requested minimum Hz. */
++	/* Retain an OEM base whose integer-kHz clock rounds below nominal Hz. */
++	if (lines + 1 == (u64)mode->vtotal)
++		lines = mode->vtotal;
++	if (lines < (u64)mode->vtotal || lines > 65535)
++		return -EINVAL;
++	return lines;
++}
++
++#endif
+--- /dev/null
++++ b/include/drm/uke-o82-mode.h
+@@ -0,0 +1,57 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _DRM_QCOM_UKE_O82_MODE_H
++#define _DRM_QCOM_UKE_O82_MODE_H
++
++#include <linux/errno.h>
++#include <drm/drm_modes.h>
++
++/* Exact OEM VFP groups; board, panel and link admission remain the caller's job. */
++static inline int qcom_uke_o82_mode_group(const struct drm_display_mode *mode)
++{
++	int group = -EINVAL;
++
++	if (!mode || mode->hdisplay != 3200 || mode->vdisplay != 2136 ||
++	    mode->flags || mode->hskew || mode->vscan)
++		return -EINVAL;
++
++	switch (mode->clock) {
++	case 967428:
++		if (mode->htotal == 3490 &&
++		    (mode->vtotal == 2310 || mode->vtotal == 4620))
++			group = 0;
++		break;
++	case 1097712:
++		if (mode->htotal == 3300 && mode->vtotal == 2310)
++			group = 1;
++		break;
++	case 804988:
++		if (mode->htotal == 3872 &&
++		    (mode->vtotal == 2310 || mode->vtotal == 4158 ||
++		     mode->vtotal == 4331 || mode->vtotal == 6930))
++			group = 2;
++		break;
++	}
++	if (group < 0 || mode->hsync_start != mode->htotal - 64 ||
++	    mode->hsync_end != mode->htotal - 32 ||
++	    mode->vsync_start != mode->vtotal - 148 ||
++	    mode->vsync_end != mode->vtotal - 146)
++		return -EINVAL;
++	return group;
++}
++
++static inline bool qcom_uke_o82_mode(const struct drm_display_mode *mode)
++{
++	return qcom_uke_o82_mode_group(mode) >= 0;
++}
++
++/* Exact OEM timings share one physical link clock; callers gate board and DSC. */
++static inline bool qcom_uke_o82_live_change(const struct drm_display_mode *old,
++					const struct drm_display_mode *new_mode)
++{
++	int group = qcom_uke_o82_mode_group(old);
++
++	return group >= 0 && qcom_uke_o82_mode_group(new_mode) >= 0 &&
++		(old->clock != new_mode->clock || old->vtotal != new_mode->vtotal);
++}
++
++#endif
+--- /dev/null
 +++ b/include/dt-bindings/clock/qcom,gcc-cliffs.h
 @@ -0,0 +1,188 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
@@ -106829,6 +109893,103 @@
  	int		(*prepare)(struct clk_hw *hw);
  	void		(*unprepare)(struct clk_hw *hw);
  	int		(*is_prepared)(struct clk_hw *hw);
+--- /dev/null
++++ b/include/linux/qcom-uke-display.h
+@@ -0,0 +1,94 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _LINUX_QCOM_UKE_DISPLAY_H
++#define _LINUX_QCOM_UKE_DISPLAY_H
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/kconfig.h>
++#include <linux/of.h>
++
++/* Call only with display VBIF drained and verified core reset asserted.
++ * Old firmware context banks remain reserved; this retires unsecure SMRs only.
++ */
++#if IS_REACHABLE(CONFIG_ARM_SMMU)
++int qcom_uke_display_release(struct device *supplier, struct device *display);
++#else
++static inline int qcom_uke_display_release(struct device *supplier,
++					 struct device *display)
++{
++	return -ENODEV;
++}
++#endif
++
++struct mipi_dsi_device;
++struct mipi_dsi_msg;
++struct drm_panel;
++struct drm_connector;
++struct drm_display_mode;
++
++/* Registered by the panel so modular MSM never depends on its client module. */
++struct qcom_uke_o82_dfps_ops {
++	bool (*check)(struct drm_panel *panel, const struct drm_display_mode *old,
++		      const struct drm_display_mode *new_mode);
++	int (*apply)(struct drm_panel *panel, const struct drm_display_mode *old,
++		     const struct drm_display_mode *new_mode, bool before);
++};
++
++/* Synchronous, exact O82 four-packet HS TP-FPS group; no queued state. */
++#if IS_REACHABLE(CONFIG_DRM_MSM) && IS_ENABLED(CONFIG_DRM_MSM_DSI)
++/* Refresh metadata from the actual probed modes; performs no hardware writes. */
++void qcom_uke_dsi_update_vrr(struct mipi_dsi_device *dsi,
++		struct drm_connector *connector);
++int qcom_uke_dsi_tp_fps_batch(struct mipi_dsi_device *dsi,
++			      const struct mipi_dsi_msg *msgs);
++int qcom_uke_dsi_pen_clear_batch(struct mipi_dsi_device *dsi,
++				 const struct mipi_dsi_msg *msgs);
++/* NULL ops unregisters and waits for in-flight callbacks. */
++int qcom_uke_dsi_dfps_register(struct mipi_dsi_device *dsi,
++		struct drm_panel *panel, const struct qcom_uke_o82_dfps_ops *ops);
++/* One bounded LP ON chunk, selected by an explicit O82 panel profile. */
++int qcom_uke_dsi_on_batch(struct mipi_dsi_device *dsi,
++			 const struct mipi_dsi_msg *msgs, unsigned int count);
++/* Exact O82 post-start normal-pixel or dimming LP group. */
++int qcom_uke_dsi_lp_batch(struct mipi_dsi_device *dsi,
++			 const struct mipi_dsi_msg *msgs, unsigned int count);
++#else
++static inline void qcom_uke_dsi_update_vrr(struct mipi_dsi_device *dsi,
++		struct drm_connector *connector)
++{
++}
++static inline int qcom_uke_dsi_tp_fps_batch(struct mipi_dsi_device *dsi,
++					 const struct mipi_dsi_msg *msgs)
++{
++	return -EOPNOTSUPP;
++}
++static inline int qcom_uke_dsi_pen_clear_batch(struct mipi_dsi_device *dsi,
++					 const struct mipi_dsi_msg *msgs)
++{
++	return -EOPNOTSUPP;
++}
++static inline int qcom_uke_dsi_dfps_register(struct mipi_dsi_device *dsi,
++		struct drm_panel *panel, const struct qcom_uke_o82_dfps_ops *ops)
++{
++	return -EOPNOTSUPP;
++}
++static inline int qcom_uke_dsi_on_batch(struct mipi_dsi_device *dsi,
++				      const struct mipi_dsi_msg *msgs, unsigned int count)
++{
++	return -EOPNOTSUPP;
++}
++static inline int qcom_uke_dsi_lp_batch(struct mipi_dsi_device *dsi,
++				      const struct mipi_dsi_msg *msgs, unsigned int count)
++{
++	return -EOPNOTSUPP;
++}
++#endif
++/* U880: the native display DT graph (panel node) is present; gates display-only resource admission. */
++static inline bool of_machine_u880_native_display(void)
++{
++	struct device_node *np = of_find_compatible_node(NULL, NULL, "alldocube,u880-panel");
++
++	of_node_put(np);
++	return np;
++}
++
++#endif
 --- /dev/null
 +++ b/include/linux/usb/repeater.h
 @@ -0,0 +1,128 @@
