@@ -20562,7 +20562,7 @@
  DECLARE_FAULT_ATTR(fail_gem_iova);
 --- a/drivers/gpu/drm/msm/msm_drv.h
 +++ b/drivers/gpu/drm/msm/msm_drv.h
-@@ -545,4 +545,18 @@
+@@ -545,4 +545,19 @@
  
  bool msm_gpu_no_components(void);
  
@@ -20577,6 +20577,7 @@
 + * (CLK_EN_SEL kept) + DSI soft reset after the link clocks run.
 + * 0x100000 unicast DSI commands per link (panel sends ON+PPS to DSI0 then DSI1; no sync broadcast).
 + *   + 0x200000 only DSI0 gets the sequence, + 0x400000 only DSI1.
++ * 0x1000000 DSI CLKOUT_TIMING=0, 0x8000000 TPG fifo bit off, 0x2000000 DSI VBIF_CTRL=7 (HANGS), 0x4000000 TRIG_CTRL block-dma bit off (Android parity).
 + */
 +extern unsigned int u880_dbg;
 +
@@ -83962,7 +83963,16 @@
 +#endif /* A6XX_DESCRIPTORS_XML */
 --- a/drivers/gpu/drm/msm/dsi/dsi_host.c
 +++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
-@@ -658,6 +658,10 @@
+@@ -4,6 +4,8 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/debugfs.h>
++#include <linux/seq_file.h>
+ #include <linux/delay.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/err.h>
+@@ -658,6 +660,10 @@
  	unsigned long pclk_rate = dsi_get_pclk_rate(mode, msm_host->dsc, is_bonded_dsi);
  	unsigned long pclk_bpp;
  
@@ -83973,7 +83983,7 @@
  	if (lanes == 0) {
  		pr_err("%s: forcing mdss_dsi lanes to 1\n", __func__);
  		lanes = 1;
-@@ -911,7 +915,8 @@
+@@ -911,7 +917,8 @@
  
  	dsi_write(msm_host, REG_DSI_CLK_CTRL, DSI_CLK_CTRL_ENABLE_CLKS);
  
@@ -83983,7 +83993,7 @@
  
  	DBG("lane number=%d", msm_host->lanes);
  	data |= ((DSI_CTRL_LANE0 << msm_host->lanes) - DSI_CTRL_LANE0);
-@@ -1108,6 +1113,16 @@
+@@ -1108,6 +1115,16 @@
  		dsi_write(msm_host, REG_DSI_ACTIVE_VSYNC_VPOS,
  			DSI_ACTIVE_VSYNC_VPOS_START(vs_start) |
  			DSI_ACTIVE_VSYNC_VPOS_END(vs_end));
@@ -84000,7 +84010,7 @@
  	} else {		/* command mode */
  		if (msm_host->dsc)
  			dsi_update_dsc_timing(msm_host, true);
-@@ -1576,6 +1591,85 @@
+@@ -1576,6 +1593,107 @@
  	return len;
  }
  
@@ -84012,6 +84022,28 @@
 + */
 +static struct msm_dsi_host *u880_hosts[2];
 +static DEFINE_MUTEX(u880_recover_lock);
++
++/* Bring-up probe: /sys/kernel/debug/u880-dsi/fifo - FIFO_STATUS of both links, clear the sticky flags, re-read after 100 ms.
++ * A flag that comes back means the overflow/underflow is ongoing, not a start-up transient. */
++static int u880_fifo_show(struct seq_file *m, void *unused)
++{
++	u32 before[2], after[2];
++	int i;
++
++	for (i = 0; i < 2; i++) {
++		if (!u880_hosts[i])
++			return -ENODEV;
++		before[i] = dsi_read(u880_hosts[i], REG_DSI_FIFO_STATUS);
++		dsi_write(u880_hosts[i], REG_DSI_FIFO_STATUS, before[i]);
++	}
++	msleep(100);
++	for (i = 0; i < 2; i++)
++		after[i] = dsi_read(u880_hosts[i], REG_DSI_FIFO_STATUS);
++	for (i = 0; i < 2; i++)
++		seq_printf(m, "dsi%d before=%08x after100ms=%08x\n", i, before[i], after[i]);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(u880_fifo);
 +
 +static void dsi_u880_reset_link(struct msm_dsi_host *h, u32 ctrl)
 +{
@@ -84086,7 +84118,7 @@
  static void dsi_err_worker(struct work_struct *work)
  {
  	struct msm_dsi_host *msm_host =
-@@ -1583,7 +1677,12 @@
+@@ -1583,7 +1701,12 @@
  	u32 status = msm_host->err_work_state;
  
  	pr_err_ratelimited("%s: status=%x\n", __func__, status);
@@ -84100,7 +84132,7 @@
  		dsi_sw_reset(msm_host);
  
  	/* It is safe to clear here because error irq is disabled. */
-@@ -1631,6 +1730,8 @@
+@@ -1631,6 +1754,8 @@
  			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP0 |
  			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP1)) {
  		dsi_write(msm_host, REG_DSI_DLN0_PHY_ERR, status);
@@ -84109,7 +84141,7 @@
  		msm_host->err_work_state |= DSI_ERR_STATE_DLN0_PHY;
  	}
  }
-@@ -1680,6 +1781,14 @@
+@@ -1680,6 +1805,14 @@
  {
  	/* disable dsi error interrupt */
  	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_ERROR, 0);
@@ -84124,7 +84156,7 @@
  
  	dsi_clk_status(msm_host);
  	dsi_fifo_status(msm_host);
-@@ -1687,6 +1796,9 @@
+@@ -1687,6 +1820,9 @@
  	dsi_timeout_status(msm_host);
  	dsi_status(msm_host);
  	dsi_dln0_phy_err(msm_host);
@@ -84134,7 +84166,7 @@
  
  	queue_work(msm_host->workqueue, &msm_host->err_work);
  }
-@@ -2210,6 +2322,8 @@
+@@ -2210,6 +2346,8 @@
  
  	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_CMD_DMA_DONE, 0);
  	dsi_write(msm_host, REG_DSI_CTRL, msm_host->dma_cmd_ctrl_restore);
@@ -84143,7 +84175,7 @@
  
  	if (!(msg->flags & MIPI_DSI_MSG_USE_LPM))
  		dsi_set_tx_power_mode(1, msm_host);
-@@ -2359,11 +2473,24 @@
+@@ -2359,11 +2497,24 @@
  		ret = dsi_long_read_resp(buf, msg);
  		break;
  	default:
@@ -84169,13 +84201,21 @@
  }
  
  void msm_dsi_host_cmd_xfer_commit(struct mipi_dsi_host *host, u32 dma_base,
-@@ -2442,6 +2569,54 @@
+@@ -2442,6 +2593,85 @@
  int msm_dsi_host_enable(struct mipi_dsi_host *host)
  {
  	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 +
 +	if (msm_host->cphy_mode && msm_host->id < 2) {
 +		u880_hosts[msm_host->id] = msm_host;
++		{
++			static bool fifo_dbg;
++
++			if (!fifo_dbg) {
++				fifo_dbg = true;
++				debugfs_create_file("fifo", 0400, debugfs_create_dir("u880-dsi", NULL), NULL, &u880_fifo_fops);
++			}
++		}
 +		/* vendor dsi_display_toggle_resync_fifo + reset_clk_en_sel, after the link clocks run (switch 0x2000) */
 +		if (u880_dbg & 0x2000) {
 +			void __iomem *phy = ioremap(msm_host->id ? 0xae97000 : 0xae95000, 0x100);
@@ -84195,6 +84235,29 @@
 +		 * dsi_display.c skips reset_clk_en_sel for C-PHY), then a controller soft reset with DSI_CTRL[2:0] cleared
 +		 * and restored (dsi_ctrl_hw_cmn.c soft_reset), all after the link clocks run.
 +		 */
++		/*
++		 * Android-parity DSI controller settings found by the aligned register diff (vendor offsets = mainline + 4):
++		 * 0x1000000 CLKOUT_TIMING_CTRL = 0 (no clock lane on C-PHY), 0x8000000 the stray TPG_DMA_FIFO_MODE bit cleared,
++		 * 0x2000000 VBIF_CTRL (vendor 0x1cc) = 7, 0x4000000 TRIG_CTRL BLOCK_DMA_WITHIN_FRAME cleared.
++		 */
++		if (u880_dbg & 0x1000000) {
++			dsi_write(msm_host, REG_DSI_CLKOUT_TIMING_CTRL, 0);
++			wmb();
++		}
++		if (u880_dbg & 0x8000000) {
++			dsi_write(msm_host, REG_DSI_TEST_PATTERN_GEN_CTRL,
++				  dsi_read(msm_host, REG_DSI_TEST_PATTERN_GEN_CTRL) & ~BIT(2));
++			wmb();
++		}
++		if (u880_dbg & 0x2000000) {
++			dsi_write(msm_host, 0x1c8, 7);
++			wmb();
++		}
++		if (u880_dbg & 0x4000000) {
++			dsi_write(msm_host, REG_DSI_TRIG_CTRL,
++				  dsi_read(msm_host, REG_DSI_TRIG_CTRL) & ~DSI_TRIG_CTRL_BLOCK_DMA_WITHIN_FRAME);
++			wmb();
++		}
 +		if (u880_dbg & 0x80000) {
 +			void __iomem *phy = ioremap(msm_host->id ? 0xae97000 : 0xae95000, 0x100);
 +			u32 ctrl = dsi_read(msm_host, REG_DSI_CTRL);
@@ -84224,7 +84287,7 @@
  
  	dsi_op_mode_config(msm_host,
  		!!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO), true);
-@@ -2708,6 +2883,19 @@
+@@ -2708,6 +2938,19 @@
  				DSI_TEST_PATTERN_GEN_CMD_STREAM0_TRIGGER_SW_TRIGGER);
  }
  
