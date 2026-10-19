@@ -197,16 +197,29 @@
  
  	return qcom_battmgr_request(battmgr, &request, sizeof(request));
  }
-@@ -1043,6 +1082,61 @@
- 	return 0;
- }
+@@ -988,6 +1027,9 @@
+ 		return -EINVAL;
  
+ 	prop = sm8350_usb_prop_map[psp];
++	/* U880 firmware: USB_TYPE is the legacy BC1.2 type (SDP on PD chargers); the adapter type carries PD. */
++	if (prop == USB_TYPE && !qcom_battmgr_uke_oem)
++		prop = USB_ADAP_TYPE;
+ 
+ 	mutex_lock(&battmgr->lock);
+ 	ret = qcom_battmgr_request_property(battmgr, BATTMGR_USB_PROPERTY_GET, prop, 0);
+@@ -1041,6 +1083,62 @@
+ 	}
+ 
+ 	return 0;
++}
++
 +static int qcom_battmgr_usb_set_property(struct power_supply *psy,
 +				       enum power_supply_property psp,
 +				       const union power_supply_propval *val)
 +{
 +	struct qcom_battmgr *battmgr = power_supply_get_drvdata(psy);
-+	const unsigned int properties[] = { USB_ONLINE, USB_TYPE, USB_CURR_MAX };
++	const unsigned int properties[] = { USB_ONLINE, qcom_battmgr_uke_oem ? USB_TYPE : USB_ADAP_TYPE,
++					    USB_CURR_MAX };
 +	int ret;
 +	unsigned int i;
 +
@@ -254,12 +267,10 @@
 +
 +	return battmgr->variant == QCOM_BATTMGR_UKE &&
 +	       psp == POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT;
-+}
-+
+ }
+ 
  static const enum power_supply_property sc8280xp_usb_props[] = {
- 	POWER_SUPPLY_PROP_ONLINE,
- };
-@@ -1081,6 +1175,8 @@
+@@ -1081,6 +1179,8 @@
  	.properties = sm8350_usb_props,
  	.num_properties = ARRAY_SIZE(sm8350_usb_props),
  	.get_property = qcom_battmgr_usb_get_property,
@@ -268,7 +279,7 @@
  	.usb_types = BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN) |
  		     BIT(POWER_SUPPLY_USB_TYPE_SDP)     |
  		     BIT(POWER_SUPPLY_USB_TYPE_DCP)     |
-@@ -1202,6 +1298,8 @@
+@@ -1202,6 +1302,8 @@
  
  	notification = le32_to_cpu(msg->notification);
  	notification &= 0xff;
@@ -277,7 +288,7 @@
  	switch (notification) {
  	case NOTIF_BAT_INFO:
  		battmgr->info.valid = false;
-@@ -1382,6 +1480,15 @@
+@@ -1382,6 +1484,15 @@
  	switch (opcode) {
  	case BATTMGR_BAT_PROPERTY_GET:
  		property = le32_to_cpu(resp->intval.property);
@@ -293,7 +304,7 @@
  		if (property == BATT_MODEL_NAME) {
  			if (payload_len != sizeof(resp->strval)) {
  				dev_warn(battmgr->dev,
-@@ -1433,17 +1540,38 @@
+@@ -1433,17 +1544,38 @@
  			battmgr->info.voltage_max = le32_to_cpu(resp->intval.value);
  			break;
  		case BATT_CURR_NOW:
@@ -335,7 +346,15 @@
  			break;
  		case BATT_CYCLE_COUNT:
  			battmgr->info.cycle_count = le32_to_cpu(resp->intval.value);
-@@ -1557,12 +1685,18 @@
+@@ -1514,6 +1646,7 @@
+ 			battmgr->usb.current_limit = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		case USB_TYPE:
++		case USB_ADAP_TYPE:
+ 			battmgr->usb.usb_type = le32_to_cpu(resp->intval.value);
+ 			break;
+ 		default:
+@@ -1557,12 +1690,18 @@
  		}
  		break;
  	case BATTMGR_REQUEST_NOTIFICATION:
@@ -355,7 +374,7 @@
  	}
  
  out_complete:
-@@ -1574,6 +1708,9 @@
+@@ -1574,6 +1713,9 @@
  	const struct pmic_glink_hdr *hdr = data;
  	struct qcom_battmgr *battmgr = priv;
  	unsigned int opcode = le32_to_cpu(hdr->opcode);
@@ -365,7 +384,7 @@
  
  	if (opcode == BATTMGR_NOTIFICATION)
  		qcom_battmgr_notification(battmgr, data, len);
-@@ -1653,7 +1790,12 @@
+@@ -1653,7 +1795,12 @@
  	init_completion(&battmgr->ack);
  
  	match = of_match_device(qcom_battmgr_of_variants, dev->parent);
