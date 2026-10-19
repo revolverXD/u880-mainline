@@ -17852,15 +17852,17 @@
  
 --- a/drivers/gpu/drm/sysfb/simpledrm.c
 +++ b/drivers/gpu/drm/sysfb/simpledrm.c
-@@ -1,6 +1,7 @@
+@@ -1,7 +1,9 @@
  // SPDX-License-Identifier: GPL-2.0-only
  
  #include <linux/aperture.h>
 +#include <linux/backlight.h>
  #include <linux/clk.h>
++#include <linux/interconnect.h>
  #include <linux/minmax.h>
  #include <linux/of_address.h>
-@@ -251,6 +252,7 @@
+ #include <linux/of_clk.h>
+@@ -251,6 +253,7 @@
  #endif
  
  	/* modesetting */
@@ -17868,7 +17870,33 @@
  	u32 formats[DRM_SYSFB_PLANE_NFORMATS(1)];
  	struct drm_plane primary_plane;
  	struct drm_crtc crtc;
-@@ -588,8 +590,30 @@
+@@ -514,6 +517,25 @@
+ 	}
+ }
+ 
++/*
++ * U880: the bootloader leaves the display pipeline scanning out this framebuffer, but nothing votes its memory
++ * bandwidth. Once the interconnect boot votes are released (sync_state), DDR drops below what scanout needs and the
++ * panel stalls. Vote a fixed bandwidth on the optional "mdp0-mem" path: u880,icc-peak-kBps (avg = peak).
++ */
++static int simpledrm_device_init_icc(struct simpledrm_device *sdev)
++{
++	struct device *dev = sdev->sysfb.dev.dev;
++	struct icc_path *path;
++	u32 bw;
++
++	if (of_property_read_u32(dev->of_node, "u880,icc-peak-kBps", &bw))
++		return 0;
++	path = devm_of_icc_get(dev, "mdp0-mem");
++	if (IS_ERR(path))
++		return PTR_ERR(path);
++	return icc_set_bw(path, bw, bw);
++}
++
+ static int simpledrm_device_attach_genpd(struct simpledrm_device *sdev)
+ {
+ 	struct device *dev = sdev->sysfb.dev.dev;
+@@ -588,8 +610,30 @@
  	.destroy = drm_plane_cleanup,
  };
  
@@ -17899,7 +17927,7 @@
  };
  
  static const struct drm_crtc_funcs simpledrm_crtc_funcs = {
-@@ -628,6 +652,7 @@
+@@ -628,6 +672,7 @@
  	struct drm_device *dev;
  	int width, height, stride;
  	u16 width_mm = 0, height_mm = 0;
@@ -17907,7 +17935,7 @@
  	struct device_node *panel_node;
  	const struct drm_format_info *format;
  	struct resource *res, *mem = NULL;
-@@ -645,6 +670,10 @@
+@@ -645,6 +690,10 @@
  	sysfb = &sdev->sysfb;
  	dev = &sysfb->dev;
  	platform_set_drvdata(pdev, sdev);
@@ -17918,7 +17946,17 @@
  
  	/*
  	 * Hardware settings
-@@ -703,6 +732,9 @@
+@@ -657,6 +706,9 @@
+ 	if (ret)
+ 		return ERR_PTR(ret);
+ 	ret = simpledrm_device_attach_genpd(sdev);
++	if (ret)
++		return ERR_PTR(ret);
++	ret = simpledrm_device_init_icc(sdev);
+ 	if (ret)
+ 		return ERR_PTR(ret);
+ 
+@@ -703,6 +755,9 @@
  			ret = simplefb_get_panel_height_mm_of(dev, panel_node);
  			if (ret > 0)
  				height_mm = ret;
@@ -17928,7 +17966,7 @@
  			of_node_put(panel_node);
  		}
  	} else {
-@@ -840,6 +872,7 @@
+@@ -840,6 +895,7 @@
  
  	connector = &sdev->connector;
  	ret = drm_connector_init(dev, connector, &simpledrm_connector_funcs,
@@ -17936,7 +17974,7 @@
  				 DRM_MODE_CONNECTOR_Unknown);
  	if (ret)
  		return ERR_PTR(ret);
-@@ -863,8 +896,28 @@
+@@ -863,8 +919,28 @@
  
  DEFINE_DRM_GEM_FOPS(simpledrm_fops);
  
