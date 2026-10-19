@@ -277,6 +277,10 @@ if [ "${POWER:-0}" = 1 ]; then
     fdtput -t x $O /soc/$n interconnects $(fdtget -t x $M/stock-dt/dtb2.dtb /soc/$n interconnects)
     fdtput -t s $O /soc/$n interconnect-names qup-core qup-config qup-memory
   done
+  # simpledrm switches this backlight off/on with the CRTC, so the compositor's screen-off (Denial DPMS, power button)
+  # really darkens the panel.
+  fdtput -t x $O /u880-backlight phandle 0x7f000202
+  fdtput -t x $O /framebuffer@e3940000 backlight 0x7f000202
   echo "power overlay applied"
 fi
 
