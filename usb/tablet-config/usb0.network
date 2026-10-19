@@ -1,0 +1,12 @@
+# U880: USB gadget ethernet (g_cdc ECM) to the PC. PC side: NetworkManager profile u880-usb, 172.16.42.1/24.
+# The PC route is a fallback only (metric 2000 > Wi-Fi 600): as the default route it hijacked internet and NTP.
+[Match]
+Name=usb0
+
+[Network]
+Address=172.16.42.2/24
+DNS=9.9.9.9
+
+[Route]
+Gateway=172.16.42.1
+Metric=2000

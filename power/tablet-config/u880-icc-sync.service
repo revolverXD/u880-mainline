@@ -1,0 +1,12 @@
+[Unit]
+Description=U880: release interconnect boot votes (needs the POWER=1 device tree)
+After=multi-user.target
+# Only with the DT that carries CPU->DDR and display bandwidth votes; otherwise releasing freezes the display.
+ConditionPathExists=/proc/device-tree/framebuffer@e3940000/u880,icc-peak-kBps
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/u880-icc-sync
+
+[Install]
+WantedBy=multi-user.target
