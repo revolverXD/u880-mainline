@@ -13,6 +13,11 @@
 /stage1/*
 !/stage1/*.dtso
 !/stage1/initramfs/
+!/usb/
+!/sensors/
+/sensors/vendor/
+/sensors/persist/
+/sensors/stage/
 *.o
 *.ko
 *.mod

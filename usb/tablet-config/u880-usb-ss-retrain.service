@@ -1,0 +1,10 @@
+[Unit]
+Description=U880: re-enumerate the USB gadget at SuperSpeed once the plug orientation is known
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/u880-usb-ss-retrain
+
+[Install]
+WantedBy=multi-user.target
