@@ -11,7 +11,7 @@
  	  .data = (void *)ATH11K_HW_WCN6750_HW10,
  	},
  	{ .compatible = "qcom,ipq5018-wifi",
-@@ -401,14 +405,65 @@
+@@ -401,14 +405,68 @@
  	ath11k_ce_cleanup_pipes(ab);
  }
  
@@ -25,6 +25,9 @@
 +	if (!of_device_is_compatible(ab->dev->of_node, "xiaomi,uke-wcn6750-wifi") &&
 +	    !of_device_is_compatible(ab->dev->of_node, "qcom,wcn6750"))
 +		return 0;
++	ab_ahb->uke_regs = devm_kcalloc(ab->dev, ARRAY_SIZE(names), sizeof(*ab_ahb->uke_regs), GFP_KERNEL);
++	if (!ab_ahb->uke_regs)
++		return -ENOMEM;
 +	for (i = 0; i < ARRAY_SIZE(names); i++) {
 +		char property[32];
 +
@@ -33,7 +36,7 @@
 +			return dev_err_probe(ab->dev, -EINVAL, "Uke WLAN requires all three RF supplies\n");
 +		ab_ahb->uke_regs[i].supply = names[i];
 +	}
-+	ret = devm_regulator_bulk_get(ab->dev, ARRAY_SIZE(ab_ahb->uke_regs), ab_ahb->uke_regs);
++	ret = devm_regulator_bulk_get(ab->dev, ARRAY_SIZE(names), ab_ahb->uke_regs);
 +	if (ret)
 +		return dev_err_probe(ab->dev, ret, "Uke WLAN RF supplies unavailable\n");
 +	/* The admitted OEM providers retain their exact initial voltage constraints. */
@@ -62,7 +65,7 @@
 +	int ret;
 +
 +	/* OEM ICNSS enables CX/MX, XO, then RFA; bulk enable runs in parallel. */
-+	while (ab_ahb->uke_supplies && ab_ahb->num_uke_regs_enabled < ARRAY_SIZE(ab_ahb->uke_regs)) {
++	while (ab_ahb->uke_supplies && ab_ahb->num_uke_regs_enabled < 3) {
 +		ret = regulator_enable(ab_ahb->uke_regs[ab_ahb->num_uke_regs_enabled].consumer);
 +		if (ret) {
 +			ath11k_ahb_uke_regulators_off(ab);
@@ -79,7 +82,7 @@
  
  	return ret;
  }
-@@ -418,6 +473,7 @@
+@@ -418,6 +476,7 @@
  	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
  
  	rproc_shutdown(ab_ahb->tgt_rproc);
@@ -87,7 +90,7 @@
  }
  
  static void ath11k_ahb_init_qmi_ce_config(struct ath11k_base *ab)
-@@ -801,7 +857,8 @@
+@@ -801,7 +860,8 @@
  	struct rproc *prproc;
  	phandle rproc_phandle;
  
@@ -97,7 +100,7 @@
  		ath11k_err(ab, "failed to get q6_rproc handle\n");
  		return -ENOENT;
  	}
-@@ -1150,6 +1207,10 @@
+@@ -1150,6 +1210,10 @@
  	ab->fw_mode = ATH11K_FIRMWARE_MODE_NORMAL;
  	platform_set_drvdata(pdev, ab);
  
@@ -118,11 +121,12 @@
  
  #define ATH11K_AHB_RECOVERY_TIMEOUT (3 * HZ)
  
-@@ -23,6 +24,9 @@
+@@ -23,6 +24,10 @@
  
  struct ath11k_ahb {
  	struct rproc *tgt_rproc;
-+	struct regulator_bulk_data uke_regs[3];
++	/* devm-allocated: ab is freed before devres runs on a failed probe. */
++	struct regulator_bulk_data *uke_regs;
 +	bool uke_supplies;
 +	int num_uke_regs_enabled;
  	struct {
