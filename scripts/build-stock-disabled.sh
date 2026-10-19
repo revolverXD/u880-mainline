@@ -104,7 +104,9 @@ fdtput -t x $O $P/u880-lpg phandle 0x7f000200
 B=/u880-backlight
 fdtput -c $O $B
 fdtput -t s $O $B compatible pwm-backlight
-fdtput -t x $O $B pwms 0x7f000200 3 100000
+# period 53400 ns = 0xd098 (fdtput -t x is HEX: the old "100000" was 0x100000 = 1048576 ns, which the LPG rounded to 851.7 us and clipped the top of the slider).
+# 53400 lands on 53321 ns / 12-bit on hi-res LPGs (4096 steps) and ~53.2 us / 9-bit otherwise.
+fdtput -t x $O $B pwms 0x7f000200 3 0xd098
 fdtput -t u $O $B brightness-levels 0 4095
 fdtput -t u $O $B num-interpolated-steps 4095
 fdtput -t u $O $B default-brightness-level 1500
