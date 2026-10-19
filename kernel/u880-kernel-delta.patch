@@ -19130,7 +19130,6 @@
 +	gpiod_direction_output(ctx->reset_gpio, 0);
 +	usleep_range(10000, 11000);
 +
-+	/* stock order: PPS first, then the ON command set */
 +	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
 +	dev_info(panel->dev, "DSC %ux%u slice %ux%u chunk %u init_xmit %u init_dec %u scale_inc %u scale_dec %u first_bpg %u nfl_bpg %u slice_bpg %u final_off %u\n",
 +		 ctx->dsc.pic_width, ctx->dsc.pic_height, ctx->dsc.slice_width, ctx->dsc.slice_height,
@@ -19138,8 +19137,9 @@
 +		 ctx->dsc.scale_increment_interval, ctx->dsc.scale_decrement_interval,
 +		 ctx->dsc.first_line_bpg_offset, ctx->dsc.nfl_bpg_offset, ctx->dsc.slice_bpg_offset,
 +		 ctx->dsc.final_offset);
-+	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
++	/* vendor order (dsi_display_enable): ON command set first, then the PPS, which overrides the Novatek 0x91 values */
 +	u880_on(&dsi_ctx);
++	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
 +	dev_info(panel->dev, "panel on sequence done: %d\n", dsi_ctx.accum_err);
 +	if (dsi_ctx.accum_err) {
 +		gpiod_direction_output(ctx->reset_gpio, 1);
@@ -19330,7 +19330,7 @@
  endmenu
 --- /dev/null
 +++ b/drivers/gpu/drm/msm/uke-mdss-handoff.c
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,205 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Included after struct msm_mdss in the isolated SM7675 display tree. */
 +#include <linux/iopoll.h>
@@ -19348,16 +19348,17 @@
 + * and the same registers live, for diffing. /sys/kernel/debug/u880-display/{boot,live}. Read "live" only while the
 + * display is on: these blocks are unclocked otherwise and an access can hang the SoC.
 + */
-+static const struct { u32 phys, len; } u880_regions[] = {
++static const struct { u32 phys, len; bool live_only; } u880_regions[] = {
 +	{ 0xae36000, 0x300 }, { 0xae37000, 0x300 },	/* INTF1, INTF2 (catalog len) */
 +	/* PP/DSC (and INTF with 0x400) were in the first attempt, which reset the SoC (2026-10-19). */
 +	{ 0xae94000, 0x400 }, { 0xae95000, 0xa00 },	/* DSI0, PHY0 */
 +	{ 0xae96000, 0x400 }, { 0xae97000, 0xa00 },	/* DSI1, PHY1 */
 +	{ 0xaf08000, 0x300 },				/* dispcc RCGs (pclk 0x80a8/0x80c0, byte 0x8108/0x8124) */
++	/* DSC block: even a live read reset the SoC; use /sys/kernel/debug/dri/1/kms (catalog-sized dump) instead. */
 +};
 +static u32 *u880_boot_regs;
 +
-+static u32 *u880_snapshot(void)
++static u32 *u880_snapshot(bool live)
 +{
 +	size_t total = 0, n = 0;
 +	u32 *buf;
@@ -19369,8 +19370,15 @@
 +	if (!buf)
 +		return NULL;
 +	for (i = 0; i < ARRAY_SIZE(u880_regions); i++) {
-+		void __iomem *io = ioremap(u880_regions[i].phys, u880_regions[i].len);
++		void __iomem *io;
 +		u32 off;
++
++		if (u880_regions[i].live_only && !live) {
++			for (off = 0; off < u880_regions[i].len; off += 4)
++				buf[n++] = 0xdeadbeef;
++			continue;
++		}
++		io = ioremap(u880_regions[i].phys, u880_regions[i].len);
 +
 +		for (off = 0; off < u880_regions[i].len; off += 4)
 +			buf[n++] = io ? readl(io + off) : 0xdeadbeef;
@@ -19402,7 +19410,7 @@
 +
 +static int u880_live_show(struct seq_file *m, void *unused)
 +{
-+	u32 *buf = u880_snapshot();
++	u32 *buf = u880_snapshot(true);
 +
 +	if (!buf)
 +		return -ENOMEM;
@@ -19474,7 +19482,7 @@
 +	if (!u880_boot_regs) {
 +		struct dentry *d = debugfs_create_dir("u880-display", NULL);
 +
-+		u880_boot_regs = u880_snapshot();
++		u880_boot_regs = u880_snapshot(false);
 +		debugfs_create_file("boot", 0400, d, NULL, &u880_boot_fops);
 +		debugfs_create_file("live", 0400, d, NULL, &u880_live_fops);
 +	}
@@ -19616,6 +19624,36 @@
  	{ .compatible = "qcom,mdss", .data = &data_153k6 },
  	{ .compatible = "qcom,eliza-mdss", .data = &data_57k },
  	{ .compatible = "qcom,glymur-mdss", .data = &data_57k },
+--- a/drivers/gpu/drm/msm/msm_drv.c
++++ b/drivers/gpu/drm/msm/msm_drv.c
+@@ -57,6 +57,10 @@
+ static bool separate_gpu_kms;
+ MODULE_PARM_DESC(separate_gpu_kms, "Use separate DRM device for the GPU (0=single DRM device for both GPU and display (default), 1=two DRM devices)");
+ module_param(separate_gpu_kms, bool, 0400);
++
++unsigned int u880_dbg = 0xfff;
++MODULE_PARM_DESC(u880_dbg, "U880 native display bring-up switches (see msm_drv.h)");
++module_param(u880_dbg, uint, 0644);
+ 
+ DECLARE_FAULT_ATTR(fail_gem_alloc);
+ DECLARE_FAULT_ATTR(fail_gem_iova);
+--- a/drivers/gpu/drm/msm/msm_drv.h
++++ b/drivers/gpu/drm/msm/msm_drv.h
+@@ -545,4 +545,14 @@
+ 
+ bool msm_gpu_no_components(void);
+ 
++/*
++ * U880 native display bring-up switches (msm.u880_dbg, writable at runtime). Bits:
++ * 0x1 both INTF timing engines, 0x2 prefetch 129 lines, 0x4 DSI FIFO recovery, 0x8 PLL OUTDIV bit 2, 0x10 PLL SSC,
++ * 0x20 PHY1 own timings, 0x40 panel ON+PPS before video, 0x80 PLL SYSTEM_MUXES + PHY1 CLK_CFG0, 0x100 DSI CLK_EN off,
++ * 0x200 uke single-CTL split flush, 0x400 vendor PHY strength values, 0x800 lane-3/clock-lane vendor values,
++ * 0x1000 DSC without SPLIT_PANEL (Android), 0x2000 PHY resync FIFO toggle + CLK_EN_SEL clear before video,
++ * 0x4000 restore bootloader-only INTF bits, 0x8000 start slave+master timing engines back to back.
++ */
++extern unsigned int u880_dbg;
++
+ #endif /* __MSM_DRV_H__ */
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
 @@ -793,6 +793,7 @@
@@ -19626,6 +19664,214 @@
  #include "catalog/dpu_10_2_milos.h"
  
  #include "catalog/dpu_12_0_sm8750.h"
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
+@@ -319,9 +319,15 @@
+ 
+ bool dpu_encoder_needs_periph_flush(struct dpu_encoder_phys *phys_enc);
+ 
++/* U880: the current bonded slave of this encoder (NULL if none). */
++struct dpu_encoder_phys *dpu_encoder_u880_get_slave(struct dpu_encoder_phys *phys_enc);
++
+ void dpu_encoder_helper_split_config(
+ 		struct dpu_encoder_phys *phys_enc,
+ 		enum dpu_intf interface);
++
++void dpu_encoder_helper_split_flush_cleanup(struct dpu_encoder_phys *phys_enc,
++		int wait_ret);
+ 
+ void dpu_encoder_helper_report_irq_timeout(struct dpu_encoder_phys *phys_enc,
+ 		enum dpu_intr_idx intr_idx);
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -10,6 +10,7 @@
+ #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+ #include <linux/debugfs.h>
+ #include <linux/kthread.h>
++#include <linux/of.h>
+ #include <linux/seq_file.h>
+ 
+ #include <drm/drm_atomic.h>
+@@ -559,6 +560,46 @@
+ 	return linecount;
+ }
+ 
++/* Uke's single-CTL bonded video route; keep software flush selection separate. */
++static bool dpu_encoder_uke_split_flush(struct dpu_encoder_phys *phys_enc)
++{
++	struct dpu_encoder_virt *dpu_enc;
++	struct dpu_encoder_phys *slave;
++
++	if (!phys_enc->parent || !phys_enc->dpu_kms ||
++	    phys_enc->dpu_kms->catalog != &dpu_sm7675_cfg ||
++	    /* U880 (root compatible qcom,cliffsp / qcom,cliffs) shares this SoC route */
++	    !((of_machine_is_compatible("xiaomi,uke") && of_machine_is_compatible("qcom,sm7675")) ||
++	      ((of_machine_is_compatible("qcom,cliffs") || of_machine_is_compatible("qcom,cliffsp")) &&
++	       (u880_dbg & 0x200))) ||
++	    phys_enc->split_role != ENC_ROLE_MASTER ||
++	    phys_enc->intf_mode != INTF_MODE_VIDEO ||
++	    !phys_enc->hw_intf || phys_enc->hw_intf->idx != INTF_1 ||
++	    !phys_enc->hw_ctl || !phys_enc->hw_mdptop ||
++	    !phys_enc->hw_mdptop->ops.setup_split_pipe)
++		return false;
++
++	dpu_enc = to_dpu_encoder_virt(phys_enc->parent);
++	if (dpu_enc->disp_info.intf_type != INTF_DSI ||
++	    dpu_enc->disp_info.is_cmd_mode ||
++	    dpu_enc->disp_info.num_of_h_tiles != 2 ||
++	    dpu_enc->disp_info.h_tile_instance[0] != 0 ||
++	    dpu_enc->disp_info.h_tile_instance[1] != 1 ||
++	    dpu_enc->num_phys_encs != 2 || dpu_enc->cur_master != phys_enc ||
++	    dpu_enc->phys_encs[0] != phys_enc ||
++	    dpu_enc->phys_encs[1] != dpu_enc->cur_slave)
++		return false;
++
++	slave = dpu_enc->cur_slave;
++	return slave && slave->parent == phys_enc->parent &&
++		slave->split_role == ENC_ROLE_SLAVE &&
++		slave->intf_mode == INTF_MODE_VIDEO &&
++		slave->dpu_kms == phys_enc->dpu_kms &&
++		slave->hw_mdptop == phys_enc->hw_mdptop &&
++		slave->hw_ctl == phys_enc->hw_ctl &&
++		slave->hw_intf && slave->hw_intf->idx == INTF_2;
++}
++
+ /**
+  * dpu_encoder_helper_split_config - split display configuration helper function
+  *	This helper function may be used by physical encoders to configure
+@@ -566,6 +607,11 @@
+  * @phys_enc: Pointer to physical encoder structure
+  * @interface: enum dpu_intf setting
+  */
++struct dpu_encoder_phys *dpu_encoder_u880_get_slave(struct dpu_encoder_phys *phys_enc)
++{
++	return phys_enc->parent ? to_dpu_encoder_virt(phys_enc->parent)->cur_slave : NULL;
++}
++
+ void dpu_encoder_helper_split_config(
+ 		struct dpu_encoder_phys *phys_enc,
+ 		enum dpu_intf interface)
+@@ -606,6 +652,8 @@
+ 	if (cfg.en && phys_enc->ops.needs_single_flush &&
+ 			phys_enc->ops.needs_single_flush(phys_enc))
+ 		cfg.split_flush_en = true;
++	if (dpu_encoder_uke_split_flush(phys_enc))
++		cfg.split_flush_en = true;
+ 
+ 	if (phys_enc->split_role == ENC_ROLE_MASTER) {
+ 		DPU_DEBUG_ENC(dpu_enc, "enable %d\n", cfg.en);
+@@ -613,6 +661,43 @@
+ 		if (hw_mdptop->ops.setup_split_pipe)
+ 			hw_mdptop->ops.setup_split_pipe(hw_mdptop, &cfg);
+ 	}
++}
++
++/* Clear only after a completed master stop and fresh inactive status on both links. */
++void dpu_encoder_helper_split_flush_cleanup(struct dpu_encoder_phys *phys_enc,
++		int wait_ret)
++{
++	struct dpu_encoder_virt *dpu_enc;
++	struct dpu_encoder_phys *slave;
++	struct dpu_hw_intf_status status = { 0 };
++	struct split_pipe_cfg cfg = { 0 };
++
++	if (!dpu_encoder_uke_split_flush(phys_enc))
++		return;
++
++	dpu_enc = to_dpu_encoder_virt(phys_enc->parent);
++	slave = dpu_enc->cur_slave;
++	if (wait_ret || !phys_enc->hw_intf->ops.get_status ||
++	    !slave->hw_intf->ops.get_status)
++		goto retain;
++
++	phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &status);
++	if (status.is_en)
++		goto retain;
++	slave->hw_intf->ops.get_status(slave->hw_intf, &status);
++	if (status.is_en)
++		goto retain;
++
++	/* Preserve the current split enable/mux values; only clear SSPP_SPARE. */
++	cfg.en = true;
++	cfg.mode = phys_enc->intf_mode;
++	cfg.intf = phys_enc->hw_intf->idx;
++	phys_enc->hw_mdptop->ops.setup_split_pipe(phys_enc->hw_mdptop, &cfg);
++	return;
++
++retain:
++	DPU_ERROR("Uke split flush retained: stop incomplete or status active/unknown (%d)\n",
++		  wait_ret);
+ }
+ 
+ /**
+@@ -1787,11 +1872,29 @@
+ 	struct dpu_hw_ctl *ctl;
+ 	uint32_t i, pending_flush;
+ 	unsigned long lock_flags;
++	bool uke_single_ctl_flush;
+ 
+ 	pending_flush = 0x0;
+ 
+ 	/* update pending counts and trigger kickoff ctl flush atomically */
+ 	spin_lock_irqsave(&dpu_enc->enc_spinlock, lock_flags);
++
++	/*
++	 * Uke shares one modern CTL between both video interfaces. Keep both
++	 * interface/DSC masks and pending counters, but submit that shared mask
++	 * only once with split flush enabled, as in the OEM single-CTL route.
++	 * Do not change needs_single_flush: modern slave enable still needs it
++	 * false so it adds its own INTF mask. Transitional/unrelated routes keep
++	 * the existing per-physical submission behavior.
++	 */
++	uke_single_ctl_flush = dpu_enc->cur_master &&
++		dpu_encoder_uke_split_flush(dpu_enc->cur_master) &&
++		dpu_enc->cur_master->hw_pp && dpu_enc->cur_slave->hw_pp &&
++		dpu_enc->cur_master->hw_ctl->ops.trigger_flush &&
++		(dpu_enc->cur_master->enable_state == DPU_ENC_ENABLING ||
++		 dpu_enc->cur_master->enable_state == DPU_ENC_ENABLED) &&
++		(dpu_enc->cur_slave->enable_state == DPU_ENC_ENABLING ||
++		 dpu_enc->cur_slave->enable_state == DPU_ENC_ENABLED);
+ 
+ 	/* don't perform flush/start operations for slave encoders */
+ 	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
+@@ -1810,6 +1913,13 @@
+ 		if (phys->split_role != ENC_ROLE_SLAVE)
+ 			set_bit(i, dpu_enc->frame_busy_mask);
+ 
++		if (uke_single_ctl_flush) {
++			/* The shared master flush below increments its own counter. */
++			if (phys != dpu_enc->cur_master)
++				dpu_encoder_phys_inc_pending(phys);
++			continue;
++		}
++
+ 		if (!phys->ops.needs_single_flush ||
+ 				!phys->ops.needs_single_flush(phys))
+ 			_dpu_encoder_trigger_flush(&dpu_enc->base, phys, 0x0);
+@@ -1818,7 +1928,10 @@
+ 	}
+ 
+ 	/* for split flush, combine pending flush masks and send to master */
+-	if (pending_flush && dpu_enc->cur_master) {
++	if (uke_single_ctl_flush) {
++		_dpu_encoder_trigger_flush(&dpu_enc->base,
++				dpu_enc->cur_master, 0);
++	} else if (pending_flush && dpu_enc->cur_master) {
+ 		_dpu_encoder_trigger_flush(
+ 				&dpu_enc->base,
+ 				dpu_enc->cur_master,
+@@ -2041,7 +2154,10 @@
+ 	pic_width = dsc->pic_width;
+ 
+ 	dsc_common_mode = 0;
+-	if (num_dsc > 1)
++	/* U880: Android runs both encoders without SPLIT_PANEL (DSC_CFG 0x801); switch 0x1000 */
++	if (num_dsc > 1 &&
++	    !(enc_master->dpu_kms->catalog == &dpu_sm7675_cfg && (u880_dbg & 0x1000) &&
++	      (of_machine_is_compatible("qcom,cliffs") || of_machine_is_compatible("qcom,cliffsp"))))
+ 		dsc_common_mode |= DSC_MODE_SPLIT_PANEL;
+ 	if (dpu_encoder_use_dsc_merge(enc_master->parent))
+ 		dsc_common_mode |= DSC_MODE_MULTIPLEX;
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
 @@ -1480,6 +1480,7 @@
@@ -19636,6 +19882,35 @@
  	{ .compatible = "qcom,eliza-dpu", .data = &dpu_eliza_cfg, },
  	{ .compatible = "qcom,glymur-dpu", .data = &dpu_glymur_cfg, },
  	{ .compatible = "qcom,kaanapali-dpu", .data = &dpu_kaanapali_cfg, },
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_intf.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_intf.c
+@@ -4,6 +4,7 @@
+  * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+  */
+ 
++#include <linux/of.h>
+ #include "dpu_hwio.h"
+ #include "dpu_hw_catalog.h"
+ #include "dpu_hw_intf.h"
+@@ -266,6 +267,18 @@
+ 		if (!(p->compression_en && !p->wide_bus_en))
+ 			intf_cfg2 |= INTF_CFG2_DATA_HCTL_EN;
+ 
++		/*
++		 * U880 (switch 0x4000): restore bootloader-programmed INTF bits that neither mainline nor the vendor kernel
++		 * writes (Android inherits them from the splash because it never resets MDSS; our handoff does).
++		 * Values identical in the bootloader snapshot and in Android: CONFIG2 bit 8, 0x08c = 0x11, 0x1c4 = 0xa00, 0x210 = 0x11.
++		 */
++		if ((u880_dbg & 0x4000) && p->compression_en &&
++		    (of_machine_is_compatible("qcom,cliffs") || of_machine_is_compatible("qcom,cliffsp"))) {
++			intf_cfg2 |= BIT(8);
++			DPU_REG_WRITE(c, 0x08c, 0x11);
++			DPU_REG_WRITE(c, 0x1c4, 0xa00);
++			DPU_REG_WRITE(c, 0x210, 0x11);
++		}
+ 		DPU_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
+ 		DPU_REG_WRITE(c, INTF_DISPLAY_DATA_HCTL, display_data_hctl);
+ 		DPU_REG_WRITE(c, INTF_ACTIVE_DATA_HCTL, active_data_hctl);
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_dsc_1_2.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_dsc_1_2.c
 @@ -84,6 +84,64 @@
@@ -19772,7 +20047,32 @@
  		timing->xres = timing->width;
  		timing->dce_bytes_per_line = msm_dsc_get_bytes_per_line(dsc);
  	}
-@@ -661,9 +662,17 @@
+@@ -178,6 +179,7 @@
+ 		const struct dpu_hw_intf_timing_params *timing)
+ {
+ 	u32 worst_case_needed_lines =
++	    (phys_enc->dpu_kms->catalog == &dpu_sm7675_cfg && !(u880_dbg & 0x2)) ? 24 :
+ 	    phys_enc->hw_intf->cap->prog_fetch_lines_worst_case;
+ 	u32 start_of_frame_lines =
+ 	    timing->v_back_porch + timing->vsync_pulse_width;
+@@ -579,7 +581,7 @@
+ static void dpu_encoder_phys_vid_disable(struct dpu_encoder_phys *phys_enc)
+ {
+ 	unsigned long lock_flags;
+-	int ret;
++	int ret = 0;
+ 	struct dpu_hw_intf_status intf_status = {0};
+ 
+ 	if (!phys_enc->parent || !phys_enc->parent->dev) {
+@@ -645,6 +647,7 @@
+ 		}
+ 	}
+ 
++	dpu_encoder_helper_split_flush_cleanup(phys_enc, ret);
+ 	dpu_encoder_helper_phys_cleanup(phys_enc);
+ 	phys_enc->enable_state = DPU_ENC_DISABLED;
+ }
+@@ -661,9 +664,35 @@
  	if (phys_enc->enable_state == DPU_ENC_ENABLING) {
  		trace_dpu_enc_phys_vid_post_kickoff(DRMID(phys_enc->parent),
  				    phys_enc->hw_intf->idx - INTF_0);
@@ -19782,12 +20082,30 @@
 +		/* SM7675 CTL_INTF_MASTER synchronizes the bonded slave.
 +		 * Match its OEM video path without changing older catalogs.
 +		 */
-+		/* U880: its bootloader enables both timing engines (only the uke OEM path is master-only). */
++		/* U880: bootloader and Android run both timing engines; master-only is the uke OEM path. */
 +		if (phys_enc->dpu_kms->catalog != &dpu_sm7675_cfg ||
-+		    !of_machine_is_compatible("xiaomi,uke") ||
++		    (!of_machine_is_compatible("xiaomi,uke") && (u880_dbg & 0x1)) ||
 +		    dpu_encoder_phys_vid_is_master(phys_enc)) {
++			struct dpu_encoder_phys *slave = dpu_encoder_u880_get_slave(phys_enc);
++
 +			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
-+			phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
++			/*
++			 * U880 (switch 0x8000): the slave timing engine never starts by itself here, and starting it from its
++			 * own post-kickoff leaves the halves offset. Start master and slave back to back under one lock.
++			 */
++			if (phys_enc->dpu_kms->catalog == &dpu_sm7675_cfg && (u880_dbg & 0x8000) &&
++			    dpu_encoder_phys_vid_is_master(phys_enc) && slave && slave != phys_enc &&
++			    slave->hw_intf && slave->hw_intf->ops.enable_timing) {
++				if (u880_dbg & 0x10000) {	/* master first */
++					phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
++					slave->hw_intf->ops.enable_timing(slave->hw_intf, 1);
++				} else {
++					slave->hw_intf->ops.enable_timing(slave->hw_intf, 1);
++					phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
++				}
++			} else {
++				phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
++			}
 +			spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 +		}
  		phys_enc->enable_state = DPU_ENC_ENABLED;
@@ -19933,13 +20251,13 @@
 +	  .intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 25) },
 +	{ .name = "intf_1", .id = INTF_1, .base = 0x35000, .len = 0x300,
 +	  .type = INTF_DSI,
-+	  .controller_id = MSM_DSI_CONTROLLER_0, .prog_fetch_lines_worst_case = 129, /* U880 bootloader: fetch 29 lines into the 30-line VFP */
++	  .controller_id = MSM_DSI_CONTROLLER_0, .prog_fetch_lines_worst_case = 129, /* U880 bootloader + Android: fetch 29 lines into the 30-line VFP */
 +	  .intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 26),
 +	  .intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 27),
 +	  .intr_tear_rd_ptr = DPU_IRQ_IDX(MDP_INTF1_TEAR_INTR, 2) },
 +	{ .name = "intf_2", .id = INTF_2, .base = 0x36000, .len = 0x300,
 +	  .type = INTF_DSI,
-+	  .controller_id = MSM_DSI_CONTROLLER_1, .prog_fetch_lines_worst_case = 129, /* U880 bootloader: fetch 29 lines into the 30-line VFP */
++	  .controller_id = MSM_DSI_CONTROLLER_1, .prog_fetch_lines_worst_case = 129, /* U880 bootloader + Android: fetch 29 lines into the 30-line VFP */
 +	  .intr_underrun = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 28),
 +	  .intr_vsync = DPU_IRQ_IDX(MDP_SSPP_TOP0_INTR, 29),
 +	  .intr_tear_rd_ptr = DPU_IRQ_IDX(MDP_INTF2_TEAR_INTR, 2) },
@@ -82728,7 +83046,17 @@
  	if (lanes == 0) {
  		pr_err("%s: forcing mdss_dsi lanes to 1\n", __func__);
  		lanes = 1;
-@@ -1108,6 +1112,16 @@
+@@ -911,7 +915,8 @@
+ 
+ 	dsi_write(msm_host, REG_DSI_CLK_CTRL, DSI_CLK_CTRL_ENABLE_CLKS);
+ 
+-	data = DSI_CTRL_CLK_EN;
++	/* C-PHY has no clock lane: the vendor driver (Android, U880) runs with CLK_EN clear (DSI_CTRL 0x73). */
++	data = (msm_host->cphy_mode && (u880_dbg & 0x100)) ? 0 : DSI_CTRL_CLK_EN;
+ 
+ 	DBG("lane number=%d", msm_host->lanes);
+ 	data |= ((DSI_CTRL_LANE0 << msm_host->lanes) - DSI_CTRL_LANE0);
+@@ -1108,6 +1113,16 @@
  		dsi_write(msm_host, REG_DSI_ACTIVE_VSYNC_VPOS,
  			DSI_ACTIVE_VSYNC_VPOS_START(vs_start) |
  			DSI_ACTIVE_VSYNC_VPOS_END(vs_end));
@@ -82745,7 +83073,107 @@
  	} else {		/* command mode */
  		if (msm_host->dsc)
  			dsi_update_dsc_timing(msm_host, true);
-@@ -1631,6 +1645,8 @@
+@@ -1576,6 +1591,85 @@
+ 	return len;
+ }
+ 
++/*
++ * U880 (C-PHY video panel): vendor dsi_display_handle_fifo_overflow(). A FIFO overflow leaves the lane transmitters
++ * stuck in LP-stop (DSI lane status 0x1f1f, Android 0x1f18). Recover like the vendor, for BOTH links together: video off,
++ * controller soft reset with the clocks forced on, PHY lane reset (LANE_CTRL3 0x1f -> 0), wait until the DPU interface
++ * line counter is in the active region, then video on again on both links.
++ */
++static struct msm_dsi_host *u880_hosts[2];
++static DEFINE_MUTEX(u880_recover_lock);
++
++static void dsi_u880_reset_link(struct msm_dsi_host *h, u32 ctrl)
++{
++	void __iomem *phy = ioremap(h->id ? 0xae97000 : 0xae95000, 0x200);
++	int i;
++
++	dsi_write(h, REG_DSI_CTRL, ctrl & ~DSI_CTRL_VID_MODE_EN);
++	wmb();
++	dsi_write(h, REG_DSI_CTRL, ctrl & ~(DSI_CTRL_ENABLE | DSI_CTRL_VID_MODE_EN));
++	wmb();
++	dsi_write(h, REG_DSI_CLK_CTRL, DSI_CLK_CTRL_ENABLE_CLKS);
++	dsi_write(h, REG_DSI_RESET, 1);
++	wmb();
++	dsi_write(h, REG_DSI_RESET, 0);
++	wmb();
++	dsi_write(h, REG_DSI_CTRL, ctrl & ~DSI_CTRL_VID_MODE_EN);
++	wmb();
++	if (!phy)
++		return;
++	for (i = 0; i < 10; i++) {
++		writel(0x1f, phy + 0xac);	/* CMN_LANE_CTRL3 */
++		wmb();
++		udelay(200);
++		if (readl(phy + 0x14c) == 0x1f)	/* CMN_LANE_STATUS1 */
++			break;
++	}
++	writel(0, phy + 0xac);
++	wmb();
++	iounmap(phy);
++}
++
++static void dsi_u880_video_fifo_recover(struct msm_dsi_host *msm_host)
++{
++	const u32 run = DSI_CTRL_ENABLE | DSI_CTRL_VID_MODE_EN;
++	struct msm_dsi_host *h;
++	void __iomem *intf;
++	u32 ctrl[2] = {}, line = 0;
++	int i, n;
++
++	if (!mutex_trylock(&u880_recover_lock))
++		return;	/* the other link's worker is already recovering both */
++	for (i = 0; i < 2; i++) {
++		h = u880_hosts[i];
++		if (!h || !h->power_on || !h->enabled)
++			goto out;
++	}
++	for (i = 0; i < 2; i++) {
++		ctrl[i] = dsi_read(u880_hosts[i], REG_DSI_CTRL) | run;
++		dsi_u880_reset_link(u880_hosts[i], ctrl[i]);
++	}
++	/* vendor: wait for the display line count to be in the active area (INTF1 LINE_COUNT, vsw+vbp = 100 lines) */
++	intf = ioremap(0xae36000, 0x100);
++	for (n = 0; intf && n < 400; n++) {
++		line = readl(intf + 0xb0) & 0xffff;
++		if (line > 120 && line < 2400)
++			break;
++		usleep_range(50, 100);
++	}
++	if (intf)
++		iounmap(intf);
++	for (i = 0; i < 2; i++) {
++		dsi_write(u880_hosts[i], REG_DSI_CTRL, ctrl[i]);
++		wmb();
++	}
++	for (i = 0; i < 2; i++)
++		dsi_write(u880_hosts[i], REG_DSI_FIFO_STATUS, dsi_read(u880_hosts[i], REG_DSI_FIFO_STATUS));
++	pr_info_ratelimited("DSI: both links recovered (INTF1 line %u)\n", line);
++out:
++	mutex_unlock(&u880_recover_lock);
++}
++
+ static void dsi_err_worker(struct work_struct *work)
+ {
+ 	struct msm_dsi_host *msm_host =
+@@ -1583,7 +1677,12 @@
+ 	u32 status = msm_host->err_work_state;
+ 
+ 	pr_err_ratelimited("%s: status=%x\n", __func__, status);
+-	if (status & DSI_ERR_STATE_MDP_FIFO_UNDERFLOW)
++	if (msm_host->cphy_mode && (msm_host->mode_flags & MIPI_DSI_MODE_VIDEO) &&
++	    (status & (DSI_ERR_STATE_FIFO | DSI_ERR_STATE_MDP_FIFO_UNDERFLOW))) {
++		if (u880_dbg & 0x4)
++			dsi_u880_video_fifo_recover(msm_host);
++	}
++	else if (status & DSI_ERR_STATE_MDP_FIFO_UNDERFLOW)
+ 		dsi_sw_reset(msm_host);
+ 
+ 	/* It is safe to clear here because error irq is disabled. */
+@@ -1631,6 +1730,8 @@
  			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP0 |
  			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP1)) {
  		dsi_write(msm_host, REG_DSI_DLN0_PHY_ERR, status);
@@ -82754,7 +83182,7 @@
  		msm_host->err_work_state |= DSI_ERR_STATE_DLN0_PHY;
  	}
  }
-@@ -1680,6 +1696,14 @@
+@@ -1680,6 +1781,14 @@
  {
  	/* disable dsi error interrupt */
  	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_ERROR, 0);
@@ -82769,7 +83197,7 @@
  
  	dsi_clk_status(msm_host);
  	dsi_fifo_status(msm_host);
-@@ -1687,6 +1711,9 @@
+@@ -1687,6 +1796,9 @@
  	dsi_timeout_status(msm_host);
  	dsi_status(msm_host);
  	dsi_dln0_phy_err(msm_host);
@@ -82779,30 +83207,243 @@
  
  	queue_work(msm_host->workqueue, &msm_host->err_work);
  }
-@@ -1922,6 +1949,23 @@
+@@ -2443,6 +2555,24 @@
+ {
+ 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
  
- 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
- 	dsc->line_buf_depth = dsc->bits_per_component + 1;
++	if (msm_host->cphy_mode && msm_host->id < 2) {
++		u880_hosts[msm_host->id] = msm_host;
++		/* vendor dsi_display_toggle_resync_fifo + reset_clk_en_sel, after the link clocks run (switch 0x2000) */
++		if (u880_dbg & 0x2000) {
++			void __iomem *phy = ioremap(msm_host->id ? 0xae97000 : 0xae95000, 0x100);
 +
-+	/*
-+	 * U880 C-PHY panel: the Novatek decoder is configured (stock register PPS 0x91) with the vendor's DSC values:
-+	 * first_line_bpg_offset 13 (-> nfl_bpg_offset 1402, scale_increment_interval 555) and initial_dec_delay 690.
-+	 */
-+	if (msm_host->cphy_mode) {
-+		struct device_node *panel = of_graph_get_remote_node(msm_host->pdev->dev.of_node, 1, -1);
-+		bool u880 = of_device_is_compatible(panel, "alldocube,u880-panel");
-+
-+		of_node_put(panel);
-+		if (u880) {
-+			dsc->first_line_bpg_offset = 13;
-+			ret = drm_dsc_compute_rc_parameters(dsc);
-+			dsc->initial_dec_delay = 690;
-+			return ret;
++			if (phy) {
++				writel(0x00, phy + 0x1c);	/* CMN_RBUF_CTRL */
++				wmb();
++				writel(0x01, phy + 0x1c);
++				wmb();
++				writel(readl(phy + 0x14) & ~BIT(4), phy + 0x14);	/* CMN_CLK_CFG1: CLK_EN_SEL */
++				wmb();
++				iounmap(phy);
++			}
 +		}
 +	}
++
+ 	dsi_op_mode_config(msm_host,
+ 		!!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO), true);
  
- 	return drm_dsc_compute_rc_parameters(dsc);
+@@ -2708,6 +2838,19 @@
+ 				DSI_TEST_PATTERN_GEN_CMD_STREAM0_TRIGGER_SW_TRIGGER);
  }
+ 
++/* U880 bring-up: echo <0|1> > /sys/module/msm/parameters/u880_tpg starts the DSI test pattern generator on that link. */
++static int u880_tpg_set(const char *val, const struct kernel_param *kp)
++{
++	unsigned int link;
++
++	if (kstrtouint(val, 0, &link) || link > 1 || !u880_hosts[link] || !u880_hosts[link]->enabled)
++		return -EINVAL;
++	msm_dsi_host_test_pattern_en(&u880_hosts[link]->base);
++	return 0;
++}
++static const struct kernel_param_ops u880_tpg_ops = { .set = u880_tpg_set };
++module_param_cb(u880_tpg, &u880_tpg_ops, NULL, 0200);
++
+ struct drm_dsc_config *msm_dsi_host_get_dsc_config(struct mipi_dsi_host *host)
+ {
+ 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
+--- a/drivers/gpu/drm/msm/dsi/dsi_manager.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_manager.c
+@@ -4,6 +4,8 @@
+  */
+ 
+ #include "drm/drm_bridge_connector.h"
++#include <drm/drm_panel.h>
++#include <linux/of_graph.h>
+ 
+ #include "msm_kms.h"
+ #include "dsi.h"
+@@ -198,6 +200,9 @@
+ struct dsi_bridge {
+ 	struct drm_bridge base;
+ 	int id;
++	struct drm_panel *o82_panel;
++	bool powered;
++	bool video_enabled;
+ };
+ 
+ #define to_dsi_bridge(x) container_of(x, struct dsi_bridge, base)
+@@ -275,7 +280,7 @@
+ 	dsi_mgr_phy_disable(id);
+ }
+ 
+-static void dsi_mgr_bridge_pre_enable(struct drm_bridge *bridge)
++static int dsi_mgr_bridge_enable_hosts(struct drm_bridge *bridge)
+ {
+ 	int id = dsi_mgr_bridge_get_id(bridge);
+ 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
+@@ -283,18 +288,6 @@
+ 	struct mipi_dsi_host *host = msm_dsi->host;
+ 	bool is_bonded_dsi = IS_BONDED_DSI();
+ 	int ret;
+-
+-	DBG("id=%d", id);
+-
+-	/* Do nothing with the host if it is slave-DSI in case of bonded DSI */
+-	if (is_bonded_dsi && !IS_MASTER_DSI_LINK(id))
+-		return;
+-
+-	ret = dsi_mgr_bridge_power_on(bridge);
+-	if (ret) {
+-		dev_err(&msm_dsi->pdev->dev, "Power on failed: %d\n", ret);
+-		return;
+-	}
+ 
+ 	ret = msm_dsi_host_enable(host);
+ 	if (ret) {
+@@ -310,12 +303,72 @@
+ 		}
+ 	}
+ 
+-	return;
++	return 0;
+ 
+ host1_en_fail:
+ 	msm_dsi_host_disable(host);
+ host_en_fail:
+-	dsi_mgr_bridge_power_off(bridge);
++	return ret;
++}
++
++static void dsi_mgr_bridge_pre_enable(struct drm_bridge *bridge)
++{
++	struct dsi_bridge *dsi_bridge = to_dsi_bridge(bridge);
++	int id = dsi_mgr_bridge_get_id(bridge);
++	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
++	int ret;
++
++	if (IS_BONDED_DSI() && !IS_MASTER_DSI_LINK(id))
++		return;
++
++	ret = dsi_mgr_bridge_power_on(bridge);
++	if (ret) {
++		dev_err(&msm_dsi->pdev->dev, "Power on failed: %d\n", ret);
++		return;
++	}
++
++	if (dsi_bridge->o82_panel) {
++		/* O82 reset, ON commands and PPS must precede video traffic. */
++		dsi_bridge->powered = true;
++		return;
++	}
++
++	if (dsi_mgr_bridge_enable_hosts(bridge))
++		dsi_mgr_bridge_power_off(bridge);
++}
++
++static void dsi_mgr_bridge_enable(struct drm_bridge *bridge)
++{
++	struct dsi_bridge *dsi_bridge = to_dsi_bridge(bridge);
++
++	if (!dsi_bridge->o82_panel || !dsi_bridge->powered ||
++	    !dsi_bridge->o82_panel->prepared)
++		return;
++
++	if (!dsi_mgr_bridge_enable_hosts(bridge))
++		dsi_bridge->video_enabled = true;
++}
++
++static void dsi_mgr_bridge_disable(struct drm_bridge *bridge)
++{
++	struct dsi_bridge *dsi_bridge = to_dsi_bridge(bridge);
++	int id = dsi_mgr_bridge_get_id(bridge);
++	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
++	struct msm_dsi *msm_dsi1 = dsi_mgr_get_dsi(DSI_1);
++	int ret;
++
++	if (!dsi_bridge->video_enabled)
++		return;
++
++	if (IS_BONDED_DSI() && msm_dsi1) {
++		ret = msm_dsi_host_disable(msm_dsi1->host);
++		if (ret)
++			pr_err("%s: host1 disable failed, %d\n", __func__, ret);
++	}
++	ret = msm_dsi_host_disable(msm_dsi->host);
++	if (ret)
++		pr_err("%s: host %d disable failed, %d\n", __func__, id, ret);
++	dsi_bridge->video_enabled = false;
+ }
+ 
+ void msm_dsi_manager_tpg_enable(void)
+@@ -333,6 +386,7 @@
+ 
+ static void dsi_mgr_bridge_post_disable(struct drm_bridge *bridge)
+ {
++	struct dsi_bridge *dsi_bridge = to_dsi_bridge(bridge);
+ 	int id = dsi_mgr_bridge_get_id(bridge);
+ 	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
+ 	struct msm_dsi *msm_dsi1 = dsi_mgr_get_dsi(DSI_1);
+@@ -349,6 +403,16 @@
+ 	 */
+ 	if (is_bonded_dsi && !IS_MASTER_DSI_LINK(id))
+ 		goto disable_phy;
++
++	if (dsi_bridge->o82_panel) {
++		if (dsi_bridge->powered) {
++			dsi_mgr_bridge_disable(bridge);
++			msm_dsi_phy_pll_save_state(msm_dsi->phy);
++			dsi_mgr_bridge_power_off(bridge);
++			dsi_bridge->powered = false;
++		}
++		return;
++	}
+ 
+ 	ret = msm_dsi_host_disable(host);
+ 	if (ret)
+@@ -447,11 +511,32 @@
+ static const struct drm_bridge_funcs dsi_mgr_bridge_funcs = {
+ 	.attach = dsi_mgr_bridge_attach,
+ 	.pre_enable = dsi_mgr_bridge_pre_enable,
++	.enable = dsi_mgr_bridge_enable,
++	.disable = dsi_mgr_bridge_disable,
+ 	.post_disable = dsi_mgr_bridge_post_disable,
+ 	.mode_set = dsi_mgr_bridge_mode_set,
+ 	.mode_valid = dsi_mgr_bridge_mode_valid,
+ };
+ 
++static struct drm_panel *dsi_mgr_o82_panel(struct msm_dsi *msm_dsi)
++{
++	struct device_node *node;
++	struct drm_panel *panel = NULL;
++
++	/* uke O82 or the U880 BOE panel: panel ON + PPS before video (vendor dsi_display order) */
++	if (!(msm_dsi_host_get_mode_flags(msm_dsi->host) & MIPI_DSI_MODE_VIDEO))
++		return NULL;
++
++	node = of_graph_get_remote_node(msm_dsi->pdev->dev.of_node, 1, -1);
++	if ((of_machine_is_compatible("xiaomi,uke") && of_machine_is_compatible("qcom,sm7675") &&
++	     (of_device_is_compatible(node, "xiaomi,o82-36-02-0a") ||
++	      of_device_is_compatible(node, "xiaomi,o82-42-02-0b"))) ||
++	    (of_device_is_compatible(node, "alldocube,u880-panel") && (u880_dbg & 0x40)))
++		panel = of_drm_find_panel(node);
++	of_node_put(node);
++	return panel;
++}
++
+ /* initialize bridge */
+ int msm_dsi_manager_connector_init(struct msm_dsi *msm_dsi,
+ 				   struct drm_encoder *encoder)
+@@ -468,6 +553,9 @@
+ 		return PTR_ERR(dsi_bridge);
+ 
+ 	dsi_bridge->id = msm_dsi->id;
++	dsi_bridge->o82_panel = dsi_mgr_o82_panel(msm_dsi);
++	if (IS_ERR(dsi_bridge->o82_panel))
++		return PTR_ERR(dsi_bridge->o82_panel);
+ 
+ 	bridge = &dsi_bridge->base;
+ 
 --- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
 +++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
 @@ -577,6 +577,9 @@
@@ -82817,7 +83458,36 @@
  	{ .compatible = "qcom,kaanapali-dsi-phy-3nm",
 --- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
 +++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_7nm.c
-@@ -1187,6 +1187,26 @@
+@@ -113,7 +113,7 @@
+ static void dsi_pll_enable_pll_bias(struct dsi_pll_7nm *pll);
+ static void dsi_pll_disable_pll_bias(struct dsi_pll_7nm *pll);
+ 
+-static void dsi_pll_setup_config(struct dsi_pll_config *config)
++static void dsi_pll_setup_config(struct dsi_pll_config *config, struct dsi_pll_7nm *pll)
+ {
+ 	config->ssc_freq = 31500;
+ 	config->ssc_offset = 4800;
+@@ -122,6 +122,10 @@
+ 	/* TODO: ssc enable */
+ 	config->enable_ssc = false;
+ 	config->ssc_center = 0;
++	/* U880: Android and the bootloader run the C-PHY PLL with down-spread SSC (stock qcom,dsi-pll-ssc-en). */
++	if (pll->phy->cphy_mode &&
++	    of_device_is_compatible(pll->phy->pdev->dev.of_node, "qcom,sm7675-dsi-phy-4nm"))
++		config->enable_ssc = !!(u880_dbg & 0x10);
+ }
+ 
+ static void dsi_pll_calc_dec_frac(struct dsi_pll_7nm *pll, struct dsi_pll_config *config)
+@@ -356,7 +360,7 @@
+ 
+ 	pll_7nm->vco_current_rate = rate;
+ 
+-	dsi_pll_setup_config(&config);
++	dsi_pll_setup_config(&config, pll_7nm);
+ 
+ 	dsi_pll_calc_dec_frac(pll_7nm, &config);
+ 
+@@ -1187,6 +1191,57 @@
  	/* DSI lane settings */
  	dsi_phy_hw_v4_0_lane_settings(phy);
  
@@ -82828,17 +83498,48 @@
 +	 * (qcom,mdss-dsi-panel-phy-timings = 00 00 00 00 1f 1a 05 19 04 02 04 ...).
 +	 */
 +	if (phy->cphy_mode && of_device_is_compatible(phy->pdev->dev.of_node, "qcom,sm7675-dsi-phy-4nm")) {
-+		writel(0x88, base + REG_DSI_7nm_PHY_CMN_GLBL_HSTX_STR_CTRL_0);
-+		writel(0x00, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_0);
-+		writel(0x00, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_1);
-+		writel(0x3d, base + REG_DSI_7nm_PHY_CMN_GLBL_RESCODE_OFFSET_TOP_CTRL);
++		if (u880_dbg & 0x400) {
++			writel(0x88, base + REG_DSI_7nm_PHY_CMN_GLBL_HSTX_STR_CTRL_0);
++			writel(0x00, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_0);
++			writel(0x00, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_1);
++			writel(0x3d, base + REG_DSI_7nm_PHY_CMN_GLBL_RESCODE_OFFSET_TOP_CTRL);
++		}
 +		writel(0x04, base + REG_DSI_7nm_PHY_CMN_LANE_CFG1);
 +		writel(0x00, base + REG_DSI_7nm_PHY_CMN_CTRL_2);
-+		writel(0x1f, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_4);
-+		writel(0x1a, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_5);
-+		writel(0x05, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_6);
-+		writel(0x19, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_7);
-+		writel(0x04, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_8);
++		/*
++		 * Bootloader and Android run PHY1 with 27 2b 0a 19 0a, but here those blank/garble the panel (runs 15, 23),
++		 * so both PHYs get PHY0's timings.
++		 */
++		{
++			/* 0x20: Android's per-PHY timings by address; 0x20000: the same set swapped (27 2b 0a .. 0a on PHY0) */
++			bool t1 = (u880_dbg & 0x20000) ? !phy->id : (phy->id && (u880_dbg & 0x20));
++
++			writel(t1 ? 0x27 : 0x1f, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_4);
++			writel(t1 ? 0x2b : 0x1a, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_5);
++			writel(t1 ? 0x0a : 0x05, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_6);
++			writel(0x19, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_7);
++			writel(t1 ? 0x0a : 0x04, base + REG_DSI_7nm_PHY_CMN_TIMING_CTRL_8);
++		}
++		/*
++		 * PLL bias muxes: Android 0xc0 on both PLLs. Mainline's bonded refcount skips the bias write (see uke 0032 /
++		 * upstream 93c97bc8d85d), leaving 0. Also match Android's PHY1 CLK_CFG0 (0x11).
++		 */
++		if (u880_dbg & 0x80) {
++			writel(0xc0, phy->pll_base + REG_DSI_7nm_PHY_PLL_SYSTEM_MUXES);
++			if (phy->id)
++				writel(0x11, base + REG_DSI_7nm_PHY_CMN_CLK_CFG0);
++		}
++		/* Android and the bootloader both run with PLL_OUTDIV_RATE bit 2 set (value 5); the clk divider owns bits 1:0. */
++		if (u880_dbg & 0x8)
++			writel(readl(phy->pll_base + REG_DSI_7nm_PHY_PLL_PLL_OUTDIV_RATE) | BIT(2),
++			       phy->pll_base + REG_DSI_7nm_PHY_PLL_PLL_OUTDIV_RATE);
++		/* C-PHY uses 3 lanes: leave lane 3 / clock lane at the vendor values (LN_CFG2 0, LN_TX_DCTRL 6) */
++		if (u880_dbg & 0x800) {
++			writel(0x00, base + 0x388);
++			writel(0x06, base + 0x398);
++			writel(0x00, base + 0x408);
++			writel(0x00, base + 0x418);
++		}
 +	}
 +
  	DBG("DSI%d PHY enabled", phy->id);
