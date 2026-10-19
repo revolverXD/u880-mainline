@@ -84586,7 +84586,43 @@
  
  	dsi_pll_calc_dec_frac(pll_7nm, &config);
  
-@@ -1187,6 +1191,57 @@
+@@ -514,6 +518,35 @@
+ 	if (rc) {
+ 		pr_err("PLL(%d) lock failed\n", pll_7nm->phy->id);
+ 		goto error;
++	}
++
++	/*
++	 * U880: the VCO band calibration is nondeterministic. 0x5e (what Android ends up with) gives a working link 1,
++	 * 0x55 makes the panel fall back to its internal picture on every boot-lottery loss. Cycle the PLL until it
++	 * lands on 0x5e. Switch 0x10000000 disables this.
++	 */
++	if ((of_machine_is_compatible("qcom,cliffsp") || of_machine_is_compatible("alldocube,u880")) && !(u880_dbg & 0x10000000) && !pll_7nm->phy->id) {
++		int tries;
++
++		for (tries = 0; tries < 10; tries++) {
++			u32 cal = readl(pll_7nm->phy->pll_base + 0x1b8);	/* PLL_BAND_SEL_CAL */
++
++			if (cal == 0x5e)
++				break;
++			pr_info("PLL(%d) band cal 0x%02x != 0x5e, restarting PLL (try %d)\n", pll_7nm->phy->id, cal, tries + 1);
++			writel(0, pll_7nm->phy->base + REG_DSI_7nm_PHY_CMN_PLL_CNTRL);
++			wmb();
++			usleep_range(200, 300);
++			writel(BIT(0), pll_7nm->phy->base + REG_DSI_7nm_PHY_CMN_PLL_CNTRL);
++			wmb();
++			rc = dsi_pll_7nm_lock_status(pll_7nm);
++			if (rc) {
++				pr_err("PLL(%d) lock failed after restart\n", pll_7nm->phy->id);
++				goto error;
++			}
++		}
++		pr_info("PLL(%d) band cal 0x%02x after %d restart(s)\n", pll_7nm->phy->id,
++			readl(pll_7nm->phy->pll_base + 0x1b8), tries);
+ 	}
+ 
+ 	pll_7nm->phy->pll_on = true;
+@@ -1187,6 +1220,57 @@
  	/* DSI lane settings */
  	dsi_phy_hw_v4_0_lane_settings(phy);
  
