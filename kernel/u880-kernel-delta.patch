@@ -5048,7 +5048,7 @@
 +MODULE_LICENSE("GPL v2");
 --- /dev/null
 +++ b/drivers/clk/qcom/gpucc-cliffs.c
-@@ -0,0 +1,690 @@
+@@ -0,0 +1,723 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -5098,6 +5098,35 @@
 +
 +static const struct pll_vco lucid_ole_vco[] = {
 +	{ 249600000, 2300000000, 0 },
++};
++
++/* Lucid OLE analog settings as in upstream gpucc-sm8550/sm8650; L/alpha from the 510 MHz / 440 MHz comments below. */
++static const struct alpha_pll_config gpu_cc_pll0_config = {
++	.l = 0x1a,
++	.alpha = 0x9000,
++	.config_ctl_val = 0x20485699,
++	.config_ctl_hi_val = 0x00182261,
++	.config_ctl_hi1_val = 0x82aa299c,
++	.test_ctl_val = 0x00000000,
++	.test_ctl_hi_val = 0x00000003,
++	.test_ctl_hi1_val = 0x00009000,
++	.test_ctl_hi2_val = 0x00000034,
++	.user_ctl_val = 0x00000000,
++	.user_ctl_hi_val = 0x00000005,
++};
++
++static const struct alpha_pll_config gpu_cc_pll1_config = {
++	.l = 0x16,
++	.alpha = 0xeaaa,
++	.config_ctl_val = 0x20485699,
++	.config_ctl_hi_val = 0x00182261,
++	.config_ctl_hi1_val = 0x82aa299c,
++	.test_ctl_val = 0x00000000,
++	.test_ctl_hi_val = 0x00000003,
++	.test_ctl_hi1_val = 0x00009000,
++	.test_ctl_hi2_val = 0x00000034,
++	.user_ctl_val = 0x00000000,
++	.user_ctl_hi_val = 0x00000005,
 +};
 +
 +/* 510MHz Configuration */
@@ -5693,6 +5722,10 @@
 +	ret = clk_vdd_proxy_vote(&pdev->dev, &gpu_cc_cliffs_desc);
 +	if (ret)
 +		return ret;
++
++	/* Without this the first GMU clk_set_rate() hits an unconfigured PLL: "Lucid PLL latch failed" (antigravity analysis). */
++	clk_lucid_ole_pll_configure(&gpu_cc_pll0, regmap, &gpu_cc_pll0_config);
++	clk_lucid_ole_pll_configure(&gpu_cc_pll1, regmap, &gpu_cc_pll1_config);
 +
 +	gpu_cc_cliffs_proxy_active = true;
 +	ret = qcom_cc_really_probe(&pdev->dev, &gpu_cc_cliffs_desc, regmap);
@@ -20508,7 +20541,7 @@
  DECLARE_FAULT_ATTR(fail_gem_iova);
 --- a/drivers/gpu/drm/msm/msm_drv.h
 +++ b/drivers/gpu/drm/msm/msm_drv.h
-@@ -545,4 +545,14 @@
+@@ -545,4 +545,16 @@
  
  bool msm_gpu_no_components(void);
  
@@ -20519,6 +20552,8 @@
 + * 0x200 uke single-CTL split flush, 0x400 vendor PHY strength values, 0x800 lane-3/clock-lane vendor values,
 + * 0x1000 DSC without SPLIT_PANEL (Android), 0x2000 PHY resync FIFO toggle + CLK_EN_SEL clear before video,
 + * 0x4000 restore bootloader-only INTF bits, 0x8000 start slave+master timing engines back to back.
++ * 0x40000 vendor hardware DSI command broadcast (slave armed, master triggers), 0x80000 C-PHY resync FIFO toggle
++ * (CLK_EN_SEL kept) + DSI soft reset after the link clocks run.
 + */
 +extern unsigned int u880_dbg;
 +
@@ -84076,7 +84111,16 @@
  
  	queue_work(msm_host->workqueue, &msm_host->err_work);
  }
-@@ -2359,7 +2471,8 @@
+@@ -2210,6 +2322,8 @@
+ 
+ 	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_CMD_DMA_DONE, 0);
+ 	dsi_write(msm_host, REG_DSI_CTRL, msm_host->dma_cmd_ctrl_restore);
++	if (u880_dbg & 0x40000)
++		msm_dsi_host_u880_broadcast(host, false, false);
+ 
+ 	if (!(msg->flags & MIPI_DSI_MSG_USE_LPM))
+ 		dsi_set_tx_power_mode(1, msm_host);
+@@ -2359,11 +2473,24 @@
  		ret = dsi_long_read_resp(buf, msg);
  		break;
  	default:
@@ -84086,7 +84130,23 @@
  		ret = 0;
  	}
  
-@@ -2442,6 +2555,24 @@
+ 	return ret;
++}
++
++/* U880 switch 0x40000: vendor hardware command broadcast (CMD_DMA_CTRL bit 31 BROADCAST_EN, bit 30 BROADCAST_MASTER) */
++void msm_dsi_host_u880_broadcast(struct mipi_dsi_host *host, bool en, bool master)
++{
++	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
++	u32 v = dsi_read(msm_host, REG_DSI_CMD_DMA_CTRL) & ~(BIT(31) | BIT(30));
++
++	if (en)
++		v |= BIT(31) | (master ? BIT(30) : 0);
++	dsi_write(msm_host, REG_DSI_CMD_DMA_CTRL, v);
++	wmb();
+ }
+ 
+ void msm_dsi_host_cmd_xfer_commit(struct mipi_dsi_host *host, u32 dma_base,
+@@ -2442,6 +2569,54 @@
  int msm_dsi_host_enable(struct mipi_dsi_host *host)
  {
  	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
@@ -84107,11 +84167,41 @@
 +				iounmap(phy);
 +			}
 +		}
++		/*
++		 * Switch 0x80000: vendor order for C-PHY - resync FIFO toggle with CLK_EN_SEL kept (dsi_phy_hw_v5_0.c,
++		 * dsi_display.c skips reset_clk_en_sel for C-PHY), then a controller soft reset with DSI_CTRL[2:0] cleared
++		 * and restored (dsi_ctrl_hw_cmn.c soft_reset), all after the link clocks run.
++		 */
++		if (u880_dbg & 0x80000) {
++			void __iomem *phy = ioremap(msm_host->id ? 0xae97000 : 0xae95000, 0x100);
++			u32 ctrl = dsi_read(msm_host, REG_DSI_CTRL);
++			u32 clk = dsi_read(msm_host, REG_DSI_CLK_CTRL);
++
++			if (phy) {
++				writel(0x00, phy + 0x1c);	/* CMN_RBUF_CTRL */
++				wmb();
++				writel(0x01, phy + 0x1c);
++				wmb();
++				iounmap(phy);
++			}
++			dsi_write(msm_host, REG_DSI_CTRL, ctrl & ~0x7);
++			wmb();
++			dsi_write(msm_host, REG_DSI_CLK_CTRL, clk | DSI_CLK_CTRL_ENABLE_CLKS);
++			wmb();
++			dsi_write(msm_host, REG_DSI_RESET, 1);
++			wmb();
++			udelay(1);
++			dsi_write(msm_host, REG_DSI_RESET, 0);
++			wmb();
++			dsi_write(msm_host, REG_DSI_CLK_CTRL, clk);
++			dsi_write(msm_host, REG_DSI_CTRL, ctrl);
++			wmb();
++		}
 +	}
  
  	dsi_op_mode_config(msm_host,
  		!!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO), true);
-@@ -2708,6 +2839,19 @@
+@@ -2708,6 +2883,19 @@
  				DSI_TEST_PATTERN_GEN_CMD_STREAM0_TRIGGER_SW_TRIGGER);
  }
  
@@ -84323,6 +84413,32 @@
  
  	bridge = &dsi_bridge->base;
  
+@@ -543,6 +631,15 @@
+ 	if (IS_SYNC_NEEDED() && (id == DSI_0))
+ 		return false;
+ 
++	/* U880 switch 0x40000: vendor order - arm the slave, then the master trigger starts both links together */
++	if (IS_SYNC_NEEDED() && msm_dsi0 && (u880_dbg & 0x40000)) {
++		msm_dsi_host_u880_broadcast(msm_dsi0->host, true, true);
++		msm_dsi_host_u880_broadcast(host, true, false);
++		msm_dsi_host_cmd_xfer_commit(host, dma_base, len);
++		msm_dsi_host_cmd_xfer_commit(msm_dsi0->host, dma_base, len);
++		return true;
++	}
++
+ 	if (IS_SYNC_NEEDED() && msm_dsi0)
+ 		msm_dsi_host_cmd_xfer_commit(msm_dsi0->host, dma_base, len);
+ 
+--- a/drivers/gpu/drm/msm/dsi/dsi.h
++++ b/drivers/gpu/drm/msm/dsi/dsi.h
+@@ -66,6 +66,7 @@
+ 					const struct mipi_dsi_msg *msg);
+ int msm_dsi_host_cmd_rx(struct mipi_dsi_host *host,
+ 					const struct mipi_dsi_msg *msg);
++void msm_dsi_host_u880_broadcast(struct mipi_dsi_host *host, bool en, bool master);
+ void msm_dsi_host_cmd_xfer_commit(struct mipi_dsi_host *host,
+ 					u32 dma_base, u32 len);
+ int msm_dsi_host_enable(struct mipi_dsi_host *host);
 --- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
 +++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy.c
 @@ -577,6 +577,9 @@
@@ -87038,6 +87154,29 @@
 +			      u32 update_mask, int ch);
 +
 +#endif /* __RPM_INTERNAL_H__ */
+--- a/drivers/soc/qcom/smp2p.c
++++ b/drivers/soc/qcom/smp2p.c
+@@ -194,10 +194,16 @@
+ 
+ 	restart_done = in->flags & BIT(SMP2P_FLAGS_RESTART_DONE_BIT);
+ 	restart = restart_done != smp2p->ssr_ack;
+-	list_for_each_entry(entry, &smp2p->inbound, node) {
+-		if (!entry->value)
+-			continue;
+-		entry->last_value = 0;
++	/*
++	 * U880: only forget the previous values on a real remote restart. Doing it on every parent interrupt made each
++	 * bit the ADSP keeps high (ready, handover) look like a new rising edge ~5 times a second.
++	 */
++	if (restart) {
++		list_for_each_entry(entry, &smp2p->inbound, node) {
++			if (!entry->value)
++				continue;
++			entry->last_value = 0;
++		}
+ 	}
+ 
+ 	return restart;
 --- a/drivers/soc/qcom/cmd-db.c
 +++ b/drivers/soc/qcom/cmd-db.c
 @@ -338,6 +338,15 @@
