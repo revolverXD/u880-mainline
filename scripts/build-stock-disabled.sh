@@ -253,8 +253,21 @@ otg)
 esac
 echo "USB mode: $USB_MODE"
 
+# 7d Native display (DISP=4): full takeover - MDSS handoff + DPU + bonded C-PHY DSI + BOE panel (stage1/disp4-overlay.dtso).
+# Replaces stages 1-3 (none of their overlays are applied). Kernel: uke providers + panel-alldocube-u880.
+if [ "${DISP:-0}" = 4 ]; then
+  fdtput -t x $O /u880-backlight phandle 0x7f000202
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp4-overlay.dtso > $S/disp4-overlay.pp.dts
+  dtc -q -@ -I dts -O dtb -o $S/disp4-overlay.dtbo $S/disp4-overlay.pp.dts
+  fdtoverlay -i $O -o $S/dtb2-disabled.disp4.dtb $S/disp4-overlay.dtbo && mv $S/dtb2-disabled.disp4.dtb $O && echo "disp4 overlay applied"
+  fdtput -d $O /soc/clock-controller@af00000 clock-names
+  DISP_STAGED=0
+else
+  DISP_STAGED=${DISP:-0}
+fi
+
 # 7 Display stage 1 (DISP=1): mainline SM8650-variant dispcc on the stock Cliffs display clock controller (stage1/disp-overlay.dtso).
-if [ "${DISP:-0}" -ge 1 ]; then
+if [ "$DISP_STAGED" -ge 1 ]; then
   cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp-overlay.dtso > $S/disp-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp-overlay.dtbo $S/disp-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp.dtb $S/disp-overlay.dtbo && mv $S/dtb2-disabled.disp.dtb $O && echo "disp overlay applied"
@@ -262,14 +275,14 @@ if [ "${DISP:-0}" -ge 1 ]; then
 fi
 
 # 7b Display stage 2 (DISP=2): MDSS + DPU nodes (stage1/disp2-overlay.dtso). Needs kernel patch 0022 and dispcc from stage 1.
-if [ "${DISP:-0}" -ge 2 ]; then
+if [ "$DISP_STAGED" -ge 2 ]; then
   cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp2-overlay.dtso > $S/disp2-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp2-overlay.dtbo $S/disp2-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp2.dtb $S/disp2-overlay.dtbo && mv $S/dtb2-disabled.disp2.dtb $O && echo "disp2 overlay applied"
 fi
 
 # 7c Display stage 3 (DISP=3): DP0 controller + combo PHY + connector graph (stage1/disp3-overlay.dtso). Needs kernel patches 0022/0023.
-if [ "${DISP:-0}" -ge 3 ]; then
+if [ "$DISP_STAGED" -ge 3 ]; then
   cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp3-overlay.dtso > $S/disp3-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp3-overlay.dtbo $S/disp3-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp3.dtb $S/disp3-overlay.dtbo && mv $S/dtb2-disabled.disp3.dtb $O && echo "disp3 overlay applied"

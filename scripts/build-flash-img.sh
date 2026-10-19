@@ -5,7 +5,9 @@ set -e
 M=/home/USER/External/work/src/mainline
 KIMG=$M/linux-7.2.9/arch/arm64/boot/Image
 DTB=$M/stage1/dtb2-disabled.dtb
-EXTRA="regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=sd msm.separate_gpu_kms=1 cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0"
+# Native display (DISP=4): GPU and KMS in one msm DRM device, so no msm.separate_gpu_kms.
+[ "${DISP:-0}" = 4 ] && SEP= || SEP=msm.separate_gpu_kms=1
+EXTRA="regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=sd $SEP cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0"
 python3 /home/USER/External/work/src/LineageOS/system/tools/mkbootimg/mkbootimg.py --header_version 2 \
   --os_version 14.0.0 --os_patch_level 2024-03 --kernel $KIMG \
   --ramdisk $M/stage1/initramfs.cpio.gz --dtb "$DTB" --base 0x0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 \

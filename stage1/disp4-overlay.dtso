@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * U880 display stage 4 (DISP=4): native display. MDSS takes the display over from the bootloader (uke handoff:
+ * VBIF halt, core reset, display SMR 0x1c00/2 release), DPU 10.1 (uke sm7675 catalog), bonded DSI0+DSI1 on C-PHY
+ * (3 trios each), BOE panel driver panel-alldocube-u880. Graph based on uke src/display/sm7675-uke-native-display.dtso.
+ * Supplies from the stock DT: DSI PHY vdds = L2B, DSI ctrl vdda = L4B, panel vddio = L8B. Panel GPIOs: reset 177
+ * (active low), LCD bias enable 19 (enp) / 20 (enn). Backlight = /u880-backlight (phandle 0x7f000202, build script).
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,gcc-cliffs.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,sm8550-dispcc.h>
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/phy/phy.h>
+
+#define DSI_BYTE_PLL_CLK 0
+#define DSI_PIXEL_PLL_CLK 1
+
+&dispcc {
+	compatible = "alldocube,u880-dispcc", "qcom,sm8650-dispcc", "syscon";
+	#power-domain-cells = <1>;
+	clocks = <&rpmhcc RPMH_CXO_CLK>, <&rpmhcc RPMH_CXO_CLK_A>, <&gcc GCC_DISP_AHB_CLK>, <&sleep_clk>,
+		 <&u880_dsi_phy0 DSI_BYTE_PLL_CLK>, <&u880_dsi_phy0 DSI_PIXEL_PLL_CLK>,
+		 <&u880_dsi_phy1 DSI_BYTE_PLL_CLK>, <&u880_dsi_phy1 DSI_PIXEL_PLL_CLK>,
+		 <0>, <0>, <0>, <0>, <0>, <0>, <0>, <0>;
+	vdd_mm-supply = <&VDD_MM_LEVEL>;
+	vdd_mxa-supply = <&VDD_MXA_LEVEL>;
+	status = "okay";
+};
+
+&mmss_noc {
+	status = "okay";
+};
+
+&{/soc} {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	u880_mdss: display-subsystem@ae00000 {
+		compatible = "qcom,sm7675-mdss";
+		reg = <0xae00000 0x1000>, <0xaeb0000 0x1074>;
+		reg-names = "mdss", "handoff-vbif";
+		interrupts = <0 83 4>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		clocks = <&dispcc DISP_CC_MDSS_AHB_CLK>, <&gcc GCC_DISP_AHB_CLK>,
+			 <&gcc GCC_DISP_HF_AXI_CLK>, <&dispcc DISP_CC_MDSS_MDP_CLK>;
+		clock-names = "iface", "bus", "nrt_bus", "core";
+		resets = <&dispcc DISP_CC_MDSS_CORE_BCR>;
+		power-domains = <&dispcc MDSS_GDSC>;
+		interconnects = <&mmss_noc 21 &mc_virt 512>, <&gem_noc 2 &cnoc_cfg 524>;
+		interconnect-names = "mdp0-mem", "cpu-cfg";
+		qcom,display-smmu = <&apps_smmu>;
+		qcom,display-dispcc = <&dispcc>;
+		status = "okay";
+
+		display-controller@ae01000 {
+			compatible = "qcom,sm7675-dpu";
+			reg = <0xae01000 0x8f000>, <0xaeb0000 0x1074>;
+			reg-names = "mdp", "vbif";
+			interrupt-parent = <&u880_mdss>;
+			interrupts = <0>;
+			iommus = <&apps_smmu 0x1c00 0x2>;
+			clocks = <&gcc GCC_DISP_AHB_CLK>, <&gcc GCC_DISP_HF_AXI_CLK>,
+				 <&dispcc DISP_CC_MDSS_AHB_CLK>, <&dispcc DISP_CC_MDSS_MDP_LUT_CLK>,
+				 <&dispcc DISP_CC_MDSS_MDP_CLK>, <&dispcc DISP_CC_MDSS_VSYNC_CLK>;
+			clock-names = "bus", "nrt_bus", "iface", "lut", "core", "vsync";
+			assigned-clocks = <&dispcc DISP_CC_MDSS_VSYNC_CLK>;
+			assigned-clock-rates = <19200000>;
+			operating-points-v2 = <&u880_mdp_opps>;
+
+			u880_mdp_opps: opp-table {
+				compatible = "operating-points-v2";
+				opp-200000000 { opp-hz = /bits/ 64 <200000000>; };
+				opp-342000000 { opp-hz = /bits/ 64 <342000000>; };
+				opp-402000000 { opp-hz = /bits/ 64 <402000000>; };
+				opp-514000000 { opp-hz = /bits/ 64 <514000000>; };
+			};
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 { reg = <0>; u880_dpu_out0: endpoint { remote-endpoint = <&u880_dsi0_in>; }; };
+				port@1 { reg = <1>; u880_dpu_out1: endpoint { remote-endpoint = <&u880_dsi1_in>; }; };
+			};
+		};
+
+		dsi@ae94000 {
+			compatible = "qcom,mdss-dsi-ctrl";
+			reg = <0xae94000 0x400>;
+			reg-names = "dsi_ctrl";
+			interrupt-parent = <&u880_mdss>;
+			interrupts = <4>;
+			clocks = <&dispcc DISP_CC_MDSS_BYTE0_CLK>, <&dispcc DISP_CC_MDSS_BYTE0_INTF_CLK>,
+				 <&dispcc DISP_CC_MDSS_PCLK0_CLK>, <&dispcc DISP_CC_MDSS_ESC0_CLK>,
+				 <&dispcc DISP_CC_MDSS_AHB_CLK>, <&gcc GCC_DISP_HF_AXI_CLK>;
+			clock-names = "byte", "byte_intf", "pixel", "core", "iface", "bus";
+			phys = <&u880_dsi_phy0>;
+			phy-names = "dsi";
+			vdda-supply = <&L4B>;
+			qcom,dual-dsi-mode;
+			qcom,master-dsi;
+			qcom,sync-dual-dsi;
+			assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE0_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK0_CLK_SRC>;
+			assigned-clock-parents = <&u880_dsi_phy0 DSI_BYTE_PLL_CLK>, <&u880_dsi_phy0 DSI_PIXEL_PLL_CLK>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 { reg = <0>; u880_dsi0_in: endpoint { remote-endpoint = <&u880_dpu_out0>; }; };
+				port@1 {
+					reg = <1>;
+					u880_dsi0_out: endpoint {
+						remote-endpoint = <&u880_panel_in0>;
+						data-lanes = <0 1 2>;
+					};
+				};
+			};
+
+			panel@0 {
+				compatible = "alldocube,u880-panel";
+				reg = <0>;
+				vddio-supply = <&L8B>;
+				reset-gpios = <&tlmm 177 GPIO_ACTIVE_LOW>;
+				enp-gpios = <&tlmm 19 GPIO_ACTIVE_HIGH>;
+				enn-gpios = <&tlmm 20 GPIO_ACTIVE_HIGH>;
+				backlight = <0x7f000202>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 { reg = <0>; u880_panel_in0: endpoint { remote-endpoint = <&u880_dsi0_out>; }; };
+					port@1 { reg = <1>; u880_panel_in1: endpoint { remote-endpoint = <&u880_dsi1_out>; }; };
+				};
+			};
+		};
+
+		dsi@ae96000 {
+			compatible = "qcom,mdss-dsi-ctrl";
+			reg = <0xae96000 0x400>;
+			reg-names = "dsi_ctrl";
+			interrupt-parent = <&u880_mdss>;
+			interrupts = <5>;
+			clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK>, <&dispcc DISP_CC_MDSS_BYTE1_INTF_CLK>,
+				 <&dispcc DISP_CC_MDSS_PCLK1_CLK>, <&dispcc DISP_CC_MDSS_ESC1_CLK>,
+				 <&dispcc DISP_CC_MDSS_AHB_CLK>, <&gcc GCC_DISP_HF_AXI_CLK>;
+			clock-names = "byte", "byte_intf", "pixel", "core", "iface", "bus";
+			phys = <&u880_dsi_phy1>;
+			phy-names = "dsi";
+			vdda-supply = <&L4B>;
+			qcom,dual-dsi-mode;
+			qcom,sync-dual-dsi;
+			/* bonded: DSI1 runs from the PHY0 PLL (clock master) */
+			assigned-clocks = <&dispcc DISP_CC_MDSS_BYTE1_CLK_SRC>, <&dispcc DISP_CC_MDSS_PCLK1_CLK_SRC>;
+			assigned-clock-parents = <&u880_dsi_phy0 DSI_BYTE_PLL_CLK>, <&u880_dsi_phy0 DSI_PIXEL_PLL_CLK>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 { reg = <0>; u880_dsi1_in: endpoint { remote-endpoint = <&u880_dpu_out1>; }; };
+				port@1 {
+					reg = <1>;
+					u880_dsi1_out: endpoint {
+						remote-endpoint = <&u880_panel_in1>;
+						data-lanes = <0 1 2>;
+					};
+				};
+			};
+		};
+
+		u880_dsi_phy0: phy@ae95000 {
+			compatible = "qcom,sm7675-dsi-phy-4nm";
+			reg = <0xae95000 0x200>, <0xae95200 0x280>, <0xae95500 0x400>;
+			reg-names = "dsi_phy", "dsi_phy_lane", "dsi_pll";
+			clocks = <&gcc GCC_DISP_AHB_CLK>, <&rpmhcc RPMH_CXO_CLK>;
+			clock-names = "iface", "ref";
+			#clock-cells = <1>;
+			#phy-cells = <0>;
+			phy-type = <PHY_TYPE_CPHY>;
+			vdds-supply = <&L2B>;
+		};
+
+		u880_dsi_phy1: phy@ae97000 {
+			compatible = "qcom,sm7675-dsi-phy-4nm";
+			reg = <0xae97000 0x200>, <0xae97200 0x280>, <0xae97500 0x400>;
+			reg-names = "dsi_phy", "dsi_phy_lane", "dsi_pll";
+			clocks = <&gcc GCC_DISP_AHB_CLK>, <&rpmhcc RPMH_CXO_CLK>;
+			clock-names = "iface", "ref";
+			#clock-cells = <1>;
+			#phy-cells = <0>;
+			phy-type = <PHY_TYPE_CPHY>;
+			vdds-supply = <&L2B>;
+		};
+	};
+};
