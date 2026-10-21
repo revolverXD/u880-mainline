@@ -19904,7 +19904,7 @@
 +MODULE_LICENSE("GPL");
 --- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-alldocube-u880.c
-@@ -0,0 +1,329 @@
+@@ -0,0 +1,499 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Alldocube iPlay 70 mini Ultra (U880) BOE 1600x2560 LCD, Novatek TDDI (NT36523N touch side).
@@ -19945,8 +19945,22 @@
 +}
 +
 +extern unsigned int u880_dbg;	/* msm bring-up switches (drivers/gpu/drm/msm/msm_drv.h) */
++extern unsigned int u880_dbg2;
 +
-+static void u880_on(struct mipi_dsi_multi_context *ctx)
++static void u880_dual_write(struct mipi_dsi_multi_context *lc0,
++			    struct mipi_dsi_multi_context *lc1,
++			    const void *data, size_t len)
++{
++	mipi_dsi_dcs_write_buffer_multi(lc0, data, len);
++	mipi_dsi_dcs_write_buffer_multi(lc1, data, len);
++}
++
++#define U880_DUAL_SEQ(lc0, lc1, seq...) do { \
++	static const u8 _d[] = { seq }; \
++	u880_dual_write(lc0, lc1, _d, ARRAY_SIZE(_d)); \
++} while (0)
++
++static void u880_on_regs(struct mipi_dsi_multi_context *ctx)
 +{
 +	mipi_dsi_dcs_write_seq_multi(ctx, 0xff, 0xd0);
 +	mipi_dsi_dcs_write_seq_multi(ctx, 0xfb, 0x01);
@@ -19975,9 +19989,26 @@
 +	mipi_dsi_dcs_write_seq_multi(ctx, 0xb2, 0x00);
 +	mipi_dsi_dcs_write_seq_multi(ctx, 0xb3, 0x12);
 +	mipi_dsi_dcs_write_seq_multi(ctx, 0xbb, 0x13);
++}
++
++static void u880_on(struct mipi_dsi_multi_context *ctx)
++{
++	u880_on_regs(ctx);
 +	mipi_dsi_dcs_exit_sleep_mode_multi(ctx);
 +	mipi_dsi_msleep(ctx, 100);
 +	mipi_dsi_dcs_set_display_on_multi(ctx);
++}
++
++static void u880_dbg_status(struct u880_panel *ctx, int link, const char *when)
++{
++	u8 pm = 0xee, dg = 0xee;
++	ssize_t r1, r2;
++
++	if (!(u880_dbg & 0x40000000))
++		return;
++	r1 = mipi_dsi_dcs_read(ctx->dsi[link], 0x0a, &pm, 1);
++	r2 = mipi_dsi_dcs_read(ctx->dsi[link], 0x0f, &dg, 1);
++	dev_info(ctx->panel.dev, "status link%d %s: 0x0a=%zd:%02x 0x0f=%zd:%02x\n", link, when, r1, pm, r2, dg);
 +}
 +
 +static int u880_prepare(struct drm_panel *panel)
@@ -20006,6 +20037,9 @@
 +	usleep_range(10000, 11000);
 +
 +	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
++	/* 0x10000000: per-link picture width in the PPS (vendor sends 800; the host config says 1600) */
++	if (u880_dbg & 0x10000000)
++		pps.pic_width = cpu_to_be16(800);
 +	dev_info(panel->dev, "DSC %ux%u slice %ux%u chunk %u init_xmit %u init_dec %u scale_inc %u scale_dec %u first_bpg %u nfl_bpg %u slice_bpg %u final_off %u\n",
 +		 ctx->dsc.pic_width, ctx->dsc.pic_height, ctx->dsc.slice_width, ctx->dsc.slice_height,
 +		 ctx->dsc.slice_chunk_size, ctx->dsc.initial_xmit_delay, ctx->dsc.initial_dec_delay,
@@ -20013,11 +20047,95 @@
 +		 ctx->dsc.first_line_bpg_offset, ctx->dsc.nfl_bpg_offset, ctx->dsc.slice_bpg_offset,
 +		 ctx->dsc.final_offset);
 +	/* vendor order (dsi_display_enable): ON command set first, then the PPS, which overrides the Novatek 0x91 values */
++	if ((u880_dbg & 0x100000) && (u880_dbg2 & 0x2)) {
++		/*
++		 * u880_dbg2 & 0x2: lock-step dual-IC wakeup.
++		 * Send each init command to link0 then link1 interleaved (pair-by-pair),
++		 * then 0x11 sleep-out on both links back-to-back,
++		 * wait 100 ms once while BOTH Novatek ICs wake up and sync together,
++		 * re-assert user commands (0x35, 0x51, 0x53),
++		 * then 0x29 display-on on both links, then PPS on both links.
++		 */
++		struct mipi_dsi_multi_context lc0 = { .dsi = ctx->dsi[0] };
++		struct mipi_dsi_multi_context lc1 = { .dsi = ctx->dsi[1] };
++
++		U880_DUAL_SEQ(&lc0, &lc1, 0xff, 0xd0);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xfb, 0x01);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x00, 0x30);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x09, 0xee);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x1c, 0x99);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x1d, 0x09);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xff, 0xf0);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xfb, 0x01);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x24, 0x02);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xff, 0x2a);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xfb, 0x01);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xbc, 0x33, 0x03);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xff, 0x10);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xfb, 0x01);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x35, 0x00);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x3b, 0x03, 0x64, 0x1e, 0x04, 0x04, 0x00);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x51, 0x01, 0xff);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x53, 0x2c);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x55, 0x00);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x90, 0x03);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x91, 0x89, 0x08, 0x00, 0x14, 0xd2, 0x00, 0x02,
++			      0xb2, 0x02, 0x2b, 0x00, 0x0b, 0x05, 0x7a, 0x03, 0x68);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x92, 0x10, 0xe0);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xb2, 0x00);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xb3, 0x12);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xbb, 0x13);
++
++		mipi_dsi_dcs_exit_sleep_mode_multi(&lc0);
++		mipi_dsi_dcs_exit_sleep_mode_multi(&lc1);
++		msleep(100);
++
++		/* Re-assert user commands in case 0x11 sleep-out reset them on either IC */
++		U880_DUAL_SEQ(&lc0, &lc1, 0xff, 0x10);
++		U880_DUAL_SEQ(&lc0, &lc1, 0xfb, 0x01);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x35, 0x00);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x51, 0x01, 0xff);
++		U880_DUAL_SEQ(&lc0, &lc1, 0x53, 0x2c);
++
++		mipi_dsi_dcs_set_display_on_multi(&lc0);
++		mipi_dsi_dcs_set_display_on_multi(&lc1);
++		u880_dbg_status(ctx, 0, "lockstep-ON");
++		u880_dbg_status(ctx, 1, "lockstep-ON");
++		mipi_dsi_picture_parameter_set_multi(&lc0, &pps);
++		mipi_dsi_picture_parameter_set_multi(&lc1, &pps);
++		u880_dbg_status(ctx, 0, "lockstep-PPS");
++		u880_dbg_status(ctx, 1, "lockstep-PPS");
++		dsi_ctx.accum_err = lc0.accum_err ? lc0.accum_err : lc1.accum_err;
++		goto seq_done;
++	}
 +	if (u880_dbg & 0x100000) {
 +		/* switch 0x100000: the same sequence unicast on each link (msm then neither drops nor broadcasts) */
-+		int i;
++		int i, k;
 +
-+		for (i = 0; i < 2 && !dsi_ctx.accum_err; i++) {
++		/* 0x800000: phased unicast: ON on both links, then the PPS on both (0x80000000 reverses the link order) */
++		if (u880_dbg & 0x800000) {
++			int ph;
++
++			for (ph = 0; ph < 2 && !dsi_ctx.accum_err; ph++) {
++				for (k = 0; k < 2 && !dsi_ctx.accum_err; k++) {
++					struct mipi_dsi_multi_context lc;
++
++					i = (u880_dbg & 0x80000000) ? 1 - k : k;
++					lc = (struct mipi_dsi_multi_context){ .dsi = ctx->dsi[i] };
++					if (ph == 0)
++						u880_on(&lc);
++					else
++						mipi_dsi_picture_parameter_set_multi(&lc, &pps);
++					u880_dbg_status(ctx, i, ph ? "phased-PPS" : "phased-ON");
++					dsi_ctx.accum_err = lc.accum_err;
++				}
++			}
++			goto seq_done;
++		}
++
++		for (k = 0; k < 2 && !dsi_ctx.accum_err; k++) {
++			/* 0x80000000: link 1 first, then link 0 */
++			i = (u880_dbg & 0x80000000) ? 1 - k : k;
 +			struct mipi_dsi_multi_context lc = { .dsi = ctx->dsi[i] };
 +
 +			/* 0x200000: link 0 only, 0x400000: link 1 only (bisecting which link's commands matter) */
@@ -20027,14 +20145,50 @@
 +				continue;
 +
 +			u880_on(&lc);
++			u880_dbg_status(ctx, i, "after-ON");
 +			mipi_dsi_picture_parameter_set_multi(&lc, &pps);
++			u880_dbg_status(ctx, i, "after-PPS");
++			/* 0x20000000: Novatek NT36532 driver (OnePlus Pad 2) writes 0x9d 0x01 after the PPS */
++			if (u880_dbg & 0x20000000)
++				mipi_dsi_dcs_write_seq_multi(&lc, 0x9d, 0x01);
 +			dsi_ctx.accum_err = lc.accum_err;
 +		}
 +	} else {
 +		u880_on(&dsi_ctx);
 +		mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
++		if (u880_dbg & 0x20000000)
++			mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x9d, 0x01);
 +	}
++seq_done:
 +	dev_info(panel->dev, "panel on sequence done: %d\n", dsi_ctx.accum_err);
++	/* 0x40000000: read panel status per link while the links are still in command mode (before video starts) */
++	if (u880_dbg & 0x40000000) {
++		static const u8 regs[] = { 0x0a, 0x0e, 0x0f, 0x90, 0x91, 0x92, 0xb2, 0xb3, 0xbb, 0x51, 0x53, 0x55 };
++		int i, j;
++
++		for (i = 0; i < 2; i++) {
++			struct mipi_dsi_multi_context lc = { .dsi = ctx->dsi[i] };
++			u8 cmd2_d0[4] = {};
++			/* Switch to page 0xd0 to verify CMD2 writes survived */
++			mipi_dsi_dcs_write_seq_multi(&lc, 0xff, 0xd0);
++			mipi_dsi_dcs_write_seq_multi(&lc, 0xfb, 0x01);
++			mipi_dsi_dcs_read(ctx->dsi[i], 0x00, &cmd2_d0[0], 1);
++			mipi_dsi_dcs_read(ctx->dsi[i], 0x09, &cmd2_d0[1], 1);
++			mipi_dsi_dcs_read(ctx->dsi[i], 0x1c, &cmd2_d0[2], 1);
++			mipi_dsi_dcs_read(ctx->dsi[i], 0x1d, &cmd2_d0[3], 1);
++			dev_info(panel->dev, "dcsread link%d page 0xd0 [00,09,1c,1d]: %*ph\n", i, 4, cmd2_d0);
++			/* Switch back to page 0x10 */
++			mipi_dsi_dcs_write_seq_multi(&lc, 0xff, 0x10);
++			mipi_dsi_dcs_write_seq_multi(&lc, 0xfb, 0x01);
++
++			for (j = 0; j < ARRAY_SIZE(regs); j++) {
++				u8 b[16] = {};
++				ssize_t r = mipi_dsi_dcs_read(ctx->dsi[i], regs[j], b, 4);
++
++				dev_info(panel->dev, "dcsread link%d reg 0x%02x: %zd %*ph\n", i, regs[j], r, 4, b);
++			}
++		}
++	}
 +	if (dsi_ctx.accum_err) {
 +		gpiod_direction_output(ctx->reset_gpio, 1);
 +		regulator_disable(ctx->vddio);
@@ -20081,9 +20235,25 @@
 +	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 +};
 +
++static const struct drm_display_mode u880_mode_60 = {
++	.clock = U880_HTOTAL * U880_VTOTAL * 60 / 1000,
++	.hdisplay = 800 * 2,
++	.hsync_start = (800 + 27) * 2,
++	.hsync_end = (800 + 27 + 20) * 2,
++	.htotal = U880_HTOTAL,
++	.vdisplay = 2560,
++	.vsync_start = 2560 + 30,
++	.vsync_end = 2560 + 30 + 2,
++	.vtotal = U880_VTOTAL,
++	.width_mm = 118,
++	.height_mm = 190,
++	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++};
++
 +static int u880_get_modes(struct drm_panel *panel, struct drm_connector *connector)
 +{
-+	return drm_connector_helper_get_modes_fixed(connector, &u880_mode);
++	return drm_connector_helper_get_modes_fixed(connector,
++						    (u880_dbg2 & 0x4) ? &u880_mode_60 : &u880_mode);
 +}
 +
 +static const struct drm_panel_funcs u880_panel_funcs = {
@@ -20549,7 +20719,7 @@
  	{ .compatible = "qcom,glymur-mdss", .data = &data_57k },
 --- a/drivers/gpu/drm/msm/msm_drv.c
 +++ b/drivers/gpu/drm/msm/msm_drv.c
-@@ -57,6 +57,10 @@
+@@ -57,6 +57,15 @@
  static bool separate_gpu_kms;
  MODULE_PARM_DESC(separate_gpu_kms, "Use separate DRM device for the GPU (0=single DRM device for both GPU and display (default), 1=two DRM devices)");
  module_param(separate_gpu_kms, bool, 0400);
@@ -20557,12 +20727,17 @@
 +unsigned int u880_dbg = 0xfff;
 +MODULE_PARM_DESC(u880_dbg, "U880 native display bring-up switches (see msm_drv.h)");
 +module_param(u880_dbg, uint, 0644);
++
++/* second switch word (u880_dbg is full): 0x1 bind DSC_n to PP_(1-n) instead of PP_n */
++unsigned int u880_dbg2;
++MODULE_PARM_DESC(u880_dbg2, "U880 native display bring-up switches, second word (see msm_drv.h)");
++module_param(u880_dbg2, uint, 0644);
  
  DECLARE_FAULT_ATTR(fail_gem_alloc);
  DECLARE_FAULT_ATTR(fail_gem_iova);
 --- a/drivers/gpu/drm/msm/msm_drv.h
 +++ b/drivers/gpu/drm/msm/msm_drv.h
-@@ -545,4 +545,19 @@
+@@ -545,4 +545,32 @@
  
  bool msm_gpu_no_components(void);
  
@@ -20577,9 +20752,22 @@
 + * (CLK_EN_SEL kept) + DSI soft reset after the link clocks run.
 + * 0x100000 unicast DSI commands per link (panel sends ON+PPS to DSI0 then DSI1; no sync broadcast).
 + *   + 0x200000 only DSI0 gets the sequence, + 0x400000 only DSI1.
-+ * 0x1000000 DSI CLKOUT_TIMING=0, 0x8000000 TPG fifo bit off, 0x2000000 DSI VBIF_CTRL=7 (HANGS), 0x4000000 TRIG_CTRL block-dma bit off (Android parity).
++ * 0x1000000 DSI CLKOUT_TIMING=0, 0x8000000 TPG fifo bit off, 0x2000000 DSI VBIF_CTRL=7 (HANGS), 0x4000000 TRIG_CTRL block-dma bit off (Android parity),
++ * 0x10000000 PPS pic_width = 800 (per link) instead of 1600 (wrong: upstream uses the full width), 0x20000000 DCS 0x9d 0x01 after the PPS (NT36532),
++ * 0x40000000 DCS status reads per link at the end of panel prepare (logged as "dcsread linkN reg ..."; unicast mode also logs 0x0a/0x0f after ON and after PPS),
++ * 0x80000000 unicast order: link 1 first, 0x800000 phased unicast (ON on both links, then PPS on both).
 + */
 +extern unsigned int u880_dbg;
++/*
++ * msm.u880_dbg2:
++ * 0x1 bind DSC_n to the other pingpong (DSC_0<-PP_1, DSC_1<-PP_0)
++ * 0x2 lock-step dual-IC panel init: send init regs to both links, 0x11 sleep-out on both links back-to-back,
++ *     single msleep(100) while both ICs wake up together, then 0x29 display-on on both, then PPS on both
++ * 0x4 60 Hz panel refresh mode (lower C-PHY link rate to test DSI0 signal integrity)
++ * 0x8 disable SSPP multirect parallel (allocate 2 separate SSPP pipes for left/right halves like Android)
++ * 0x10 PHY0-only C-PHY HS-TX pre-emphasis (PEMPH_CTRL_0=0x11, PEMPH_CTRL_1=0x01) + Android trim words
++ */
++extern unsigned int u880_dbg2;
 +
  #endif /* __MSM_DRV_H__ */
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
@@ -20592,6 +20780,18 @@
  #include "catalog/dpu_10_2_milos.h"
  
  #include "catalog/dpu_12_0_sm8750.h"
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_plane.c
+@@ -1026,6 +1026,9 @@
+ 						   const struct msm_format *fmt,
+ 						   uint32_t max_linewidth)
+ {
++	if (u880_dbg2 & 0x8)
++		return false;
++
+ 	return dpu_plane_is_multirect_capable(sspp, pipe_cfg, fmt) &&
+ 		dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth);
+ }
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
 @@ -319,9 +319,15 @@
@@ -20788,7 +20988,24 @@
  		_dpu_encoder_trigger_flush(
  				&dpu_enc->base,
  				dpu_enc->cur_master,
-@@ -2041,7 +2154,10 @@
+@@ -1990,6 +2103,7 @@
+ static void dpu_encoder_dsc_pipe_cfg(struct dpu_hw_ctl *ctl,
+ 				     struct dpu_hw_dsc *hw_dsc,
+ 				     struct dpu_hw_pingpong *hw_pp,
++				     struct dpu_hw_pingpong *bind_pp,
+ 				     struct drm_dsc_config *dsc,
+ 				     u32 common_mode,
+ 				     u32 initial_lines)
+@@ -2004,7 +2118,7 @@
+ 		hw_pp->ops.setup_dsc(hw_pp);
+ 
+ 	if (hw_dsc->ops.dsc_bind_pingpong_blk)
+-		hw_dsc->ops.dsc_bind_pingpong_blk(hw_dsc, hw_pp->idx);
++		hw_dsc->ops.dsc_bind_pingpong_blk(hw_dsc, bind_pp->idx);
+ 
+ 	if (hw_pp->ops.enable_dsc)
+ 		hw_pp->ops.enable_dsc(hw_pp);
+@@ -2041,7 +2155,10 @@
  	pic_width = dsc->pic_width;
  
  	dsc_common_mode = 0;
@@ -20800,6 +21017,14 @@
  		dsc_common_mode |= DSC_MODE_SPLIT_PANEL;
  	if (dpu_encoder_use_dsc_merge(enc_master->parent))
  		dsc_common_mode |= DSC_MODE_MULTIPLEX;
+@@ -2056,6 +2173,7 @@
+ 
+ 	for (i = 0; i < num_dsc; i++)
+ 		dpu_encoder_dsc_pipe_cfg(ctl, hw_dsc[i], hw_pp[i],
++					 (num_dsc == 2 && (u880_dbg2 & 1)) ? hw_pp[1 - i] : hw_pp[i],
+ 					 dsc, dsc_common_mode, initial_lines);
+ }
+ 
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
 @@ -1480,6 +1480,7 @@
@@ -84622,7 +84847,7 @@
  	}
  
  	pll_7nm->phy->pll_on = true;
-@@ -1187,6 +1220,57 @@
+@@ -1187,6 +1220,65 @@
  	/* DSI lane settings */
  	dsi_phy_hw_v4_0_lane_settings(phy);
  
@@ -84674,6 +84899,14 @@
 +			writel(0x06, base + 0x398);
 +			writel(0x00, base + 0x408);
 +			writel(0x00, base + 0x418);
++		}
++		/* u880_dbg2 & 0x10: PHY0-only C-PHY HS-TX pre-emphasis + Android PHY0 trim words */
++		if ((u880_dbg2 & 0x10) && !phy->id) {
++			writel(0x11, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_0);
++			writel(0x01, base + REG_DSI_7nm_PHY_CMN_GLBL_PEMPH_CTRL_1);
++			writel(0x9a, base + 0x138);
++			writel(0x0a, base + 0x13c);
++			writel(0x57, base + 0x144);
 +		}
 +	}
 +
