@@ -19904,7 +19904,7 @@
 +MODULE_LICENSE("GPL");
 --- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-alldocube-u880.c
-@@ -0,0 +1,499 @@
+@@ -0,0 +1,516 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Alldocube iPlay 70 mini Ultra (U880) BOE 1600x2560 LCD, Novatek TDDI (NT36523N touch side).
@@ -20011,6 +20011,16 @@
 +	dev_info(ctx->panel.dev, "status link%d %s: 0x0a=%zd:%02x 0x0f=%zd:%02x\n", link, when, r1, pm, r2, dg);
 +}
 +
++/* Power the panel down: the tail of unprepare, and the start of prepare when the bootloader left it on. */
++static void u880_power_off(struct u880_panel *ctx)
++{
++	gpiod_direction_output(ctx->reset_gpio, 1);
++	gpiod_direction_output(ctx->enn_gpio, 0);
++	usleep_range(5000, 6000);
++	gpiod_direction_output(ctx->enp_gpio, 0);
++	regulator_disable(ctx->vddio);
++}
++
 +static int u880_prepare(struct drm_panel *panel)
 +{
 +	struct u880_panel *ctx = to_u880_panel(panel);
@@ -20018,6 +20028,17 @@
 +	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi[1] };
 +	struct drm_dsc_picture_parameter_set pps;
 +	int ret;
++
++	/*
++	 * U880: the bootloader leaves the panel powered, so the first regulator_enable() after boot is a no-op and
++	 * the two Novatek ICs never see a power-on reset. That is the boot lottery: a suspend/resume (which does
++	 * reach a real power-down) always fixes a bad first enable. Power down first when something already has it
++	 * on. u880_dbg2 & 0x20 turns this off again for A/B tests.
++	 */
++	if (!(u880_dbg2 & 0x20) && regulator_is_enabled(ctx->vddio) > 0) {
++		u880_power_off(ctx);
++		msleep(50);
++	}
 +
 +	ret = regulator_enable(ctx->vddio);
 +	if (ret)
@@ -20208,11 +20229,7 @@
 +	if (dsi_ctx.accum_err)
 +		dev_err(panel->dev, "panel off failed: %d\n", dsi_ctx.accum_err);
 +
-+	gpiod_direction_output(ctx->reset_gpio, 1);
-+	gpiod_direction_output(ctx->enn_gpio, 0);
-+	usleep_range(5000, 6000);
-+	gpiod_direction_output(ctx->enp_gpio, 0);
-+	regulator_disable(ctx->vddio);
++	u880_power_off(ctx);
 +	return 0;
 +}
 +
