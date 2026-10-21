@@ -19904,7 +19904,7 @@
 +MODULE_LICENSE("GPL");
 --- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-alldocube-u880.c
-@@ -0,0 +1,425 @@
+@@ -0,0 +1,436 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Alldocube iPlay 70 mini Ultra (U880) BOE 1600x2560 LCD, Novatek TDDI (NT36523N touch side).
@@ -19973,13 +19973,24 @@
 +}
 +
 +/* Power the panel down: the tail of unprepare, and the start of prepare when the bootloader left it on. */
-+static void u880_power_off(struct u880_panel *ctx)
++static void u880_power_off(struct u880_panel *ctx, bool cycle_rail)
 +{
 +	gpiod_direction_output(ctx->reset_gpio, 1);
 +	gpiod_direction_output(ctx->enn_gpio, 0);
 +	usleep_range(5000, 6000);
 +	gpiod_direction_output(ctx->enp_gpio, 0);
-+	regulator_disable(ctx->vddio);
++	/*
++	 * unprepare holds a reference, so a plain disable is balanced. prepare holds none: _regulator_disable()
++	 * then refuses with -EIO ("unbalanced disables") and leaves the rail on, while regulator_force_disable()
++	 * leaves use_count set so the following regulator_enable() skips the hardware. Taking a reference and
++	 * dropping it again is the only balanced way to really cycle VDDIO.
++	 */
++	if (cycle_rail) {
++		if (!regulator_enable(ctx->vddio))
++			regulator_disable(ctx->vddio);
++	} else {
++		regulator_disable(ctx->vddio);
++	}
 +}
 +
 +static int u880_prepare(struct drm_panel *panel)
@@ -19997,7 +20008,7 @@
 +	 * on. u880_dbg2 & 0x20 turns this off again for A/B tests.
 +	 */
 +	if (!(u880_dbg2 & 0x20) && regulator_is_enabled(ctx->vddio) > 0) {
-+		u880_power_off(ctx);
++		u880_power_off(ctx, true);
 +		msleep(50);
 +	}
 +
@@ -20138,7 +20149,7 @@
 +	if (dsi_ctx.accum_err)
 +		dev_err(panel->dev, "panel off failed: %d\n", dsi_ctx.accum_err);
 +
-+	u880_power_off(ctx);
++	u880_power_off(ctx, false);
 +	return 0;
 +}
 +
