@@ -17539,12 +17539,27 @@
  }
  
  static int qmp_combo_dp_power_off(struct phy *phy)
-@@ -4392,17 +4775,64 @@
+@@ -4392,17 +4775,79 @@
  }
  
  #if IS_ENABLED(CONFIG_TYPEC)
 +/* A route acknowledgement must include successful rail/clock/PHY restoration. */
++static int qmp_combo_uke_reconfigure_impl(struct qmp_combo *qmp);
 +static int qmp_combo_uke_reconfigure(struct qmp_combo *qmp)
++{
++	ktime_t t0 = ktime_get();
++	int ret;
++
++	dev_info(qmp->dev, "U880DBG reconfigure begin: mode=%d orient=%d init=%d usb=%u dp=%u dp_on=%d\n",
++		 qmp->qmpphy_mode, qmp->orientation, qmp->init_count, qmp->usb_init_count, qmp->dp_init_count,
++		 qmp->dp_powered_on);
++	ret = qmp_combo_uke_reconfigure_impl(qmp);
++	dev_info(qmp->dev, "U880DBG reconfigure end: ret=%d took %lld us usb=%u\n", ret,
++		 ktime_to_us(ktime_sub(ktime_get(), t0)), qmp->usb_init_count);
++	return ret;
++}
++
++static int qmp_combo_uke_reconfigure_impl(struct qmp_combo *qmp)
 +{
 +	int ret;
 +
@@ -17604,7 +17619,7 @@
  
  	if (qmp->init_count) {
  		if (qmp->usb_init_count)
-@@ -4428,13 +4858,17 @@
+@@ -4428,13 +4873,17 @@
  	unsigned int svid;
  
  	guard(mutex)(&qmp->phy_mutex);
@@ -17623,7 +17638,7 @@
  		switch (state->mode) {
  		/* DP Only */
  		case TYPEC_DP_STATE_C:
-@@ -4448,11 +4882,16 @@
+@@ -4448,11 +4897,16 @@
  
  		/* Safe fallback...*/
  		default:
@@ -17640,7 +17655,7 @@
  		new_mode = QMPPHY_MODE_USB3_ONLY;
  	}
  
-@@ -4463,13 +4902,15 @@
+@@ -4463,13 +4917,15 @@
  
  	if (qmp->qmpphy_mode != QMPPHY_MODE_USB3_ONLY && qmp->dp_powered_on) {
  		dev_dbg(qmp->dev, "typec_mux_set: DP PHY is still in use, delaying switch\n");
@@ -17657,7 +17672,7 @@
  
  	if (qmp->init_count) {
  		if (qmp->usb_init_count)
-@@ -4843,6 +5284,18 @@
+@@ -4843,6 +5299,18 @@
  					qmp->cfg->vreg_list, &qmp->vregs);
  	if (ret)
  		return ret;
@@ -17676,7 +17691,7 @@
  
  	/* Check for legacy binding with child nodes. */
  	usb_np = of_get_child_by_name(dev->of_node, "usb3-phy");
-@@ -5002,6 +5455,9 @@
+@@ -5002,6 +5470,9 @@
  		.data = &sm8350_usb3dpphy_cfg,
  	},
  	{
@@ -17686,7 +17701,7 @@
  		.compatible = "qcom,sm8550-qmp-usb3-dp-phy",
  		.data = &sm8550_usb3dpphy_cfg,
  	},
-@@ -5021,12 +5477,39 @@
+@@ -5021,12 +5492,39 @@
  };
  MODULE_DEVICE_TABLE(of, qmp_combo_of_match_table);
  
