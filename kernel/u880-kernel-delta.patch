@@ -17889,6 +17889,23 @@
  	{}
  };
  MODULE_DEVICE_TABLE(of, lpg_of_table);
+--- a/drivers/opp/of.c
++++ b/drivers/opp/of.c
+@@ -479,6 +479,14 @@
+ 			ret = dev_err_probe(dev, PTR_ERR(paths[i]), "%s: Unable to get path%d\n", __func__, i);
+ 			goto err;
+ 		}
++		/*
++		 * U880: the interconnect providers here are one-cell, so the DT cannot tag a path and every vote lands in the
++		 * RPMh sleep set too. A CPU's DDR bandwidth vote follows its last frequency and then stays through s2idle, which
++		 * keeps DDR/CX out of low power (qcom_stats shows aosd/cxsd/ddr at 0). Android tags APSS votes active-only.
++		 * 0x3 = QCOM_ICC_TAG_ACTIVE_ONLY (AMC | WAKE, not the sleep bucket).
++		 */
++		if (dev->bus == &cpu_subsys)
++			icc_set_tag(paths[i], 0x3);
+ 	}
+ 
+ 	if (opp_table) {
 --- a/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
 +++ b/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
 @@ -355,12 +355,19 @@
