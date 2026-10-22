@@ -21031,7 +21031,38 @@
  
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_kms.c
-@@ -1480,6 +1480,7 @@
+@@ -814,6 +814,7 @@
+ 
+ 	int primary_planes_idx = 0, cursor_planes_idx = 0, i, ret;
+ 	int max_crtc_count;
++	unsigned long possible_crtcs;
+ 	dev = dpu_kms->dev;
+ 	priv = dev->dev_private;
+ 	catalog = dpu_kms->catalog;
+@@ -851,11 +852,20 @@
+ 			  type, catalog->sspp[i].features,
+ 			  catalog->sspp[i].features & BIT(DPU_SSPP_CURSOR));
+ 
++		/*
++		 * A primary plane serves only its own CRTC. With every primary plane possible on every CRTC a client
++		 * that picks the first one for the second output (Smithay does) moves plane-0 from CRTC 0 to CRTC 1 in
++		 * one commit, which the DRM core rejects ("switching CRTC directly", -EINVAL): deniald aborted at
++		 * startup with two outputs. Overlay and cursor planes stay usable on any CRTC.
++		 */
++		possible_crtcs = type == DRM_PLANE_TYPE_PRIMARY ?
++				 BIT(primary_planes_idx) : (1UL << max_crtc_count) - 1;
++
+ 		if (dpu_use_virtual_planes)
+-			plane = dpu_plane_init_virtual(dev, type, (1UL << max_crtc_count) - 1);
++			plane = dpu_plane_init_virtual(dev, type, possible_crtcs);
+ 		else
+ 			plane = dpu_plane_init(dev, catalog->sspp[i].id, type,
+-					       (1UL << max_crtc_count) - 1);
++					       possible_crtcs);
+ 		if (IS_ERR(plane)) {
+ 			DPU_ERROR("dpu_plane_init failed\n");
+ 			ret = PTR_ERR(plane);
+@@ -1480,6 +1490,7 @@
  };
  
  static const struct of_device_id dpu_dt_match[] = {
