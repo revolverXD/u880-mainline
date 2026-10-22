@@ -21155,7 +21155,16 @@
  #include "dpu_encoder_phys.h"
  #include "dpu_hw_interrupts.h"
  #include "dpu_hw_merge3d.h"
-@@ -134,8 +135,8 @@
+@@ -14,6 +15,8 @@
+ 
+ #include <drm/display/drm_dsc_helper.h>
+ #include <drm/drm_managed.h>
++
++extern unsigned int u880_dbg2;
+ 
+ #define DPU_DEBUG_VIDENC(e, fmt, ...) DPU_DEBUG("enc%d intf%d " fmt, \
+ 		(e) && (e)->parent ? \
+@@ -134,8 +137,8 @@
  		 * TODO: replace drm_dsc_get_bpp_int with logic to handle
  		 * fractional part if there is fraction
  		 */
@@ -21166,7 +21175,7 @@
  		timing->xres = timing->width;
  		timing->dce_bytes_per_line = msm_dsc_get_bytes_per_line(dsc);
  	}
-@@ -178,6 +179,7 @@
+@@ -178,6 +181,7 @@
  		const struct dpu_hw_intf_timing_params *timing)
  {
  	u32 worst_case_needed_lines =
@@ -21174,7 +21183,7 @@
  	    phys_enc->hw_intf->cap->prog_fetch_lines_worst_case;
  	u32 start_of_frame_lines =
  	    timing->v_back_porch + timing->vsync_pulse_width;
-@@ -579,7 +581,7 @@
+@@ -579,7 +583,7 @@
  static void dpu_encoder_phys_vid_disable(struct dpu_encoder_phys *phys_enc)
  {
  	unsigned long lock_flags;
@@ -21183,7 +21192,7 @@
  	struct dpu_hw_intf_status intf_status = {0};
  
  	if (!phys_enc->parent || !phys_enc->parent->dev) {
-@@ -645,6 +647,7 @@
+@@ -645,6 +649,7 @@
  		}
  	}
  
@@ -21191,7 +21200,7 @@
  	dpu_encoder_helper_phys_cleanup(phys_enc);
  	phys_enc->enable_state = DPU_ENC_DISABLED;
  }
-@@ -661,9 +664,27 @@
+@@ -661,9 +666,33 @@
  	if (phys_enc->enable_state == DPU_ENC_ENABLING) {
  		trace_dpu_enc_phys_vid_post_kickoff(DRMID(phys_enc->parent),
  				    phys_enc->hw_intf->idx - INTF_0);
@@ -21208,11 +21217,17 @@
 +			struct dpu_encoder_phys *slave = dpu_encoder_u880_get_slave(phys_enc);
 +
 +			spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
-+			/* The slave timing engine never starts by itself here; start it just before the master, under one lock. */
++			/* The slave timing engine is started by the master (CTL_INTF_MASTER), see below. */
 +			if (phys_enc->dpu_kms->catalog == &dpu_sm7675_cfg &&
 +			    dpu_encoder_phys_vid_is_master(phys_enc) && slave && slave != phys_enc &&
 +			    slave->hw_intf && slave->hw_intf->ops.enable_timing) {
-+				slave->hw_intf->ops.enable_timing(slave->hw_intf, 1);
++				/*
++				 * F9: starting the slave by hand as well leaves the panel without a picture about half
++				 * the time (underrun-free first frame); CTL_INTF_MASTER already starts the bonded slave
++				 * from the master, 10/10 good. u880_dbg2 & 0x400 restores the old slave-then-master start.
++				 */
++				if (u880_dbg2 & 0x400)
++					slave->hw_intf->ops.enable_timing(slave->hw_intf, 1);
 +				phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
 +			} else {
 +				phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, 1);
