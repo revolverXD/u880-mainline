@@ -1,4 +1,5 @@
-# Alldocube iPlay 70 mini Ultra (U880, SM7675/Cliffs): one playback stream into the quinary MI2S port (2x AW88261 smart PAs).
+# Alldocube iPlay 70 mini Ultra (U880, SM7675/Cliffs): MultiMedia1 into the quinary MI2S port (2x AW88261 smart PAs),
+# MultiMedia2 into DisplayPort 0 (USB-C alt mode).
 include(`audioreach/audioreach.m4')
 include(`audioreach/stream-subgraph.m4')
 include(`audioreach/device-subgraph.m4')
@@ -20,3 +21,16 @@ dnl
 STREAM_DEVICE_PLAYBACK_MIXER(PRIMARY_MI2S_RX, ``PRIMARY_MI2S_RX'', ``MultiMedia1'')
 dnl
 STREAM_DEVICE_PLAYBACK_ROUTE(PRIMARY_MI2S_RX, ``PRIMARY_MI2S_RX Audio Mixer'', ``MultiMedia1, stream0.mfc1'')
+dnl
+dnl DisplayPort 0 playback (MultiMedia2 -> DISPLAY_PORT_RX_0); no LOG modules, like the speaker graph.
+STREAM_SG_PCM_ADD(audioreach/u880-stream-playback.m4, FRONTEND_DAI_MULTIMEDIA2,
+	`S16_LE', 48000, 48000, 2, 2,
+	0x00004002, 0x00004002, 0x00006020, `110000')
+DEVICE_SG_ADD(audioreach/u880-device-dp-playback.m4, `DISPLAY_PORT_RX_0', DISPLAY_PORT_RX_0,
+	`S16_LE', 48000, 48000, 2, 2,
+	0, 0, 0, DATA_FORMAT_FIXED_POINT,
+	0x00004010, 0x00004010, 0x000060B0, `DISPLAY_PORT_RX_0')
+dnl
+STREAM_DEVICE_PLAYBACK_MIXER(DISPLAY_PORT_RX_0, ``DISPLAY_PORT_RX_0'', ``MultiMedia2'')
+dnl
+STREAM_DEVICE_PLAYBACK_ROUTE(DISPLAY_PORT_RX_0, ``DISPLAY_PORT_RX_0 Audio Mixer'', ``MultiMedia2, stream1.mfc1'')
