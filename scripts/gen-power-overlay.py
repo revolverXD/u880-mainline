@@ -48,4 +48,7 @@ for cl, (cpus, _) in LUT.items():
         out += [f'&{{/cpus/cpu@{c * 100 if c else 0}}} {{',  # unit addresses 0, 100, ... 700 (MPIDR)
                 f'\toperating-points-v2 = <&u880_{cl}_opp>;',
                 '\tinterconnects = <&gem_noc 2 &mc_virt 512>;  /* MASTER_APPSS_PROC -> SLAVE_EBI1 */', '};', '']
+# RPMh sleep statistics (AOSD / CXSD / DDR): the stock node says qcom,rpmh-stats-v4, which the mainline qcom_stats driver does not match.
+# /sys/kernel/debug/qcom_stats/ then shows whether the SoC really enters deep sleep (the ground truth for NOTES/FINDINGS F10/F11).
+out += ['&{/soc/sram@c3f0000} {', '\tcompatible = "qcom,rpmh-stats";', '\tstatus = "okay";', '};', '']
 sys.stdout.write('\n'.join(out))

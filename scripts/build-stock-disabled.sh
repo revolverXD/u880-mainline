@@ -272,6 +272,7 @@ fi
 if [ "${POWER:-0}" = 1 ]; then
   dtc -q -@ -I dts -O dtb -o $S/power-overlay.dtbo $S/power-overlay.dtso
   fdtoverlay -i $O -o $S/dtb2-disabled.power.dtb $S/power-overlay.dtbo && mv $S/dtb2-disabled.power.dtb $O
+  fdtput -d $O /soc/sram@c3f0000 qcom,qmp   # vendor AOSS node: the optional DDR-stats link would defer qcom_stats forever
   # The QUP serial engines we use lost their interconnects above (the uke driver had no QUP paths then); once the boot
   # votes are released they need their own qup-core/config/memory votes, else BT UART, touch, amps and the redriver bus die.
   for n in qcom,qupv3_0_geni_se@ac0000/i2c@a80000 qcom,qupv3_0_geni_se@ac0000/i2c@a90000 \

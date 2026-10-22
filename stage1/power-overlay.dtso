@@ -259,3 +259,8 @@
 	operating-points-v2 = <&u880_prime_opp>;
 	interconnects = <&gem_noc 2 &mc_virt 512>;  /* MASTER_APPSS_PROC -> SLAVE_EBI1 */
 };
+
+&{/soc/sram@c3f0000} {
+	compatible = "qcom,rpmh-stats";
+	status = "okay";
+};
