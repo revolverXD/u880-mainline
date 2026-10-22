@@ -11,6 +11,7 @@
 #include <dt-bindings/clock/qcom,rpmh.h>
 #include <dt-bindings/clock/qcom,sm8550-dispcc.h>
 #include <dt-bindings/phy/phy-qcom-qmp.h>
+#include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
 
 #define DSI_BYTE_PLL_CLK 0
 #define DSI_PIXEL_PLL_CLK 1
@@ -97,4 +98,26 @@
 
 &{/pmic-glink/connector@0/ports} {
 	port@2 { reg = <2>; u880_connector_sbu: endpoint { remote-endpoint = <&u880_wcd_sbu>; }; };
+};
+
+/*
+ * DisplayPort audio: the DP controller registers an hdmi-audio-codec (#sound-dai-cells), and snd-soc-sc8280xp sets up a
+ * DP jack for DISPLAY_PORT_RX_0. Needs the AudioReach services from audio-overlay.dtso (q6apm, q6apmbedai).
+ */
+&{/sound} {
+	displayport-rx-dai-link {
+		link-name = "DisplayPort0 Playback";
+
+		cpu {
+			sound-dai = <&q6apmbedai DISPLAY_PORT_RX_0>;
+		};
+
+		codec {
+			sound-dai = <&u880_dp0>;
+		};
+
+		platform {
+			sound-dai = <&q6apm>;
+		};
+	};
 };
