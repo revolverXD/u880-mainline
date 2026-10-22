@@ -1,0 +1,6 @@
+#!/bin/sh
+# Start the x86 Steam client (inside the FEX Ubuntu rootfs) on the current Wayland/Xwayland session. Extra arguments go to steam, e.g. steam-x86 -applaunch 440
+cd "$HOME" || exit 1
+export STEAMOS=1
+export DISPLAY="${DISPLAY:-:0}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+exec FEXBash -c "steam -no-cef-sandbox $*"

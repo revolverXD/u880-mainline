@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Steam (x86, FEX)
+Comment=x86 Steam client under FEX-emu
+Exec=/usr/local/bin/steam-x86
+Icon=/home/USER/.local/share/fex-emu/RootFS/Ubuntu_24_04/usr/share/pixmaps/steam.png
+Terminal=false
+Type=Application
+Categories=Game;
