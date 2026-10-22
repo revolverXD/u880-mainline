@@ -20797,6 +20797,15 @@
  	return dpu_plane_is_multirect_capable(sspp, pipe_cfg, fmt) &&
  		dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth);
  }
+@@ -1834,7 +1839,7 @@
+ 	int ret;
+ 
+ 	pdpu = drmm_universal_plane_alloc(dev, struct dpu_plane, base,
+-				0xff, &dpu_plane_funcs,
++				possible_crtcs, &dpu_plane_funcs,
+ 				format_list, num_formats,
+ 				supported_format_modifiers, type, NULL);
+ 	if (IS_ERR(pdpu))
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
 @@ -319,9 +319,15 @@
