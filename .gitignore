@@ -34,3 +34,4 @@ Module.symvers
 sensors/vendor/
 sensors/persist/
 sensors/stage/
+!/dts/
