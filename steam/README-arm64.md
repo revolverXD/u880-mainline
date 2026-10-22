@@ -1,0 +1,11 @@
+# Native ARM64 Steam on the U880 (2026-10-23) - games run
+Valve ships a native Linux ARM64 client: manifest `https://client-update.steamstatic.com/steam_client_linuxarm64` (packages listed in `arm64-packages.txt`). It is not offered as an installer, so it is assembled by hand:
+1. `fetch-arm64.sh` downloads the 35 packages (~1 GB, sha256 checked) into `/home/USER/steam-arm/pkgs`; `unpack-arm64.py` unpacks them to `/home/USER/steam-arm/root` (the zips use backslash paths and carry no unix modes; the script fixes both and makes ELF programs and scripts executable).
+2. Missing host libraries (Arch): `pacman -S openal ibus lsof` (+ `gtk3` present). `libgtk-x11-2.0.so.0` (Arch has no GTK2): `gtk2-stub.sh <steamrtarm64 dir>` builds a no-op stub. Real GTK3 behind a shim crashes in `gdk_display_open` on Xwayland.
+3. **System libpng crashes Big Picture** (`png_create_info_struct` from `friendsui.so`, libpng 1.6.59): put an older libpng16 (Ubuntu 24.04 arm64, 1.6.47) in `steamrtarm64/libs/libpng16.so.16`.
+4. Launcher `steam-arm64` (-> `/usr/local/bin`): `cd /home/USER/steam-arm/root`, `LD_LIBRARY_PATH=steamrtarm64:steamrtarm64/libs`, **sets XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS for the user** (inherited root values broke pressure-vessel: `bwrap: Can't find source path /run/user/0/bus`), restarts on exit code 42 (self-update).
+5. Symlinks: `~/.steam/sdkarm64`, `~/.local/share/Steam/{steamrtarm64,linuxarm64,sdkarm64}` -> `/home/USER/steam-arm/root/...` (Steam looks for them under its data dir, `~/.local/share/Steam`, shared with the x86 install).
+6. First start self-updates (668 MB) and restarts itself. The native client offers Valve's `Proton Experimental (ARM64)` (tool 4427310) + `Steam Linux Runtime 4.0 for arm64` (4185400) + a `FEX-Emu` tool by itself; `fetch-proton.sh` also installs `DroidDeck-Proton-11-9.1` and `GE-Proton11-11-aarch64` into `compatibilitytools.d`.
+Result: 10 Minutes Till Dawn (appid 1888430) runs under Proton ARM64 (wineserver, Turnip), ~115% CPU for the game, 5.6 GB RAM total. Not working yet: Steam overlay (`gameoverlayrenderer.so` preload fails).
+Compared with the x86 client under FEX: the UI loads in seconds, the CPU zone peaked at 99 C with the emulated one and idles near 46 C now; the update downloaded 668 MB in ~30 s.
+Closing the old x86 setup is not needed; `steam-x86` still exists.

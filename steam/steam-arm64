@@ -5,6 +5,7 @@ cd "$R" || exit 1
 export STEAMROOT="$R" STEAM_RUNTIME=0
 export DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}" LANG="${LANG:-en_US.UTF-8}"
 [ "$(stat -c %u "$XDG_RUNTIME_DIR" 2>/dev/null)" = "$(id -u)" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export LD_LIBRARY_PATH="$R/steamrtarm64:$R/steamrtarm64/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # exit code 42 = Steam asks to be restarted (after a self-update), like steam.sh does
 while :; do
