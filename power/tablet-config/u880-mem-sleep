@@ -1,0 +1,6 @@
+#!/bin/sh
+# Use s2idle as the system sleep state.
+# shortcut: this firmware's PSCI SYSTEM_SUSPEND ("deep") returns after ~35 ms without sleeping, so "deep" costs a
+# full device suspend/resume and saves nothing (NOTES 2026-10-21). s2idle does sleep (19.7 s held, woke on the
+# RTC alarm IRQ). Upgrade when the AOP sleep vector / deep suspend is made to work.
+echo s2idle > /sys/power/mem_sleep
