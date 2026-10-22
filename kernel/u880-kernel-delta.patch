@@ -4705,7 +4705,7 @@
 +obj-$(CONFIG_QCOM_RPMH_UKE) += tcsrcc-uke.o
 --- /dev/null
 +++ b/drivers/clk/qcom/uke-dispcc-votes.c
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,152 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -4713,6 +4713,7 @@
 + * 5712080a4b0c0b1a879e6d145c601c649ddaddfd. Include in dispcc-sm8550.c.
 + * Use the already ported regulator aggregator, never a second RPMh writer.
 + */
++#include <linux/pm_domain.h>
 +#include "vdd-level.h"
 +
 +static DEFINE_VDD_REGULATORS(uke_vdd_mm, VDD_HIGH + 1, 1, vdd_corner);
@@ -4847,6 +4848,9 @@
 +
 +static void uke_dispcc_sync_state(struct device *dev)
 +{
++	/* Our .sync_state replaces genpd's (dev_set_drv_sync_state gives -EBUSY), so chain it.
++	 * Without this mdss_gdsc keeps stay_on and never powers off at DPMS off (FINDINGS F10). */
++	of_genpd_sync_state(dev->of_node);
 +	if (!of_device_is_compatible(dev->of_node, "alldocube,u880-dispcc"))
 +		return;
 +	if (clk_sync_state(dev))
@@ -84869,7 +84873,7 @@
  	struct input_dev *input;
  	struct gpio_desc *reset_gpio;
  	struct regulator_bulk_data regulators[2];
-@@ -87,6 +101,24 @@
+@@ -87,6 +101,26 @@
  	return 0;
  }
  
@@ -84884,7 +84888,9 @@
 +
 +	ret = i2c_master_send(data->client, cmd, sizeof(cmd));
 +	if (ret != sizeof(cmd)) {
-+		dev_err(&data->client->dev, "Error selecting event page: %d\n", ret);
++		/* The chip is unreachable (in reset, unpowered, or mid-boot) and a level IRQ re-fires at
++		 * its scan rate, so an unbounded dev_err floods the console and starves the box. */
++		dev_err_ratelimited(&data->client->dev, "Error selecting event page: %d\n", ret);
 +		return (ret < 0) ? ret : -EIO;
 +	}
 +
@@ -84894,7 +84900,7 @@
  static irqreturn_t nvt_ts_irq(int irq, void *dev_id)
  {
  	struct nvt_ts_data *data = dev_id;
-@@ -95,6 +127,10 @@
+@@ -95,6 +129,10 @@
  	bool active;
  	u8 *touch;
  
@@ -84905,7 +84911,7 @@
  	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
  				 data->max_touches * NVT_TS_TOUCH_SIZE);
  	if (error)
-@@ -107,6 +143,9 @@
+@@ -107,6 +145,9 @@
  			continue;
  
  		slot = touch[0] >> NVT_TS_TOUCH_SLOT_SHIFT;
@@ -84915,7 +84921,21 @@
  		if (slot < 1 || slot > data->max_touches) {
  			dev_warn(dev, "slot %d out of range, ignoring\n", slot);
  			continue;
-@@ -214,6 +253,7 @@
+@@ -151,8 +192,12 @@
+ 		return error;
+ 	}
+ 
++	/* Same order as probe(): release reset, let the controller boot, only then unmask the IRQ.
++	 * INT is asserted while the chip boots, so enabling it first gives a level-interrupt storm
++	 * of failed I2C reads (seen on the U880 every time the display turns off and back on). */
++	gpiod_set_value_cansleep(data->reset_gpio, 0);
++	msleep(data->chip->reset_delay_ms ?: 100);
+ 	enable_irq(data->client->irq);
+-	gpiod_set_value_cansleep(data->reset_gpio, 0);
+ 
+ 	return 0;
+ }
+@@ -214,6 +259,7 @@
  		return -EINVAL;
  
  	data->client = client;
@@ -84923,7 +84943,7 @@
  	i2c_set_clientdata(client, data);
  
  	/*
-@@ -243,9 +283,11 @@
+@@ -243,9 +289,11 @@
  	}
  
  	/* Wait for controller to come out of reset before params read */
@@ -84938,7 +84958,7 @@
  	gpiod_set_value_cansleep(data->reset_gpio, 1); /* Put back in reset */
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  	if (error)
-@@ -294,7 +336,7 @@
+@@ -294,7 +342,7 @@
  
  	error = devm_request_threaded_irq(dev, client->irq, NULL, nvt_ts_irq,
  					  IRQF_ONESHOT | IRQF_NO_AUTOEN |
@@ -84947,7 +84967,7 @@
  					  client->name, data);
  	if (error) {
  		dev_err(dev, "failed to request irq: %d\n", error);
-@@ -316,11 +358,20 @@
+@@ -316,11 +364,20 @@
  
  static const struct nvt_ts_i2c_chip_data nvt_nt36672a_ts_data = {
  	.chip_id = 0x08,
@@ -84968,7 +84988,7 @@
  	{ }
  };
  MODULE_DEVICE_TABLE(of, nvt_ts_of_match);
-@@ -328,6 +379,7 @@
+@@ -328,6 +385,7 @@
  static const struct i2c_device_id nvt_ts_i2c_id[] = {
  	{ .name = "nt11205-ts", .driver_data = (unsigned long)&nvt_nt11205_ts_data },
  	{ .name = "nt36672a-ts", .driver_data = (unsigned long)&nvt_nt36672a_ts_data },
