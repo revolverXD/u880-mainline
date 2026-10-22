@@ -318,6 +318,14 @@ else
   DISP_STAGED=${DISP:-0}
 fi
 
+# 7e DP=1: DisplayPort out over USB-C (stage1/dp-overlay.dtso). Needs DISP=4 and USB3=1; applied after both overlays.
+if [ "${DP:-0}" = 1 ]; then
+  [ "${DISP:-0}" = 4 ] && [ "${USB3:-0}" = 1 ] || { echo "DP=1 needs DISP=4 USB3=1"; exit 1; }
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/dp-overlay.dtso > $S/dp-overlay.pp.dts
+  dtc -q -@ -I dts -O dtb -o $S/dp-overlay.dtbo $S/dp-overlay.pp.dts
+  fdtoverlay -i $O -o $S/dtb2-disabled.dp.dtb $S/dp-overlay.dtbo && mv $S/dtb2-disabled.dp.dtb $O && echo "dp overlay applied"
+fi
+
 # 7 Display stage 1 (DISP=1): mainline SM8650-variant dispcc on the stock Cliffs display clock controller (stage1/disp-overlay.dtso).
 if [ "$DISP_STAGED" -ge 1 ]; then
   cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp-overlay.dtso > $S/disp-overlay.pp.dts

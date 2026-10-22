@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * U880 DisplayPort out over USB-C (DP=1, needs DISP=4 + USB3=1, applied after both): DP0 controller (INTF_0) on the
+ * native MDSS, fed to the QMP combo PHY's DP port. HPD and the DP lane mux come from the pmic-glink altmode client on
+ * /pmic-glink/connector@0 (svid 0xff01 notifications, see NOTES section 12). Same layout as sm8550/sm8650 boards.
+ */
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/qcom,gcc-cliffs.h>
+#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,sm8550-dispcc.h>
+#include <dt-bindings/phy/phy-qcom-qmp.h>
+
+#define DSI_BYTE_PLL_CLK 0
+#define DSI_PIXEL_PLL_CLK 1
+
+/* DP0 link / VCO-div clocks come from the combo PHY (indices 8 and 9 of the SM8550 dispcc parent list) */
+&dispcc {
+	clocks = <&rpmhcc RPMH_CXO_CLK>, <&rpmhcc RPMH_CXO_CLK_A>, <&gcc GCC_DISP_AHB_CLK>, <&sleep_clk>,
+		 <&u880_dsi_phy0 DSI_BYTE_PLL_CLK>, <&u880_dsi_phy0 DSI_PIXEL_PLL_CLK>,
+		 <&u880_dsi_phy1 DSI_BYTE_PLL_CLK>, <&u880_dsi_phy1 DSI_PIXEL_PLL_CLK>,
+		 <&usb_qmp_dp_phy QMP_USB43DP_DP_LINK_CLK>, <&usb_qmp_dp_phy QMP_USB43DP_DP_VCO_DIV_CLK>,
+		 <0>, <0>, <0>, <0>, <0>, <0>;
+};
+
+&u880_mdss {
+	u880_dp0: displayport-controller@af54000 {
+		compatible = "qcom,sm8650-dp";
+		reg = <0xaf54000 0x104>,
+		      <0xaf54200 0xc0>,
+		      <0xaf55000 0x770>,
+		      <0xaf56000 0x9c>,
+		      <0xaf57000 0x9c>;
+		interrupts = <12>;
+		clocks = <&dispcc DISP_CC_MDSS_AHB_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_AUX_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_LINK_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_LINK_INTF_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_PIXEL0_CLK>,
+			 <&dispcc DISP_CC_MDSS_DPTX0_PIXEL1_CLK>;
+		clock-names = "core_iface", "core_aux", "ctrl_link", "ctrl_link_iface", "stream_pixel", "stream_1_pixel";
+		assigned-clocks = <&dispcc DISP_CC_MDSS_DPTX0_LINK_CLK_SRC>,
+				  <&dispcc DISP_CC_MDSS_DPTX0_PIXEL0_CLK_SRC>,
+				  <&dispcc DISP_CC_MDSS_DPTX0_PIXEL1_CLK_SRC>;
+		assigned-clock-parents = <&usb_qmp_dp_phy QMP_USB43DP_DP_LINK_CLK>,
+					 <&usb_qmp_dp_phy QMP_USB43DP_DP_VCO_DIV_CLK>,
+					 <&usb_qmp_dp_phy QMP_USB43DP_DP_VCO_DIV_CLK>;
+		phys = <&usb_qmp_dp_phy QMP_USB43DP_DP_PHY>;
+		phy-names = "dp";
+		#sound-dai-cells = <0>;
+		status = "okay";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 { reg = <0>; u880_dp0_in: endpoint { remote-endpoint = <&u880_dpu_out2>; }; };
+			port@1 {
+				reg = <1>;
+				u880_dp0_out: endpoint {
+					data-lanes = <0 1 2 3>;
+					remote-endpoint = <&u880_qmp_dp_in>;
+				};
+			};
+		};
+	};
+};
+
+&{/soc/display-subsystem@ae00000/display-controller@ae01000/ports} {
+	port@2 { reg = <2>; u880_dpu_out2: endpoint { remote-endpoint = <&u880_dp0_in>; }; };
+};
+
+&usb_qmp_dp_phy {
+	ports {
+		port@2 { reg = <2>; u880_qmp_dp_in: endpoint { remote-endpoint = <&u880_dp0_out>; }; };
+	};
+};
