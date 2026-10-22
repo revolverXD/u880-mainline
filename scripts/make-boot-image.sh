@@ -10,7 +10,7 @@ M=/home/USER/External/work/src/mainline
 DTB=${1:?dtb}; OUT=${2:?out.img}
 CMDLINE=${CMDLINE:-"console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout"}   # CMDLINE=... overrides (RAM-boot experiments)
 python3 /home/USER/External/work/src/LineageOS/system/tools/mkbootimg/mkbootimg.py --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \
-  --kernel $M/linux-7.2.9/arch/arm64/boot/Image --ramdisk $M/stage1/initramfs-u880c.cpio.gz --dtb "$DTB" \
+  --kernel ${KIMAGE:-$M/linux-7.2.9/arch/arm64/boot/Image} --ramdisk ${RAMDISK:-$M/stage1/initramfs-u880c.cpio.gz} --dtb "$DTB" \
   --base 0x0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --tags_offset 0x100 --dtb_offset 0x1f00000 --pagesize 4096 \
   --cmdline "$CMDLINE" \
   -o "$OUT"
