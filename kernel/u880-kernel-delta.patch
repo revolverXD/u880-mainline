@@ -19908,7 +19908,7 @@
 +MODULE_LICENSE("GPL");
 --- /dev/null
 +++ b/drivers/gpu/drm/panel/panel-alldocube-u880.c
-@@ -0,0 +1,436 @@
+@@ -0,0 +1,453 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Alldocube iPlay 70 mini Ultra (U880) BOE 1600x2560 LCD, Novatek TDDI (NT36523N touch side).
@@ -20161,40 +20161,57 @@
 +#define U880_HTOTAL ((800 + 27 + 20 + 26) * 2)
 +#define U880_VTOTAL (2560 + 30 + 2 + 98)
 +
-+static const struct drm_display_mode u880_mode = {
-+	.clock = U880_HTOTAL * U880_VTOTAL * 144 / 1000,
-+	.hdisplay = 800 * 2,
-+	.hsync_start = (800 + 27) * 2,
-+	.hsync_end = (800 + 27 + 20) * 2,
-+	.htotal = U880_HTOTAL,
-+	.vdisplay = 2560,
-+	.vsync_start = 2560 + 30,
-+	.vsync_end = 2560 + 30 + 2,
-+	.vtotal = U880_VTOTAL,
-+	.width_mm = 118,
-+	.height_mm = 190,
-+	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
-+};
++/*
++ * Stock dfps list is 144/120/90/60 Hz ("dfps_immediate_porch_mode_vfp"): only the vertical front porch grows, the pixel
++ * clock and the init sequence stay those of 144 Hz. vtotal = 2690 * 144 / rate gives the exact rates.
++ */
++#define U880_VTOTAL_AT(hz) (U880_VTOTAL * 144 / (hz))
++#define U880_MODE(hz, flags)						\
++{									\
++	.clock = U880_HTOTAL * U880_VTOTAL * 144 / 1000,		\
++	.hdisplay = 800 * 2,						\
++	.hsync_start = (800 + 27) * 2,					\
++	.hsync_end = (800 + 27 + 20) * 2,				\
++	.htotal = U880_HTOTAL,						\
++	.vdisplay = 2560,						\
++	.vsync_start = 2560 + 30 + U880_VTOTAL_AT(hz) - U880_VTOTAL,	\
++	.vsync_end = 2560 + 30 + 2 + U880_VTOTAL_AT(hz) - U880_VTOTAL,	\
++	.vtotal = U880_VTOTAL_AT(hz),					\
++	.width_mm = 118,						\
++	.height_mm = 190,						\
++	.type = DRM_MODE_TYPE_DRIVER | (flags),				\
++}
 +
-+static const struct drm_display_mode u880_mode_60 = {
-+	.clock = U880_HTOTAL * U880_VTOTAL * 60 / 1000,
-+	.hdisplay = 800 * 2,
-+	.hsync_start = (800 + 27) * 2,
-+	.hsync_end = (800 + 27 + 20) * 2,
-+	.htotal = U880_HTOTAL,
-+	.vdisplay = 2560,
-+	.vsync_start = 2560 + 30,
-+	.vsync_end = 2560 + 30 + 2,
-+	.vtotal = U880_VTOTAL,
-+	.width_mm = 118,
-+	.height_mm = 190,
-+	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++static const struct drm_display_mode u880_modes[] = {
++	U880_MODE(144, DRM_MODE_TYPE_PREFERRED),
++	U880_MODE(120, 0),
++	U880_MODE(90, 0),
++	U880_MODE(60, 0),
 +};
 +
 +static int u880_get_modes(struct drm_panel *panel, struct drm_connector *connector)
 +{
-+	return drm_connector_helper_get_modes_fixed(connector,
-+						    (u880_dbg2 & 0x4) ? &u880_mode_60 : &u880_mode);
++	unsigned int i, n = 0;
++
++	for (i = 0; i < ARRAY_SIZE(u880_modes); i++) {
++		struct drm_display_mode *mode = drm_mode_duplicate(connector->dev, &u880_modes[i]);
++
++		if (!mode)
++			break;
++		/* u880_dbg2 & 0x4: 60 Hz only, the old single-mode signal-integrity test */
++		if ((u880_dbg2 & 0x4) && drm_mode_vrefresh(mode) != 60) {
++			drm_mode_destroy(connector->dev, mode);
++			continue;
++		}
++		if ((u880_dbg2 & 0x4) || !i)
++			mode->type |= DRM_MODE_TYPE_PREFERRED;
++		drm_mode_set_name(mode);
++		drm_mode_probed_add(connector, mode);
++		n++;
++	}
++	connector->display_info.width_mm = 118;
++	connector->display_info.height_mm = 190;
++	return n;
 +}
 +
 +static const struct drm_panel_funcs u880_panel_funcs = {
