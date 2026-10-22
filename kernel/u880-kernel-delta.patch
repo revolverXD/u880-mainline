@@ -4705,7 +4705,7 @@
 +obj-$(CONFIG_QCOM_RPMH_UKE) += tcsrcc-uke.o
 --- /dev/null
 +++ b/drivers/clk/qcom/uke-dispcc-votes.c
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,158 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -4747,6 +4747,12 @@
 +static unsigned long uke_dp_pixel_rates[VDD_NUM] = {
 +	[VDD_LOWER_D1] = 19200000, [VDD_LOWER] = 337500000,
 +	[VDD_LOW_L1] = 405000000, [VDD_NOMINAL] = 675000000,
++	/*
++	 * U880: when the DP PHY sets its VCO-div clock (always 1.35 GHz) the not yet programmed pixel RCG is predicted
++	 * at that rate and the rate-change check would veto it ("greater than highest Fmax"), leaving the PHY clock
++	 * at 0 and the pixel clock failing with -EINVAL. Only this transient reaches the top level.
++	 */
++	[VDD_HIGH] = 1350000000,
 +};
 +static unsigned long uke_dp_aux_rates[VDD_NUM] = {
 +	[VDD_LOWER_D1] = 19200000,
