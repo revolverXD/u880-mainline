@@ -1,0 +1,6 @@
+#!/bin/sh
+# U880 charging log (readable later over SSH): time, USB type/online/V/I/limit, battery %/status/V/I/temp.
+U=/sys/class/power_supply/qcom-battmgr-usb; B=/sys/class/power_supply/qcom-battmgr-bat
+while sleep 10; do
+  echo "$(date +%T) usb=$(cat $U/online) $(sed "s/.*\[\(.*\)\].*/\1/" $U/usb_type) $(cat $U/voltage_now)uV $(cat $U/current_now)uA lim=$(cat $U/input_current_limit) bat=$(cat $B/capacity)% $(cat $B/status) $(cat $B/voltage_now)uV $(cat $B/current_now)uA t=$(cat $B/temp)"
+done

@@ -1,0 +1,13 @@
+0cb01b3a03c78c4b3a190a886ddbe3a5997dff3bcd642add26e3f3bc4a50bc70  /usr/local/bin/hexagonrpcd
+b0ad81055159a62bcfae7a5e115ea0bd50b25096eb8b6cac345716d8b017385d  /usr/local/lib/libhexagonrpc.so.0.5
+6afa7f4ec87cb8338b6c598e3530e2bcffe9064362bbb5b15ce96ea924bc2465  /usr/local/libexec/hexagonrpc/chrecd
+8a2a8c49934c88f9be5419ce8bfde9194eb0ab1275f326ceca2b3fa7173dcc3d  /lib/firmware/qca/msbtfw12.mbn
+6d950981c957196a41ab0a679a794144a99c30d5ebdde85f1812d4e35ad2c826  /lib/firmware/qca/msbtfw12.tlv
+f47081438a691fe3cd7b9caab6dce75ba1fe66060c08c55a214b975fa2251812  /lib/firmware/qca/msnv12.bin
+61ac58b6de77cd5e538178bd9216f73e7e3af21271004892124b3fbe0b2db6a7  /lib/firmware/aw882xx_acf.bin
+d617af4e3348795eb564915f546e6a96e8042aeb1648433dbe7e11f737ab5800  /lib/firmware/ath11k/WCN6750/hw1.0/regdb.bin
+8c3955899101202912ac30627cf109235e9f868760c3c54d7aac5d711900a25f  /lib/firmware/updates/ath11k/WCN6750/hw1.0/board-2.bin
+9d7c883475d02d2ccc06f10d1f4ffb959cc9d3b2ba3029118e9c588edff0f75e  /usr/lib/modules/7.2.9-u880c/kernel/drivers/clk/qcom/dispcc-sm8550.ko
+36ac648ec3b9b9b3aec2e7f3946165633026cbf0196dc0779da389487818201f  /usr/lib/modules/7.2.9-u880c/kernel/drivers/soc/qcom/pmic_glink_altmode.ko
+e8434cc1648d4a9e92cfaeca044c3e004828c9ff3aa510fd564d4bcae3816941  /usr/lib/modules/7.2.9-u880c/kernel/drivers/usb/typec/mux/wcd939x-usbss.ko
+571f55c7f3d9726641b0d6129ec73727002dc2a643781e1b733b97df02eaca60  /usr/lib/modules/7.2.9-u880c/kernel/drivers/phy/qualcomm/phy-qcom-qmp-combo.ko

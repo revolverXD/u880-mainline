@@ -1,0 +1,1 @@
+ACTION=="add", SUBSYSTEM=="input", ATTRS{name}=="u880-power-sim", TAG-="power-switch", TAG+="uaccess", MODE="0666", ENV{ID_SEAT}="seat0"

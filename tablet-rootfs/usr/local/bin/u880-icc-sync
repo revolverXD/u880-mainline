@@ -1,0 +1,8 @@
+#!/bin/sh
+# Release the interconnect boot votes (sync_state). They never release on their own: the bootloader-enabled NFC bus
+# (884000.i2c, downstream compatible) never probes. Interconnects only - a global fw_devlink.sync_state=timeout also
+# syncs disp_cc and the CX/MX rails and blanks the simpledrm panel (white). Needs the POWER=1 DT (CPU/display/QUP votes).
+for d in /sys/devices/platform/soc/*interconnect*; do
+	[ -f "$d/state_synced" ] && [ "$(cat "$d/state_synced")" = 0 ] && printf 1 > "$d/state_synced" && echo "synced ${d##*/}"
+done
+exit 0

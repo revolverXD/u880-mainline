@@ -1,0 +1,4 @@
+# U880: hexagonrpcd (user fastrpc) serves the ADSP sensors PD through /dev/fastrpc-adsp. The device appears only when
+# the fastrpc module loads, after the unit conditions were checked at boot -> let udev start the service.
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", GROUP="fastrpc", MODE="0660"
+SUBSYSTEM=="misc", KERNEL=="fastrpc-adsp", TAG+="systemd", ENV{SYSTEMD_WANTS}+="hexagonrpcd-adsp-sensorspd.service"

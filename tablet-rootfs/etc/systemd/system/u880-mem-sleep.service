@@ -1,0 +1,9 @@
+[Unit]
+Description=U880: select s2idle as the system sleep state
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/u880-mem-sleep
+
+[Install]
+WantedBy=multi-user.target

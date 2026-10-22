@@ -1,0 +1,150 @@
+{
+  "animations": {
+    "animateLockScreen": true,
+    "durationScale": 1.0,
+    "panelTravel": 32.0,
+    "windowCloseEffect": "implode"
+  },
+  "appearance": {
+    "accentSource": "custom",
+    "allowClientCursorSurfaces": true,
+    "applicationThemingEnabled": true,
+    "backdropBlurLevel": "good",
+    "backdropBlurPixelOpacityThreshold": 0.19,
+    "backdropBlurSigma": 6.0,
+    "cardOpacity": 0.4421052631578947,
+    "colorSchemePreference": "preferDark",
+    "cornerRadiusScale": 0.5,
+    "cursorSize": 48,
+    "cursorThemeId": "bibata_modern_ice",
+    "customAccentColor": 4285218675,
+    "focusedWindowBorderEnabled": true,
+    "focusedWindowOpacity": 1.0,
+    "fontFamily": "",
+    "glass": {
+      "appPanelOpacity": 0.4,
+      "appearance": "dark",
+      "bevelWidthScale": 1.0,
+      "blurSigma": 10.0,
+      "brightness": 0.0,
+      "dispersion": 0.0,
+      "edgeStrength": 1.0,
+      "lightAngle": 50.0,
+      "lightIntensity": 1.0,
+      "opacity": 0.4,
+      "oppositeLightStrength": 0.8,
+      "quality": 1.0,
+      "refraction": 0.2,
+      "refractionDepthScale": 1.1,
+      "rimFalloff": 1.1,
+      "rimWidth": 1.0,
+      "saturation": 1.0,
+      "thickness": 25.0,
+      "tintStrength": 0.1,
+      "windowOpacity": 0.4
+    },
+    "panelOpacity": 0.5,
+    "transparencyMode": "glass",
+    "unfocusedWindowOpacity": 1.0
+  },
+  "applicationEnvironment": {
+    "applications": {},
+    "default": {}
+  },
+  "keyboard": {
+    "layouts": [
+      {
+        "layout": "us",
+        "variant": ""
+      }
+    ],
+    "options": [],
+    "repeatDelayMs": 600,
+    "repeatRateHz": 25
+  },
+  "layout": {
+    "clipboardTrayEdge": "bottom",
+    "clipboardTrayExtent": 160.0,
+    "keyboardResizeStep": "2%",
+    "maximizePadding": 8.0,
+    "minimizedWindowPlacement": "offscreen",
+    "scrollingLayoutPreserveSwapSizes": true,
+    "scrollingLayoutWheelSpeed": 1.0,
+    "scrollingLayoutWheelUpDirection": "left",
+    "systemBarOutputs": [
+      "DSI-1",
+      "DP-1"
+    ],
+    "systemBarSide": "top",
+    "systemBarThickness": 33.0,
+    "windowLayout": "stacking",
+    "workspaceCount": 4,
+    "workspaceSwitchingOrientation": "horizontal",
+    "workspacesEnabled": true
+  },
+  "localization": {
+    "locale": "system"
+  },
+  "lockScreen": {
+    "blurRadius": 8.0,
+    "clockScale": 1.0,
+    "dimAmount": 0.24,
+    "showSystemStatus": true,
+    "useSystemWallpaper": true
+  },
+  "mouse": {
+    "speed": 0.0
+  },
+  "overlays": {
+    "dashboard": {
+      "anchor": "bottomLeft",
+      "height": 740.0,
+      "hoverTriggerEnabled": true,
+      "margin": 8.0,
+      "width": 420.0
+    },
+    "launcher": {
+      "anchor": "center",
+      "height": 200.0,
+      "hoverTriggerEnabled": true,
+      "margin": 8.0,
+      "width": 730.0
+    },
+    "notifications": {
+      "anchor": "bottomRight",
+      "height": 640.0,
+      "hoverTriggerEnabled": true,
+      "margin": 10.0,
+      "width": 410.0
+    },
+    "systemHud": {
+      "anchor": "bottomCenter",
+      "height": 74.0,
+      "hoverTriggerEnabled": true,
+      "margin": 10.0,
+      "width": 350.0
+    }
+  },
+  "power": {
+    "idleDpmsEnabled": true,
+    "idleDpmsTimeoutMinutes": 15,
+    "idleLockEnabled": true,
+    "idleLockTimeoutMinutes": 16,
+    "idleSuspendEnabled": false,
+    "idleSuspendTimeoutMinutes": 30,
+    "powerButtonAction": "suspend",
+    "suspendMode": "s2idle"
+  },
+  "revision": 24,
+  "rotationLock": {
+    "enabled": false,
+    "orientation": 0
+  },
+  "touchpad": {
+    "naturalScrollEnabled": false,
+    "scrollSpeedFactor": 1.0,
+    "scrollingLayoutSwipeSpeedFactor": 1.0,
+    "tapToClickEnabled": true
+  },
+  "version": 28
+}

@@ -14153,22 +14153,10 @@
  MODULE_DEVICE_TABLE(of, nb7vpq904m_of_table);
 --- a/drivers/usb/typec/mux/wcd939x-usbss.c
 +++ b/drivers/usb/typec/mux/wcd939x-usbss.c
-@@ -537,6 +537,7 @@
- 	struct wcd939x_usbss *usbss = typec_switch_get_drvdata(sw);
- 	int ret = 0;
+@@ -562,6 +562,18 @@
  
-+	dev_info(&usbss->client->dev, "U880DBG switch_set orientation=%d (was %d)\n", orientation, usbss->orientation);
  	mutex_lock(&usbss->lock);
  
- 	if (usbss->orientation != orientation) {
-@@ -560,7 +561,21 @@
- 	struct wcd939x_usbss *usbss = typec_mux_get_drvdata(mux);
- 	int ret = 0;
- 
-+	dev_info(&usbss->client->dev, "U880DBG mux_set mode=%lu svid=%#x (was mode=%d svid=%#x)\n", state->mode,
-+		 state->alt ? state->alt->svid : 0, usbss->mode, usbss->svid);
- 	mutex_lock(&usbss->lock);
-+
 +	/*
 +	 * U880: the ADSP drives DP through the altmode client, so ucsi_glink does not know DP is up and calls
 +	 * typec_set_mode(TYPEC_STATE_USB) on every connector change, about 1.5 ms after the DP state: that switches the
@@ -14176,13 +14164,14 @@
 +	 */
 +	if (state->mode == TYPEC_STATE_USB && !state->alt && usbss->svid == USB_TYPEC_DP_SID &&
 +	    usbss->mode >= TYPEC_STATE_MODAL) {
-+		dev_info(&usbss->client->dev, "U880DBG ignoring USB mux request while in DP mode %d\n", usbss->mode);
++		dev_dbg(&usbss->client->dev, "ignoring USB mux request while in DP mode %d\n", usbss->mode);
 +		mutex_unlock(&usbss->lock);
 +		return 0;
 +	}
- 
++
  	if (usbss->mode != state->mode) {
  		usbss->mode = state->mode;
+ 
 --- a/drivers/usb/typec/ucsi/ucsi_glink.c
 +++ b/drivers/usb/typec/ucsi/ucsi_glink.c
 @@ -218,7 +218,8 @@
@@ -17539,27 +17528,12 @@
  }
  
  static int qmp_combo_dp_power_off(struct phy *phy)
-@@ -4392,17 +4775,79 @@
+@@ -4392,17 +4775,64 @@
  }
  
  #if IS_ENABLED(CONFIG_TYPEC)
 +/* A route acknowledgement must include successful rail/clock/PHY restoration. */
-+static int qmp_combo_uke_reconfigure_impl(struct qmp_combo *qmp);
 +static int qmp_combo_uke_reconfigure(struct qmp_combo *qmp)
-+{
-+	ktime_t t0 = ktime_get();
-+	int ret;
-+
-+	dev_info(qmp->dev, "U880DBG reconfigure begin: mode=%d orient=%d init=%d usb=%u dp=%u dp_on=%d\n",
-+		 qmp->qmpphy_mode, qmp->orientation, qmp->init_count, qmp->usb_init_count, qmp->dp_init_count,
-+		 qmp->dp_powered_on);
-+	ret = qmp_combo_uke_reconfigure_impl(qmp);
-+	dev_info(qmp->dev, "U880DBG reconfigure end: ret=%d took %lld us usb=%u\n", ret,
-+		 ktime_to_us(ktime_sub(ktime_get(), t0)), qmp->usb_init_count);
-+	return ret;
-+}
-+
-+static int qmp_combo_uke_reconfigure_impl(struct qmp_combo *qmp)
 +{
 +	int ret;
 +
@@ -17619,7 +17593,7 @@
  
  	if (qmp->init_count) {
  		if (qmp->usb_init_count)
-@@ -4428,13 +4873,17 @@
+@@ -4428,13 +4858,17 @@
  	unsigned int svid;
  
  	guard(mutex)(&qmp->phy_mutex);
@@ -17638,7 +17612,7 @@
  		switch (state->mode) {
  		/* DP Only */
  		case TYPEC_DP_STATE_C:
-@@ -4448,11 +4897,16 @@
+@@ -4448,11 +4882,16 @@
  
  		/* Safe fallback...*/
  		default:
@@ -17655,7 +17629,7 @@
  		new_mode = QMPPHY_MODE_USB3_ONLY;
  	}
  
-@@ -4463,13 +4917,15 @@
+@@ -4463,13 +4902,15 @@
  
  	if (qmp->qmpphy_mode != QMPPHY_MODE_USB3_ONLY && qmp->dp_powered_on) {
  		dev_dbg(qmp->dev, "typec_mux_set: DP PHY is still in use, delaying switch\n");
@@ -17672,7 +17646,7 @@
  
  	if (qmp->init_count) {
  		if (qmp->usb_init_count)
-@@ -4843,6 +5299,18 @@
+@@ -4843,6 +5284,18 @@
  					qmp->cfg->vreg_list, &qmp->vregs);
  	if (ret)
  		return ret;
@@ -17691,7 +17665,7 @@
  
  	/* Check for legacy binding with child nodes. */
  	usb_np = of_get_child_by_name(dev->of_node, "usb3-phy");
-@@ -5002,6 +5470,9 @@
+@@ -5002,6 +5455,9 @@
  		.data = &sm8350_usb3dpphy_cfg,
  	},
  	{
@@ -17701,7 +17675,7 @@
  		.compatible = "qcom,sm8550-qmp-usb3-dp-phy",
  		.data = &sm8550_usb3dpphy_cfg,
  	},
-@@ -5021,12 +5492,39 @@
+@@ -5021,12 +5477,39 @@
  };
  MODULE_DEVICE_TABLE(of, qmp_combo_of_match_table);
  
@@ -85371,62 +85345,11 @@
 +#include <trace/define_trace.h>
 --- a/drivers/soc/qcom/pmic_glink_altmode.c
 +++ b/drivers/soc/qcom/pmic_glink_altmode.c
-@@ -7,6 +7,8 @@
- #include <linux/bitfield.h>
- #include <linux/cleanup.h>
- #include <linux/module.h>
-+
-+static unsigned int u880_alt;
- #include <linux/of.h>
- #include <linux/of_device.h>
- #include <linux/mutex.h>
-@@ -193,7 +195,8 @@
- 	port->state.data = &dp_data;
- 	port->state.mode = TYPEC_MODAL_STATE(mode);
- 
--	ret = typec_mux_set(port->typec_mux, &port->state);
-+	dev_info(altmode->dev, "U880DBG enable_dp mode=%u hpd=%d irq=%d orient=%d\n", mode, hpd_state, hpd_irq, port->orientation);
-+	ret = (u880_alt & 4) ? 0 : typec_mux_set(port->typec_mux, &port->state);
- 	if (ret)
- 		dev_err(altmode->dev, "failed to switch mux to DP: %d\n", ret);
- 
-@@ -201,7 +204,7 @@
- 	port->retimer_state.data = &dp_data;
- 	port->retimer_state.mode = TYPEC_MODAL_STATE(mode);
- 
--	ret = typec_retimer_set(port->typec_retimer, &port->retimer_state);
-+	ret = (u880_alt & 2) ? 0 : typec_retimer_set(port->typec_retimer, &port->retimer_state);
- 	if (ret)
- 		dev_err(altmode->dev, "failed to setup retimer to DP: %d\n", ret);
- }
-@@ -390,7 +393,10 @@
- 		pmic_glink_altmode_safe(altmode, alt_port);
- 	}
- 
--	pmic_glink_altmode_request(altmode, ALTMODE_PAN_ACK, alt_port->index);
-+	if (!(u880_alt & 1))
-+		pmic_glink_altmode_request(altmode, ALTMODE_PAN_ACK, alt_port->index);
-+	else
-+		dev_info(altmode->dev, "U880DBG PAN_ACK skipped\n");
- }
- 
- static enum typec_orientation pmic_glink_altmode_orientation(unsigned int orientation)
-@@ -514,6 +520,8 @@
- 
- 	opcode = le32_to_cpu(hdr->opcode) & 0xff;
- 	svid = le32_to_cpu(hdr->opcode) >> 16;
-+	dev_info(altmode->dev, "U880DBG altmode msg opcode=%#x svid=%#x len=%zu\n", opcode, svid, len);
-+	print_hex_dump(KERN_INFO, "U880DBG altmode: ", DUMP_PREFIX_OFFSET, 16, 4, data, min_t(size_t, len, 64), false);
- 
- 	switch (opcode) {
- 	case USBC_CMD_WRITE_REQ:
-@@ -716,3 +724,6 @@
+@@ -716,3 +716,4 @@
  
  MODULE_DESCRIPTION("Qualcomm PMIC GLINK Altmode driver");
  MODULE_LICENSE("GPL");
 +
-+module_param_named(u880_alt, u880_alt, uint, 0644);
-+MODULE_PARM_DESC(u880_alt, "U880 DP debug: bit0 skip ALTMODE_PAN_ACK, bit1 skip typec_retimer_set (DP), bit2 skip typec_mux_set (DP)");
 --- a/drivers/soc/qcom/pmic_glink.c
 +++ b/drivers/soc/qcom/pmic_glink.c
 @@ -389,6 +389,20 @@

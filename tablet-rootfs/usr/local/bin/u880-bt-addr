@@ -1,0 +1,9 @@
+#!/bin/sh
+# WCN6750 comes up unconfigured (address 00:00:00): give it a stable locally-administered public address.
+A=$(sha256sum /etc/machine-id | sed "s/^\(..\)\(..\)\(..\)\(..\)\(..\).*/02:\1:\2:\3:\4:\5/")
+for i in $(seq 1 60); do
+  btmgmt info 2>/dev/null | grep -q "Primary controller" && exit 0
+  btmgmt config 2>/dev/null | grep -q Unconfigured && btmgmt -i 0 public-addr $A 2>&1 | grep -q "complete" && exit 0
+  sleep 1
+done
+exit 1

@@ -1,0 +1,6 @@
+[Unit]
+Description=U880 keep 500 mA USB budget on PC ports
+[Service]
+ExecStart=/usr/local/bin/u880-sdp-budget
+[Install]
+WantedBy=multi-user.target

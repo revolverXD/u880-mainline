@@ -1,0 +1,12 @@
+#!/bin/sh
+# U880: hexagonrpcd-adsp-sensorspd ships with Conflicts=suspend.target, so systemd stops it before every suspend, and a
+# clean stop is not restarted by Restart=always. A start job issued from this hook is dropped because suspend.target is
+# still active during "post", so schedule the restart a few seconds later, when the target has stopped.
+# Install: /usr/lib/systemd/system-sleep/u880-sensors-resume (mode 755).
+[ "$1" = post ] || exit 0
+case "$2" in
+  suspend|hybrid-sleep|suspend-then-hibernate) ;;
+  *) exit 0 ;;
+esac
+logger -t u880-sensors "resume from $2: restarting hexagonrpcd-adsp-sensorspd in 3 s"
+systemd-run --quiet --on-active=3s --unit=u880-sensors-restart systemctl restart hexagonrpcd-adsp-sensorspd.service

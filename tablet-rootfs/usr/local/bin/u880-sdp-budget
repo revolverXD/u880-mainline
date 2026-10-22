@@ -1,0 +1,11 @@
+#!/bin/sh
+# U880: on a PC port (SDP) the ADSP charger resets the input limit to the unconfigured 100 mA after its own port
+# detection (a boot-time udev write gets overridden). Our CDC gadget is configured -> keep the USB2 500 mA budget.
+# DCP/CDP/PD are left to the ADSP.
+U=/sys/class/power_supply/qcom-battmgr-usb
+while sleep 5; do
+  [ -r $U/online ] || continue
+  [ "$(cat $U/online)" = 1 ] || continue
+  grep -q "\[SDP\]" $U/usb_type || continue
+  [ "$(cat $U/input_current_limit)" -lt 500000 ] && echo 500000 > $U/input_current_limit
+done

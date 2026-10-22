@@ -1,0 +1,15 @@
+#!/bin/sh
+# Boot race on U880: g_cdc binds before UCSI reports the plug orientation (gpio122), so the redriver/QMP lanes are not
+# routed yet and the PC link trains at USB 2. Wait for the orientation, then re-enumerate once if stuck at high-speed.
+i=0
+while [ $i -lt 30 ]; do
+	o=$(cat /sys/class/typec/port0/orientation 2>/dev/null)
+	[ "$o" = normal ] || [ "$o" = reverse ] && break
+	i=$((i + 1)); sleep 1
+done
+for u in /sys/class/udc/*; do
+	[ "$(cat $u/state)" = configured ] && [ "$(cat $u/current_speed)" = high-speed ] &&
+		[ "$(cat $u/maximum_speed)" = super-speed ] || continue
+	echo disconnect > $u/soft_connect; sleep 1; echo connect > $u/soft_connect
+	echo "$(basename $u): re-enumerated for SuperSpeed (orientation $o)"
+done

@@ -1,0 +1,9 @@
+[Unit]
+Description=Set U880 Bluetooth public address
+After=bluetooth.service
+Requires=bluetooth.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/u880-bt-addr
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Inhibit the touchscreen while the backlight is off (Denial screen-off / power button): the NT36523 reports at its scan
+# rate (~380 IRQ/s) even untouched; measured ~95 mW at screen-off (1376 -> 1281 mW). Only the power button wakes anyway.
+# shortcut: polls bl_power once a second (sysfs gives no change event for it); touch returns <=1 s after screen-on.
+B=/sys/class/backlight/u880-backlight/bl_power
+I=$(grep -l nt36523n /sys/class/input/input*/name | head -1)
+[ -n "$I" ] && [ -f "$B" ] || exit 1
+I=${I%/name}/inhibited
+# Re-enable touch and EXIT on stop (a TERM trap that does not exit kept the loop alive: 90 s shutdown hang).
+trap 'echo 0 > "$I"; exit 0' INT TERM
+last=
+while :; do
+	if [ "$(cat "$B")" = 0 ]; then want=0; else want=1; fi
+	[ "$want" != "$last" ] && echo "$want" > "$I" && last=$want
+	sleep 1
+done
