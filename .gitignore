@@ -35,3 +35,4 @@ sensors/vendor/
 sensors/persist/
 sensors/stage/
 !/dts/
+!/steam/

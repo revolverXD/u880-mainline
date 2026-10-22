@@ -1,0 +1,10 @@
+# Steam on the U880 (x86 Steam under FEX-emu, 2026-10-22)
+Steam is a 32-bit x86 client and the SoC has no AArch32, so box86 is out; FEX-emu runs it. State on the tablet (not in git): FEX built in `/root/fex/src/build` and installed to `/usr/local`,
+Ubuntu 24.04 x86-64 rootfs in `/home/USER/.local/share/fex-emu/RootFS/Ubuntu_24_04` (FEXRootFSFetcher), Steam unpacked into it, launcher `/home/USER/run-steam.sh`.
+FEX quirk: without a chroot, FEX creates NEW files on the HOST filesystem (only `/tmp` is shared), so `apt install` through FEX pollutes the host. Never run `dpkg`/`apt` writes through FEXBash. The chroot route (`chroot.py`) made FEX segfault at startup.
+What worked instead (`steam/debx.py`): run `apt-get` through FEX with state/cache in `/tmp` (`-o Dir::State=/tmp/ast -o Dir::Cache=/tmp/acache -o Debug::NoLocking=1 -o APT::Architectures::=amd64 -o APT::Architectures::=i386 install --download-only ...`),
+then unpack every .deb into the rootfs from the host with `steam/debx.py <rootfs>` (no maintainer scripts run). `steamdeps` in the rootfs is replaced by a stub (`usr/bin/steamdeps.orig` keeps the original).
+Build: `cmake -GNinja -DCMAKE_BUILD_TYPE=Release -DUSE_LINKER=lld -DENABLE_LTO=False -DBUILD_TESTING=False -DBUILD_FEXCONFIG=False -DTUNE_CPU=none` (FEX's `aarch64_fit_native.py` has no answer for this CPU: `TUNE_CPU=none` is needed), `CC=clang CXX=clang++`.
+Needs `cmake clang lld squashfs-tools nasm patchelf strace` from pacman (a `pacman -Sy` was done: a partial upgrade). `BINFMT_MISC` is built (`steam/binfmt-fex.sh` registers FEX) but is not needed for the working route.
+Run: `STEAMOS=1 DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/1001 WAYLAND_DISPLAY=wayland-1 FEXBash -c "steam -no-cef-sandbox"` as `USER`, with `cd /home/USER` (FEX stats its own name relative to the cwd; cwd `/root` gives EACCES and a crash). Xwayland `:0` comes from Denial.
+Measured: x86 `glxinfo` = `freedreno FD735`, accelerated, OpenGL 4.6 (Mesa 26.1.6). First start downloads the client (~74 MB) and Big Picture takes about 4 minutes to appear; it is slow but works.
