@@ -2,9 +2,10 @@
 # Start Valve's native Linux ARM64 Steam client (unpacked into /home/USER/steam-arm/root by fetch-arm64.sh + unpack-arm64.py). Extra arguments go to steam.
 R=/home/USER/steam-arm/root
 cd "$R" || exit 1
-export STEAMROOT="$R" STEAM_RUNTIME=0
+export STEAMROOT="$R" STEAM_RUNTIME=0 GDK_BACKEND=x11 LD_PRELOAD=/usr/lib/libXrandr.so.2
 export DISPLAY="${DISPLAY:-:0}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}" LANG="${LANG:-en_US.UTF-8}"
 [ "$(stat -c %u "$XDG_RUNTIME_DIR" 2>/dev/null)" = "$(id -u)" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export LD_LIBRARY_PATH="$R/steamrtarm64:$R/steamrtarm64/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # exit code 42 = Steam asks to be restarted (after a self-update), like steam.sh does
 while :; do
