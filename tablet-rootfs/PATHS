@@ -43,3 +43,6 @@
 /home/USER/.config/denial/settings.json
 /home/USER/.config/denial/outputs.conf
 /home/USER/.config/denial/shortcuts.json
+/etc/udev/rules.d/60-steam-input.rules
+/etc/udev/rules.d/61-u880-gamepad.rules
+/etc/modules-load.d/u880-uinput.conf

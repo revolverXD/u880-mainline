@@ -1,0 +1,4 @@
+# Any controller: raw HID (Steam Input, SDL hidapi) and uinput (Steam's virtual controller) for the logged-in user and the input group.
+# hidraw nodes carry no joystick tag, so this opens every hidraw node (keyboards too); the user is already in group input, which can read every evdev node, so nothing new is exposed on this single-user tablet.
+SUBSYSTEM=="hidraw", TAG+="uaccess", MODE="0660", GROUP="input"
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"
