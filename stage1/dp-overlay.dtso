@@ -75,3 +75,26 @@
 		port@2 { reg = <2>; u880_qmp_dp_in: endpoint { remote-endpoint = <&u880_dp0_out>; }; };
 	};
 };
+
+/*
+ * DP AUX rides the SBU pins, which the WCD939x USB subsystem switch (stock "qcom,wcd939x-i2c" at 0x0e on QUP0 SE0 I2C,
+ * supply L7B) routes by orientation and by DP mode. Without it the DP controller sees HPD but every DPCD read fails
+ * ("failed to read caps", "aux not connected"). Reuse the stock node; connector port@2 is the SBU port.
+ */
+&wcd_usbss {
+	compatible = "qcom,wcd9395-usbss", "qcom,wcd9390-usbss";
+	vdd-supply = <&L7B>;
+	mode-switch;
+	orientation-switch;
+	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		port@0 { reg = <0>; u880_wcd_sbu: endpoint { remote-endpoint = <&u880_connector_sbu>; }; };
+	};
+};
+
+&{/pmic-glink/connector@0/ports} {
+	port@2 { reg = <2>; u880_connector_sbu: endpoint { remote-endpoint = <&u880_wcd_sbu>; }; };
+};
