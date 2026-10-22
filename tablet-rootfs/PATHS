@@ -48,3 +48,5 @@
 /etc/modules-load.d/u880-uinput.conf
 /usr/local/bin/steam-x86
 /home/USER/.local/share/applications/steam-x86.desktop
+/usr/local/bin/steam-arm64
+/home/USER/.local/share/applications/steam-arm64.desktop

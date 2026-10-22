@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Steam (native ARM64)
+Comment=Valve's native Linux ARM64 Steam client
+Exec=/usr/local/bin/steam-arm64
+Icon=steam
+Terminal=false
+Type=Application
+Categories=Game;
