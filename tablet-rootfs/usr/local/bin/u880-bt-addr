@@ -1,6 +1,14 @@
 #!/bin/sh
-# WCN6750 comes up unconfigured (address 00:00:00): give it a stable locally-administered public address.
-A=$(sha256sum /etc/machine-id | sed "s/^\(..\)\(..\)\(..\)\(..\)\(..\).*/02:\1:\2:\3:\4:\5/")
+# Set the Bluetooth public address (the controller comes up unconfigured, without one).
+# Order: factory address from persist/nv/macbt (read-only mount), then the pinned copy /etc/u880-bt-addr, then 02:xx from the machine-id.
+valid() { echo "$1" | grep -Eq '^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$'; }
+A=
+if mkdir -p /run/u880-persist && mount -o ro,noload /dev/disk/by-partlabel/persist /run/u880-persist 2>/dev/null; then
+  A=$(tr -d '\r\n ' < /run/u880-persist/nv/macbt 2>/dev/null)
+  umount /run/u880-persist
+fi
+valid "$A" || A=$(tr -d '\r\n ' < /etc/u880-bt-addr 2>/dev/null)
+valid "$A" || A=$(sha256sum /etc/machine-id | sed "s/^\(..\)\(..\)\(..\)\(..\)\(..\).*/02:\1:\2:\3:\4:\5/")
 for i in $(seq 1 60); do
   btmgmt info 2>/dev/null | grep -q "Primary controller" && exit 0
   btmgmt config 2>/dev/null | grep -q Unconfigured && btmgmt -i 0 public-addr $A 2>&1 | grep -q "complete" && exit 0
