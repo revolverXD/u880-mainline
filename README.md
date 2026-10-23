@@ -1,0 +1,248 @@
+# Mainline Linux + Plasma Mobile on the Alldocube iPlay 70 mini Ultra (U880)
+
+A mainline Linux 7.2.9 port for one tablet: **Alldocube iPlay 70 mini Ultra, Global model, codename U880**
+(Qualcomm Snapdragon 7+ Gen 3, SM7675 "Cliffs", 12 GB RAM, UFS 3.1, 8.8" 1600x2560 144 Hz panel). It runs Arch Linux ARM with
+KDE Plasma Mobile (and the Denial shell), native ARM64 Steam and Proton, with the GPU, display, touch, Wi-Fi, Bluetooth,
+audio, sensors, USB-C (host, DisplayPort, PD), battery and thermal control working.
+Android was removed from the internal storage; Linux boots from the internal UFS.
+
+This repository is everything needed to rebuild that system **for the same tablet**, plus the notes that explain why each piece exists.
+It does **not** contain the Linux source tree, vendor firmware or any keys (see [What is not in this repo](#what-is-not-in-this-repo)).
+
+> **Read this first.** This is a hobby port done on one unit. Unlocking the bootloader of this model needs a modified ABL written over
+> Qualcomm EDL, and some actions on this model have bricked it (see [Safety rules](#safety-rules)). A step-by-step run from an empty
+> machine has **not** been done end to end; the pieces below were each verified (see [How much of this is verified](#how-much-of-this-is-verified)).
+> Do it on a tablet you can afford to lose.
+
+## What works
+
+Tested on kernel `7.2.9-u880d`, boot slot B, Plasma Mobile 6.8.
+
+| Area | Status |
+|---|---|
+| CPU, cpufreq, cpuidle, thermal (DT cooling maps + userspace guard) | works |
+| GPU Adreno 735 (msm DRM, Mesa freedreno/turnip, GL 4.6, Vulkan 1.4) | works (non-fatal page-fault messages in games, issue #2) |
+| Display: native DPU + dual DSI, DSC, UBWC, 144/120/90/60 Hz, DPMS, backlight, auto-brightness | works (a power-domain wedge is worked around, issue #1) |
+| Touch (Novatek NT36523N, 10 points) | works |
+| Wi-Fi 6 (ath11k WCN6750) | works |
+| Bluetooth 5.4 (A2DP incl. LDAC, HID, BLE central and peripheral, factory address) | works; LE Audio untested |
+| Audio: 2 speakers (AW88261), DisplayPort audio, PipeWire | works; microphones missing (issue #3) |
+| Sensors: accelerometer, ambient light, gyroscope, compass via ADSP | works |
+| USB-C: host, USB 3 SuperSpeed, DisplayPort alt mode, PD charging, gadget for ssh | works |
+| Battery gauge and charging (via ADSP, PMIC GLINK) | works |
+| Suspend: s2idle (power key), deep suspend | works (about 0.5-0.7 W asleep; SoC deep states not reached, issue #13) |
+| Vibration motor | works (no haptics service yet) |
+| Steam ARM64 + Proton Experimental ARM64 (games run) | works |
+| Cameras | **not working** (no Cliffs CAMSS, issue #4) |
+| Microphones | **not working** (no capture path, issue #3) |
+| Fingerprint, NFC, SIM, GNSS | not present or not stated on this model |
+
+Open work is tracked in the GitHub issues; the full engineering log is `NOTES.md`, the durable verified facts are `FINDINGS.md`.
+
+## Hardware and firmware this was built for
+
+- Tablet: iPlay 70 mini Ultra **Global**, board `U880`, stock firmware **`U880_B14_V3.0L.1_0311`**. Newer stock firmware (3.0L.4, 2026-03) adds ABL
+  anti-tamper and the unlock method below fails on it. **Never let the tablet take a stock OTA.**
+- SoC `qcom,cliffs` (SM7675, soc_id 643); the downstream platform is the `pineapple` (SM8650) family.
+- Boot chain: Qualcomm ABL (Android bootloader), A/B slots, Virtual A/B, boot header v2.
+- The kernel base and many drivers come from the [senemos-uke-kernel-mainline](https://github.com/MCC45TR/senemos-uke-kernel-mainline) series (MIT) for
+  the Xiaomi Pad 7 / POCO Pad X1, which has the same SoC. Our delta on top of vanilla Linux 7.2.9 is `kernel/u880-kernel-delta.patch`.
+
+## Repository map
+
+| Path | What |
+|---|---|
+| `kernel/` | `u880-kernel-delta.patch` (every source change vs vanilla 7.2.9), `u880_defconfig`, `u880.config` |
+| `dts/u880.dts` | the production device tree as one source file (decompiled from the working DTB, plus our additions) |
+| `stage1/*.dtso`, `stage1/initramfs/` | DT overlays used while bringing the board up; the rescue/boot initramfs source (busybox, `init`) |
+| `stock-dt/` | device trees extracted from the stock firmware (`dtb2` = SoC DT, `o25` = board overlay) and parsers |
+| `topology/`, `ucm/` | AudioReach topology source and ALSA UCM profiles (speakers `HiFi`, DisplayPort `HDMI`) |
+| `tablet-rootfs/` | mirror of every file on the tablet's root filesystem that we changed (units, udev rules, configs, scripts); pushed with `scripts/tablet-config.sh` |
+| `power/`, `usb/`, `sensors/` | extra tablet config grouped by area, with their own notes |
+| `steam/` | native ARM64 Steam, gamescope and Proton recipe and launchers (`README-arm64.md`) |
+| `scripts/` | build, flash, test and measurement scripts (each starts with a comment explaining it) |
+| `tools/` | small helpers: BLE test server, audio dropout analyser, rumble tool, profiles of test runs |
+| `NOTES.md`, `FINDINGS.md` | engineering log; durable facts with status and a reproduce command each |
+
+**Paths:** the scripts were written for the repo living at `/home/USER/External/work/src/mainline` and the Android clang in
+`/home/USER/External/work/src/LineageOS/prebuilts/...`. On another machine either clone to those paths or rewrite them once:
+
+```
+grep -rIl '/home/USER/External/work/src/mainline' scripts tools tablet-rootfs steam | xargs sed -i "s#/home/USER/External/work/src/mainline#$PWD#g"
+# then point CL= (clang) and the mkbootimg.py path in scripts/*.sh at your own copies
+```
+
+## Safety rules
+
+These come from mistakes and a brick on this exact model:
+
+1. **Never use QFIL/EDL "Erase all before download".** It has bricked this model.
+2. Never write `abl`, `xbl`, `vendor_boot`, `dtbo` or `vbmeta` from Linux. Only `boot_a`/`boot_b` are written by the scripts here.
+3. Never flash stock images one partition at a time in fastboot; use the EDL XMLs of the full stock firmware for recovery.
+4. Keep the original ABL: `abl_a`/`abl_b` backups are the only copies of the original Global ABL.
+5. Back up everything you can read before touching anything (`persist`, `modemst*`, `fsg`, `devinfo`, the GPT of every LUN).
+6. Boot images are tested with `fastboot boot` (RAM only) where possible; a bad image written to the active slot needs the USB cable and a PC to recover.
+7. This project removed Android's userdata (`sda11` is now the Linux root). There is no going back without a factory reset and the stock images.
+
+## How to recreate the system
+
+You need: a Linux PC, the tablet on stock firmware `U880_B14_V3.0L.1_0311` (stock images for EDL recovery), a USB-C cable, about 100 GB of disk and several hours
+for the first kernel build. The steps are in the order they were done; each says where the details are.
+
+### 0. Back up and get recovery material
+
+Download the full stock `U880_B14_V3.0L.1_0311` firmware (EDL "flat build": `rawprogram*.xml`, `patch0.xml`, `prog_firehose_ddr.elf`). Read every partition you can
+with `bkerler/edl` (`edl rl`). Keep a copy of the stock `boot_a`, `abl_a`, `abl_b`. Recovery recipe if the system does not boot and fastboot is gone: enter EDL (`adb reboot edl`, or power off, hold Vol+ Vol- Power, release at the brief logo flash and plug in),
+then flash the full stock firmware with `rawprogram_all.xml` + `patch0.xml` and `prog_firehose_ddr.elf`, memory type UFS (`bkerler/edl` on Linux, QPST/QFIL or `QSaharaServer` + `fh_loader` on Windows).
+That XML leaves `persist`, `modemst*`, `fsg`, `devinfo`, `frp` and all `_b` partitions alone. Afterwards redo the unlock below. **Never tick "Erase all before download".**
+If only the system fails to boot but fastboot works, reflash a known-good boot image to the slot (README step 9).
+
+### 1. Unlock the bootloader (model specific, risky)
+
+The Global ABL refuses `fastboot flashing unlock`. The method used here (from an XDA guide for this model): write a modified Chinese-model `abl.elf` to
+`abl_a` only over EDL (`rawprogram` for LUN 4, start sector 95238, 256 sectors of 4096 B), then run `fastboot flashing unlock` (this wipes the tablet).
+The Chinese `abl.elf` and the unlock `rawprogram` XML are **not** in this repo; follow the XDA thread for your firmware. Verify afterwards that `fastboot` works and
+`androidboot.verifiedbootstate=orange`.
+
+### 2. Build environment
+
+The project host is NixOS; everything that needs a normal Linux userland runs in an Ubuntu 24.04 container:
+
+```
+distrobox create -Y -n aosp -i docker.io/library/ubuntu:24.04 --additional-packages "git git-lfs gnupg flex bison build-essential zip unzip curl zlib1g-dev libc6-dev-i386 libssl-dev bc lz4 zstd squashfs-tools libncurses6 pngcrush schedtool lzop imagemagick python3 python-is-python3 openjdk-17-jdk ccache rsync cpio xz-utils"
+```
+
+On the PC (outside the container) you also need `dtc`, `fastboot`, `e2fsprogs`, `cpio`, `python3`. The kernel is built with the **Android prebuilt clang r574158**
+(`prebuilts/clang/host/linux-x86/clang-r574158`) and boot images are packed with AOSP's `mkbootimg.py` (`system/tools/mkbootimg`): fetch both from AOSP. Other clang versions are untested.
+
+### 3. Build the kernel
+
+```
+curl -LO https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.2.9.tar.xz      # keep it in the repo root, it is git-ignored
+tar -xf linux-7.2.9.tar.xz
+cd linux-7.2.9
+patch -p1 < ../kernel/u880-kernel-delta.patch                                   # all our changes (about 220 files)
+cp ../kernel/u880_defconfig arch/arm64/configs/
+make LLVM=<clang>/bin/ ARCH=arm64 u880_defconfig                                # must equal kernel/u880.config
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880d -j$(nproc) Image.gz modules
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880d INSTALL_MOD_PATH=$PWD/../modules-out INSTALL_MOD_STRIP=1 modules_install
+```
+
+`LOCALVERSION` **must stay pinned** (`-u880d`): the initramfs and the rootfs carry modules for that exact release and the display driver silently never probes otherwise
+(FINDINGS F7). `scripts/clean-rebuild.sh` does the pristine-tarball rebuild and compares the result with a working tree (used to prove the delta is complete).
+After you change anything under `linux-7.2.9/`, regenerate the delta: `python3 scripts/snapshot-kernel-delta.py <pristine linux-7.2.9 dir> linux-7.2.9`.
+
+### 4. Device tree
+
+`dts/u880.dts` is the production DTB as source (it is the stock SoC DTB with our nodes: cooling maps, vibrator, audio, DP, display, thermal, ...). Compile it:
+
+```
+dtc -q -I dts -O dtb -o stage1/dtb2-u880.dtb dts/u880.dts        # scripts/build-dtb-from-dts.sh does the same
+```
+
+The ABL only accepts a DTB that contains the stock SoC structure (it applies the board overlay `dtbo` itself), which is why we start from the stock DT instead of a
+minimal one (FINDINGS, `scripts/abl-oracle.sh`). Porting to a sibling tablet means extracting its own `dtb`/`dtbo` from its `vendor_boot` and `dtbo` partitions (`stock-dt/` shows how)
+and re-applying our additions with `scripts/build-stock-disabled.sh` and the overlays in `stage1/*.dtso`.
+
+### 5. Initramfs
+
+`stage1/initramfs/` holds a busybox rescue `init` (v10). With `u880root=ufs` on the kernel command line it loads the UFS modules from `lib/modules-ufs/`, mounts the partition named
+`userdata` (ext4, label `u880root`) and `switch_root`s; otherwise it gives a rescue shell on the USB serial gadget (`usb0` 172.16.42.2).
+
+```
+mkdir -p stage1/initramfs/lib/modules-ufs
+cp <ufs-qcom.ko qcom_ice.ko phy-qcom-qmp-ufs.ko built above> stage1/initramfs/lib/modules-ufs/
+# put the Adreno firmware extracted from your tablet (see step 7) in stage1/initramfs/lib/firmware/qcom/
+bash scripts/build-initramfs.sh          # -> stage1/initramfs.cpio.gz
+```
+
+The three UFS modules must come from the same build/release as the kernel (a mismatch hangs at boot before the root mount: blue screen, no network).
+
+### 6. Boot image
+
+```
+python3 <aosp>/system/tools/mkbootimg/mkbootimg.py --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \
+  --kernel linux-7.2.9/arch/arm64/boot/Image.gz --ramdisk stage1/initramfs.cpio.gz --dtb stage1/dtb2-u880.dtb \
+  --pagesize 0x1000 --base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --second_offset 0 --tags_offset 0x100 --dtb_offset 0x1f00000 \
+  --cmdline 'console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout' \
+  -o stage1/u880-boot.img
+```
+
+`scripts/make-boot-image.sh` wraps this. Test first without writing anything: `fastboot boot stage1/u880-boot.img` (the ABL refuses `fastboot boot` while slot B is active:
+`fastboot set_active a; fastboot reboot bootloader` first, see FINDINGS F18).
+
+### 7. Firmware you must extract yourself
+
+Vendor firmware is not redistributable and is **not** in this repo (the three `gen71100_*` GPU files under `stage1/initramfs/lib/firmware/qcom/` are the only exception and
+should be replaced by your own, see below). From your tablet's stock `vendor`/`odm`/`modem` images (they are ext4/erofs; `debugfs -R "cat ..."` works read-only):
+
+- Adreno 735: `gen71100_sqe.fw`, `gen71100_gmu.bin`, `gen71100_zap.mbn` -> `/lib/firmware/qcom/` (also in the initramfs so the GPU probes before the root mounts).
+- ADSP (battery/charging, sensors, audio): the `adsp2*` set -> `/lib/firmware/qcom/u880/`, plus the sensor registry service (`hexagonrpcd`, see `sensors/README.md`).
+- Wi-Fi: `ath11k/WCN6750/hw1.0/regdb.bin` and a `board-2.bin` built from the vendor `bdwlan.elf` with `scripts/make-ath11k-board2.py`; WPSS `qca6750/wpss.*`.
+- Bluetooth: `qca/msbtfw12.mbn`, `qca/msnv12.bin` (+ `.tlv`).
+- Speaker amps: `aw882xx_acf.bin`.
+- The AudioReach topology is built from `topology/U880.m4` into `/lib/firmware/qcom/u880/U880-tplg.bin`.
+
+`tablet-rootfs/BLOBS` lists the files and `BLOBS.sha256` pins the hashes of the ones installed on the reference tablet.
+
+### 8. Root filesystem
+
+1. Download `ArchLinuxARM-aarch64-latest.tar.gz` and verify the signature (key `68B3537F39A313B3E574D06777193F152BDBE6A6`).
+2. **This destroys Android's userdata.** Format the UFS `userdata` partition as ext4 with label `u880root` and extract the tarball into it (as root, with xattrs, ACLs, numeric owners).
+   The history of how this was done (via an SD card first) is in `NOTES.md`, section 15 "Android removed, Linux root on internal UFS".
+   Every UFS partition except `userdata` is made read-only by `/etc/udev/rules.d/99-u880-ufs-readonly.rules`; keep it.
+3. Install the kernel modules into `/usr/lib/modules/7.2.9-u880d/` and run `depmod`.
+4. Change the default passwords (`alarm`/`alarm`, `root`/`root`) before putting the tablet on a network, and generate your own SSH key (the scripts expect a project key in `alarm/ssh/`, which is not in git).
+5. Push our configs: `U880_HOST=<ip> scripts/tablet-config.sh push` (units, udev rules, sleep hook, UCM, thermal guard, Bluetooth and display services, Denial settings, `~/.bash_profile` session
+   switch). `scripts/tablet-config.sh status` shows differences, `pull` captures them back.
+6. Packages (Arch Linux ARM): `plasma-mobile plasma-keyboard plasma-settings systemsettings bluedevil kscreen kinfocenter dolphin konsole kclock kalk plasma-systemmonitor angelfish gwenview spectacle phosh squeekboard
+   pipewire-audio wireplumber bluez bluez-utils iio-sensor-proxy libssc hunspell-en_us stress-ng lm_sensors rrdtool gamescope`, plus Mesa (freedreno/turnip) from the distribution. Steam and Proton: `steam/README-arm64.md`.
+7. Session selection is done by flag files read by `~/.bash_profile`: `touch ~/.u880-plasma` for Plasma Mobile (default shell of this project), none for Denial. Important KDE settings are recorded in `NOTES.md`
+   (on-screen keyboard: `kwinrc [Wayland] InputMethod=org.kde.plasma.keyboard.desktop`, `VirtualKeyboardMode=1`).
+
+### 9. Flash and boot
+
+From the running tablet (or from Android's fastboot once, for the very first image), write the boot image to the **inactive/target slot** and keep a backup of what you replace:
+
+```
+cat stage1/u880-boot.img | ssh root@<tablet> 'cat > /root/boot.img'
+ssh root@<tablet> 'dd if=/dev/sde40 of=/root/u880-backup/boot_b-before.img bs=4M;            # sde40 = boot_b on the reference tablet
+   blockdev --setrw /dev/sde /dev/sde40; dd if=/root/boot.img of=/dev/sde40 bs=4M conv=fsync; sync;
+   blockdev --setro /dev/sde40 /dev/sde; head -c $(stat -c %s /root/boot.img) /dev/sde40 | sha256sum'
+```
+
+Check the hash against the image, then reboot. `scripts/gpt-mark-successful.py` marks a slot successful after `set_active` (see FINDINGS F13/F18). The partition names/devices are those of the reference
+tablet: check yours with `ls -l /dev/disk/by-partlabel/` before writing anything. `scripts/flash-boot-b.sh` automates the first flash through an Android detour.
+
+### 10. Verify
+
+On the tablet: `uname -r` is `7.2.9-u880d`; `ls /sys/class/drm` shows `card1-DSI-1`; `dmesg | grep "UBWC programmed"` shows `STATIC=0x103e CTRL_2=0x2 PRED=0x1`;
+`modetest -M msm -p` lists the four refresh modes; thermal zones show the cooling maps (`ls /sys/class/thermal/thermal_zone*/trip_point_*_temp`); `bluetoothctl show` has the factory address;
+`iio-sensor-proxy` sees accelerometer and light; `pactl list short sinks` has `HiFi__Speaker__sink`; `scripts/dpms-fuzz.sh 100 200 4000` finishes without a wedge. Stress and game checks: `scripts/stress-run.sh`, `scripts/game-profile.sh`.
+
+## Porting to another tablet
+
+Mostly the kernel delta and the userspace are SoC-generic for SM7675/SM8650-class parts; the device-specific parts are the DT (`dts/u880.dts`: panel, touch, backlight PWM, speakers,
+vibrator, USB-C wiring, regulators), the audio topology/UCM, the firmware set, partition names and the unlock method. Expect to redo: extract your stock DT, redo the panel init sequence
+from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and the display handoff quirks (FINDINGS F1-F9, F19-F20).
+
+## What is not in this repo
+
+- The Linux source tree (download 7.2.9 from kernel.org; our delta is `kernel/u880-kernel-delta.patch`).
+- Vendor firmware and the stock images (extract from your own tablet), the Chinese `abl.elf` unlock files, the AOSP clang and `mkbootimg`.
+- Any keys or passwords: the tablet's SSH key lives in `alarm/ssh/` (git-ignored). Default passwords of the Arch Linux ARM image must be changed.
+- Build outputs and boot images (`stage1/*.img`, `.ko`, ...). They are rebuilt from the sources above.
+- Note for publishing: `stage1/initramfs/lib/firmware/qcom/gen71100_*` (Qualcomm GPU firmware) and `stock-dt/` (device trees extracted from the vendor firmware) are tracked in this private repo and should be removed or replaced before the repo is made public.
+
+## How much of this is verified
+
+- `scripts/clean-rebuild.sh` rebuilds the kernel from the pristine tarball + delta + defconfig and gets an identical `Image` (apart from the build counter).
+- The boot image was rebuilt with `mkbootimg` from the same inputs and verified bit for bit against the installed one; the thermal and UBWC images were produced and flashed with the commands above.
+- Each feature in the table was tested on the reference tablet (measurements and logs in `NOTES.md`, `tools/profiles/`).
+- Not done: a complete run of steps 0-10 on a clean machine and a second tablet. Expect to adapt paths and to hit gaps in the vendor-firmware extraction step.
+
+## Credits and licences
+
+Linux (GPL-2.0), the [senemos-uke-kernel-mainline](https://github.com/MCC45TR/senemos-uke-kernel-mainline) series (MIT) and the uke drivers it carries, Qualcomm's AudioReach topology and UCM
+conventions, Arch Linux ARM, KDE Plasma Mobile, Mesa, gamescope, Valve's Steam/Proton for ARM64, bkerler/edl. Our own files in this repo (scripts, notes, DT additions, overlays) are published under the
+GPL-2.0 for the kernel parts and as-is for the rest; add a `LICENSE` before making the repository public.
