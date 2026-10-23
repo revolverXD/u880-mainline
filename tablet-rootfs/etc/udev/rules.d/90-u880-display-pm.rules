@@ -1,0 +1,3 @@
+# U880: never runtime-suspend the display subsystem. Powering its GDSC down/up after DPMS off intermittently never completes and wedges the
+# display until reboot (NOTES 2026-10-23 15:45). Costs some idle power while the screen is off.
+ACTION=="add", SUBSYSTEM=="platform", KERNEL=="ae00000.display-subsystem", ATTR{power/control}="on"
