@@ -1,0 +1,73 @@
+#!/usr/bin/python3
+# Userspace backup thermal guard for the U880 (SoC thresholds sit above the kernel cooling maps; the battery limit is its main job).
+# Drives the cpufreq cooling devices itself and powers off when critical.
+import glob, os, subprocess, sys, time
+
+START, FULL, CRIT = 97, 105, 108        # deg C: backup only, the DT cooling maps (85..101 C) throttle first; powers off at CRIT
+BATT_START, BATT_FULL, BATT_CRIT = 40, 46, 55   # battery deg C
+POLL = 0.25
+LOOKAHEAD = 2.0                           # seconds of rise to add to the reading (the die heats about 5 C/s)
+HYST = 3
+
+def read(p):
+    with open(p) as f:
+        return f.read().strip()
+
+zones = {}
+for z in glob.glob("/sys/class/thermal/thermal_zone*"):
+    t = read(z + "/type")
+    if t.startswith(("cpu", "gpuss", "nsph", "ddr", "video", "mdmss", "camera")):
+        zones[t] = z + "/temp"
+cdevs = [(c, int(read(c + "/max_state"))) for c in sorted(glob.glob("/sys/class/thermal/cooling_device*"))
+         if read(c + "/type").startswith("cpufreq-")]
+batt = "/sys/class/power_supply/qcom-battmgr-bat/temp"
+state = [int(read(c + "/cur_state")) for c, _ in cdevs]
+crit_hits = 0
+last_log = 0
+prev_t, prev_time = None, 0.0
+
+def hottest():
+    m, n = 0, ""
+    for name, p in zones.items():
+        try:
+            t = int(read(p)) / 1000
+        except (OSError, ValueError):
+            continue
+        if t > m:
+            m, n = t, name
+    return m, n
+
+while True:
+    t, name = hottest()
+    try:
+        bt = int(read(batt)) / 10
+    except (OSError, ValueError):
+        bt = 0
+    now = time.time()
+    slope = (t - prev_t) / (now - prev_time) if prev_t is not None and now > prev_time else 0.0
+    prev_t, prev_time = t, now
+    tp = t + LOOKAHEAD * max(slope, 0.0)
+    # worst of the two, mapped onto 0..1
+    x = max((tp - START) / (FULL - START), (bt - BATT_START) / (BATT_FULL - BATT_START) if bt else 0)
+    x = max(0.0, min(1.0, x))
+    for i, (c, mx) in enumerate(cdevs):
+        want = round(x * mx)
+        # hysteresis: only relax when HYST deg C below the point that asked for the current state
+        if want < state[i] and (tp > START + (state[i] / mx) * (FULL - START) - HYST) and bt < BATT_START:
+            want = state[i]
+        if want != state[i]:
+            try:
+                with open(c + "/cur_state", "w") as f:
+                    f.write(str(want))
+                state[i] = want
+            except OSError as e:
+                print("write failed", c, e, file=sys.stderr)
+    crit_hits = crit_hits + 1 if (t >= CRIT or bt >= BATT_CRIT) else 0
+    if crit_hits >= 3:
+        print(f"CRITICAL {name}={t:.1f}C batt={bt}C: powering off", flush=True)
+        subprocess.run(["systemctl", "poweroff", "--force"])
+        time.sleep(60)
+    if (x > 0 and now - last_log > 5) or now - last_log > 600:
+        print(f"{name}={t:.1f}C batt={bt}C throttle={x:.2f} states={state}", flush=True)
+        last_log = now
+    time.sleep(POLL)

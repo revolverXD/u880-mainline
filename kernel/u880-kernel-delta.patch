@@ -84962,6 +84962,64 @@
  	DBG("DSI%d PHY enabled", phy->id);
  
  	return 0;
+--- a/drivers/input/misc/pm8xxx-vibrator.c
++++ b/drivers/input/misc/pm8xxx-vibrator.c
+@@ -11,7 +11,7 @@
+ #include <linux/regmap.h>
+ #include <linux/slab.h>
+ 
+-#define VIB_MAX_LEVEL_mV(vib)	(vib->drv2_addr ? 3544 : 3100)
++#define VIB_MAX_LEVEL_mV(vib)	(vib->regs->max_mV ?: (vib->drv2_addr ? 3544 : 3100))
+ #define VIB_MIN_LEVEL_mV(vib)	(vib->drv2_addr ? 1504 : 1200)
+ #define VIB_PER_STEP_mV(vib)	(vib->drv2_addr ? 8 : 100)
+ #define VIB_MAX_LEVELS(vib) \
+@@ -31,6 +31,7 @@
+ 	unsigned int drv2_shift;
+ 	unsigned int drv_en_manual_mask;
+ 	bool	     drv_in_step;
++	unsigned int max_mV;
+ };
+ 
+ static const struct pm8xxx_regs pm8058_regs = {
+@@ -62,6 +63,21 @@
+ 	.drv2_shift = 8,
+ 	.drv_en_manual_mask = 0,
+ 	.drv_in_step = false,
++};
++
++/* pm7550ba vibrator LDO: pmi632 register layout, capped at the stock 3.0 V */
++static struct pm8xxx_regs pm7550ba_ldo_regs = {
++	.enable_offset = 0x46,
++	.enable_mask = BIT(7),
++	.drv_offset = 0x40,
++	.drv_mask = GENMASK(7, 0),
++	.drv_shift = 0,
++	.drv2_offset = 0x41,
++	.drv2_mask = GENMASK(3, 0),
++	.drv2_shift = 8,
++	.drv_en_manual_mask = 0,
++	.drv_in_step = false,
++	.max_mV = 3000,
+ };
+ 
+ /**
+@@ -118,7 +134,7 @@
+ 	vib->reg_vib_drv = val;
+ 
+ 	if (regs->drv2_mask) {
+-		val = vib->level << regs->drv2_shift;
++		val = vib->level >> regs->drv2_shift;
+ 		rc = regmap_write_bits(vib->regmap, vib->drv2_addr,
+ 				regs->drv2_mask, on ? val : 0);
+ 		if (rc < 0)
+@@ -285,6 +301,7 @@
+ 	{ .compatible = "qcom,pm8921-vib", .data = &pm8058_regs },
+ 	{ .compatible = "qcom,pm8916-vib", .data = &pm8916_regs },
+ 	{ .compatible = "qcom,pmi632-vib", .data = &pmi632_regs },
++	{ .compatible = "qcom,qpnp-vibrator-ldo", .data = &pm7550ba_ldo_regs },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, pm8xxx_vib_id_table);
 --- a/drivers/input/touchscreen/novatek-nvt-ts.c
 +++ b/drivers/input/touchscreen/novatek-nvt-ts.c
 @@ -49,10 +49,24 @@

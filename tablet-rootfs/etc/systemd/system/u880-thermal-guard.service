@@ -1,0 +1,13 @@
+[Unit]
+Description=U880 userspace thermal guard (cpufreq cooling + critical poweroff)
+After=sysinit.target
+
+[Service]
+ExecStart=/usr/local/bin/u880-thermal-guard
+Restart=always
+Nice=-10
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=10
+
+[Install]
+WantedBy=multi-user.target
