@@ -7101,7 +7101,7 @@
  	.config = &disp_cc_sm8550_regmap_config,
  	.clks = disp_cc_sm8550_clocks,
  	.num_clks = ARRAY_SIZE(disp_cc_sm8550_clocks),
-@@ -1758,15 +1772,25 @@
+@@ -1758,15 +1772,87 @@
  	{ .compatible = "qcom,sar2130p-dispcc" },
  	{ .compatible = "qcom,sm8550-dispcc" },
  	{ .compatible = "qcom,sm8650-dispcc" },
@@ -7111,6 +7111,68 @@
  MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
 +
 +#include "uke-dispcc-votes.c"
++
++/*
++ * U880: the MMCX/MXA votes (uke) are dropped when dispcc runtime-suspends, but nothing ties that to the MDSS GDSC being on. The GDSC then
++ * lost its rail while genpd still said "on": the later gdsc_disable()/gdsc_enable() register accesses timed out (-110, "status stuck"),
++ * the display subsystem could never power up again and the panel stayed black. Keep the provider runtime-active for as long as mdss_gdsc
++ * is on, and wake it around every toggle (the GDSC sits inside the provider's own power state).
++ */
++static int (*u880_mdss_gdsc_on)(struct generic_pm_domain *pd);
++static int (*u880_mdss_gdsc_off)(struct generic_pm_domain *pd);
++static struct device *u880_dispcc_dev;
++static bool u880_mdss_gdsc_held;
++
++/*
++ * The GDSC's own poll gives up after 2 ms. Under a fast DPMS off/on cycle the power-down/up completes later, after the toggle was already
++ * reported as failed: genpd and the hardware then disagree and every later clock enable fails ("ahb_clk stuck at off"). Wait for the
++ * completion bit (CFG_GDSCR bit 15 power down, bit 16 power up) before giving up.
++ */
++static int u880_mdss_wait_complete(u32 bit)
++{
++	unsigned int val;
++	int i;
++
++	for (i = 0; i < 200; i++) {
++		if (!regmap_read(mdss_gdsc.regmap, mdss_gdsc.gdscr + 4, &val) && (val & bit))
++			return 0;
++		usleep_range(500, 1000);
++	}
++	return -ETIMEDOUT;
++}
++
++static int u880_mdss_pd_on(struct generic_pm_domain *pd)
++{
++	int ret = pm_runtime_resume_and_get(u880_dispcc_dev);
++
++	if (ret)
++		return ret;
++	ret = u880_mdss_gdsc_on(pd);
++	if (ret == -ETIMEDOUT)
++		ret = u880_mdss_wait_complete(BIT(16));
++	if (ret || u880_mdss_gdsc_held)
++		pm_runtime_put(u880_dispcc_dev);
++	if (!ret)
++		u880_mdss_gdsc_held = true;
++	return ret;
++}
++
++static int u880_mdss_pd_off(struct generic_pm_domain *pd)
++{
++	int ret = pm_runtime_resume_and_get(u880_dispcc_dev);
++
++	if (ret)
++		return ret;
++	ret = u880_mdss_gdsc_off(pd);
++	if (ret == -ETIMEDOUT)
++		ret = u880_mdss_wait_complete(BIT(15));
++	pm_runtime_put(u880_dispcc_dev);
++	if (!ret && u880_mdss_gdsc_held) {
++		u880_mdss_gdsc_held = false;
++		pm_runtime_put(u880_dispcc_dev);
++	}
++	return ret;
++}
  
  static int disp_cc_sm8550_probe(struct platform_device *pdev)
  {
@@ -7127,7 +7189,7 @@
  	ret = devm_pm_runtime_enable(&pdev->dev);
  	if (ret)
  		return ret;
-@@ -1781,9 +1805,12 @@
+@@ -1781,9 +1867,12 @@
  		goto err_put_rpm;
  	}
  
@@ -7142,7 +7204,7 @@
  		disp_cc_mdss_dptx1_usb_router_link_intf_clk.clkr.hw.init->parent_hws[0] =
  			&disp_cc_mdss_dptx1_link_div_clk_src.clkr.hw;
  	} else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sar2130p-dispcc")) {
-@@ -1794,11 +1821,17 @@
+@@ -1794,11 +1883,17 @@
  		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sar2130p;
  	}
  
@@ -7165,7 +7227,27 @@
  
  	/* Keep some clocks always-on */
  	qcom_branch_set_clk_en(regmap, 0xe054); /* DISP_CC_XO_CLK */
-@@ -1821,6 +1854,7 @@
+@@ -1806,6 +1901,19 @@
+ 	ret = qcom_cc_really_probe(&pdev->dev, &disp_cc_sm8550_desc, regmap);
+ 	if (ret)
+ 		goto err_put_rpm;
++
++	if (of_device_is_compatible(pdev->dev.of_node, "alldocube,u880-dispcc") && mdss_gdsc.pd.power_on) {
++		u880_dispcc_dev = &pdev->dev;
++		u880_mdss_gdsc_on = mdss_gdsc.pd.power_on;
++		u880_mdss_gdsc_off = mdss_gdsc.pd.power_off;
++		mdss_gdsc.pd.power_on = u880_mdss_pd_on;
++		mdss_gdsc.pd.power_off = u880_mdss_pd_off;
++		/* the bootloader left the GDSC on: keep the provider active until it is turned off */
++		if (mdss_gdsc.pd.status == GENPD_STATE_ON) {
++			pm_runtime_get_noresume(&pdev->dev);
++			u880_mdss_gdsc_held = true;
++		}
++	}
+ 
+ 	pm_runtime_put(&pdev->dev);
+ 
+@@ -1821,6 +1929,7 @@
  	.probe = disp_cc_sm8550_probe,
  	.driver = {
  		.name = "disp_cc-sm8550",
