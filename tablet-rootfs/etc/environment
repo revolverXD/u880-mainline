@@ -3,4 +3,4 @@
 #
 # Syntax: simple "KEY=VAL" pairs on separate lines
 #
-FD_MESA_DEBUG=noubwc
+#FD_MESA_DEBUG=noubwc
