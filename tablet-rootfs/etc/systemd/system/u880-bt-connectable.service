@@ -1,0 +1,13 @@
+[Unit]
+Description=U880 Bluetooth: accept incoming classic connections (page scan on)
+After=bluetooth.service u880-bt-addr.service
+Requires=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# the controller comes up with connectable off, so classic HID devices (gamepads) cannot reconnect by themselves
+ExecStart=/bin/sh -c 'for i in $(seq 1 30); do btmgmt connectable on 2>&1 | grep -q "Set Connectable complete" && exit 0; sleep 1; done; exit 1'
+
+[Install]
+WantedBy=multi-user.target

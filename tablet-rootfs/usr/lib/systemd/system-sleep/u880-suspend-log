@@ -1,0 +1,19 @@
+#!/bin/sh
+# Logs each suspend/resume with enough state to see why a long sleep fails to wake, plus the Bluetooth devices connected before and 25 s after.
+L=/root/suspend-log.txt
+bt() { awk '{print $1}' /proc/uptime; }
+btlist() { timeout 5 bluetoothctl devices Connected 2>&1 | sed 's/^Device //' | tr '\n' ';'; }
+case "$1" in
+  pre)
+    echo "=== PRE $(date +%T) up=$(bt) mode=$(cat /sys/power/mem_sleep) bt=[$(btlist)]" >> $L
+    grep -E "pwrkey|pmic|glink|ssusb|wcn|ath11k|ufs|dsi|mdss" /proc/interrupts | awk '{print $1,$NF,$(NF-1)}' >> $L
+    cat /sys/class/power_supply/battery/capacity /sys/class/power_supply/battery/status >> $L 2>/dev/null
+    cat /sys/kernel/debug/pm_genpd/pm_genpd_summary 2>/dev/null | head -40 >> $L
+    sync ;;
+  post)
+    echo "=== POST $(date +%T) up=$(bt) wakeirq=$(cat /sys/power/pm_wakeup_irq 2>&1)" >> $L
+    dmesg | tail -15 >> $L
+    cat /sys/power/suspend_stats/* 2>/dev/null | tr '\n' ' ' >> $L; echo >> $L
+    ( sleep 25; echo "=== POST+25s $(date +%T) hci0=$(cat /sys/class/bluetooth/hci0/address 2>&1) bt=[$(btlist)]" >> $L; dmesg | grep -i -E "Bluetooth|hci0" | tail -6 >> $L ) >/dev/null 2>&1 &
+    sync ;;
+esac
