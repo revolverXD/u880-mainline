@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Steam (ARM64, gamescope 1280x800)
+Comment=Valve's native Linux ARM64 Steam client inside gamescope at 1280x800
+Exec=/usr/local/bin/steam-arm64-gs-1280
+Icon=steam
+Terminal=false
+Type=Application
+Categories=Game;
