@@ -62,3 +62,5 @@
 /etc/apparmor.d/usr.bin.pipewire
 /etc/apparmor.d/usr.bin.wireplumber
 /etc/systemd/resolved.conf.d/10-no-llmnr.conf
+/etc/nsswitch.conf
+/etc/systemd/resolved.conf.d/20-no-mdns-avahi.conf
