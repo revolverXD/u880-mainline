@@ -50,6 +50,11 @@ include <tunables/global>
   /home/*/.config/pulse/** r,
   /home/*/.local/state/wireplumber/ rw,
   /home/*/.local/state/wireplumber/** rwk,
+  # the SDDM greeter user runs its own audio session
+  /var/lib/sddm/.config/pipewire/** r,
+  /var/lib/sddm/.config/wireplumber/** r,
+  /var/lib/sddm/.local/state/wireplumber/ rw,
+  /var/lib/sddm/.local/state/wireplumber/** rwk,
 
   @{PROC}/asound/ r,
   @{PROC}/asound/** r,

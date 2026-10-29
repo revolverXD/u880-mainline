@@ -36,13 +36,14 @@ Open problems are the GitHub issues of this repository.
 
 ## Verification checklist after a kernel or DT change
 
-`uname -r` = `7.2.9-u880e`; `/sys/class/drm/card1-DSI-1` exists; `dmesg | grep "UBWC programmed"` = `STATIC=0x103e CTRL_2=0x2 PRED=0x1`; scanout modifier in `/sys/kernel/debug/dri/1/state` is `0x500000000000001` and the picture is crisp (photograph it, see below);
+`uname -r` = `7.2.9-u880e`; `/sys/class/drm/card1-DSI-1` exists; `dmesg | grep "UBWC programmed"` = `STATIC=0x103e CTRL_2=0x2 PRED=0x1`; scanout modifier in `/sys/kernel/debug/dri/1/state` is `0x500000000000001` (needs debugfs: production images boot with `debugfs=off` and have no `/dev/mem`, so RAM-boot a `DEV=1 scripts/make-boot-image.sh` image for this check and for the debugfs/regdump scripts) and the picture is crisp (photograph it, see below);
 four modes in `modetest -M msm -p`; `scripts/dpms-fuzz.sh 100 200 4000` clean; thermal zones have trips and `cdev` (`ls /sys/class/thermal/thermal_zone*/`); `bluetoothctl show` address `00:11:22:33:44:55`-style factory address and `btmgmt info` lists `connectable`; sensors and audio sinks present; no `stuck at`/`frame done timeout`/`gpu fault` bursts in `dmesg`.
 Judge the display with a **camera**, not only screenshots: compositor screenshots can be clean while the panel shows corruption (`scripts/cam.sh`).
 
 ## Pitfalls that cost days (do not re-learn them)
 
 - **LOCALVERSION** pinned (F7). The initramfs UFS modules must match the kernel release or boot hangs at a blue screen with no network.
+- **`/dev/mem` and debugfs are off in production (issue #24).** The kernel has `CONFIG_DEVMEM=n` and the production boot image carries `debugfs=off`. The debugfs scripts (`disp-test.sh`, `dpms-grim.sh`, `sleepstat.sh`, `genpd-cycle.sh`, ...) work on the same kernel with an image built by `DEV=1 scripts/make-boot-image.sh` (RAM-boot it, never flash it). `reg-rw.py` and `regdump-mem.py` also need `/dev/mem`: build a kernel with `kernel/dev-devmem.config` merged (`DEVMEM=y`) and RAM-boot that only.
 - **Never read the display PP/DSC blocks or the DISPCC block through `/dev/mem` or regmap debugfs while unclocked/unpowered**: it resets the SoC (F8). Reading `MDSS` UBWC registers (`0xae00144`...) while the display is up is fine; **writing** them live breaks the picture.
 - **Display wedge** (`mdss_gdsc status stuck at`): worked around by `/etc/udev/rules.d/90-u880-display-pm.rules` (`power/control=on`). That workaround is why UBWC registers are programmed at the end of the MDSS handoff (commit `msm_mdss: program UBWC...`). Do not remove one without re-testing both (FINDINGS F19/F20).
 - **Garbled fine detail only on the panel** = UBWC decoder registers not programmed; `FD_MESA_DEBUG=noubwc` is the emergency workaround.
