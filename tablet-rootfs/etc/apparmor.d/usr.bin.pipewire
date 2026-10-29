@@ -1,0 +1,67 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# PipeWire audio stack (user session; pipewire-pulse is a symlink to pipewire). Handles audio
+# streams and Bluetooth codecs from remote devices. Writes only sockets/locks in /run/user,
+# WirePlumber state in ~/.local/state, and sound devices.
+/usr/bin/pipewire flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  network unix dgram,
+  network unix stream,
+  network netlink raw,
+  network bluetooth seqpacket,
+  network bluetooth stream,
+  network bluetooth dgram,
+  network bluetooth raw,
+
+  unix,
+  dbus,
+  signal,
+  ptrace (read),
+
+  /usr/bin/pipewire mr,
+  /usr/lib/** mr,
+  /usr/share/** r,
+  /etc/** r,
+  / r,
+
+  /dev/snd/ r,
+  /dev/snd/** rw,
+  /dev/shm/** rwk,
+  /dev/rfkill r,
+  /dev/uhid rw,
+
+  /run/udev/** r,
+  /run/systemd/users/* r,
+  /run/user/*/bus rw,
+  /run/user/*/pipewire-* rwkl,
+  /run/user/*/pulse/ rw,
+  /run/user/*/pulse/** rwkl,
+  /run/user/*/pipewire-0.lock rwk,
+
+  /home/*/.config/pipewire/ r,
+  /home/*/.config/pipewire/** r,
+  /home/*/.config/wireplumber/ r,
+  /home/*/.config/wireplumber/** r,
+  /home/*/.config/pulse/ r,
+  /home/*/.config/pulse/** r,
+  /home/*/.local/state/wireplumber/ rw,
+  /home/*/.local/state/wireplumber/** rwk,
+
+  @{PROC}/asound/ r,
+  @{PROC}/asound/** r,
+  @{PROC}/sys/kernel/** r,
+  @{PROC}/*/task/*/comm rw,
+  @{PROC}/*/ r,
+  @{PROC}/*/stat r,
+  @{PROC}/*/status r,
+  @{PROC}/*/cmdline r,
+  @{PROC}/*/cgroup r,
+  /sys/bus/ r,
+  /sys/class/ r,
+  /sys/class/** r,
+  /sys/devices/** r,
+}

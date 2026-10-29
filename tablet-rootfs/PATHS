@@ -59,3 +59,5 @@
 /etc/apparmor.d/usr.lib.bluetooth.bluetoothd
 /etc/apparmor.d/usr.lib.systemd.systemd-resolved
 /etc/apparmor.d/usr.lib.systemd.systemd-timesyncd
+/etc/apparmor.d/usr.bin.pipewire
+/etc/apparmor.d/usr.bin.wireplumber
