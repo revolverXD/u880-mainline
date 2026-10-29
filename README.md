@@ -16,7 +16,7 @@ It does **not** contain the Linux source tree, vendor firmware or any keys (see 
 
 ## What works
 
-Tested on kernel `7.2.9-u880d`, boot slot B, Plasma Mobile 6.8.
+Tested on kernel `7.2.9-u880e`, boot slot B, Plasma Mobile 6.8.
 
 | Area | Status |
 |---|---|
@@ -124,11 +124,11 @@ cd linux-7.2.9
 patch -p1 < ../kernel/u880-kernel-delta.patch                                   # all our changes (about 220 files)
 cp ../kernel/u880_defconfig arch/arm64/configs/
 make LLVM=<clang>/bin/ ARCH=arm64 u880_defconfig                                # must equal kernel/u880.config
-make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880d -j$(nproc) Image.gz modules
-make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880d INSTALL_MOD_PATH=$PWD/../modules-out INSTALL_MOD_STRIP=1 modules_install
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e -j$(nproc) Image.gz modules
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e INSTALL_MOD_PATH=$PWD/../modules-out INSTALL_MOD_STRIP=1 modules_install
 ```
 
-`LOCALVERSION` **must stay pinned** (`-u880d`): the initramfs and the rootfs carry modules for that exact release and the display driver silently never probes otherwise
+`LOCALVERSION` **must stay pinned** (`-u880e`): the initramfs and the rootfs carry modules for that exact release and the display driver silently never probes otherwise
 (FINDINGS F7). `scripts/clean-rebuild.sh` does the pristine-tarball rebuild and compares the result with a working tree (used to prove the delta is complete).
 After you change anything under `linux-7.2.9/`, regenerate the delta: `python3 scripts/snapshot-kernel-delta.py <pristine linux-7.2.9 dir> linux-7.2.9`.
 
@@ -191,7 +191,7 @@ should be replaced by your own, see below). From your tablet's stock `vendor`/`o
 2. **This destroys Android's userdata.** Format the UFS `userdata` partition as ext4 with label `u880root` and extract the tarball into it (as root, with xattrs, ACLs, numeric owners).
    The history of how this was done (via an SD card first) is in `NOTES.md`, section 15 "Android removed, Linux root on internal UFS".
    Every UFS partition except `userdata` is made read-only by `/etc/udev/rules.d/99-u880-ufs-readonly.rules`; keep it.
-3. Install the kernel modules into `/usr/lib/modules/7.2.9-u880d/` and run `depmod`.
+3. Install the kernel modules into `/usr/lib/modules/7.2.9-u880e/` and run `depmod`.
 4. Change the default passwords (`alarm`/`alarm`, `root`/`root`) before putting the tablet on a network, and generate your own SSH key (the scripts expect a project key in `alarm/ssh/`, which is not in git).
 5. Push our configs: `U880_HOST=<ip> scripts/tablet-config.sh push` (units, udev rules, sleep hook, UCM, thermal guard, Bluetooth and display services, Denial settings, `~/.bash_profile` session
    switch). `scripts/tablet-config.sh status` shows differences, `pull` captures them back.
