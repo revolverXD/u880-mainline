@@ -85162,10 +85162,11 @@
  MODULE_DEVICE_TABLE(of, pm8xxx_vib_id_table);
 --- a/drivers/input/touchscreen/novatek-nvt-ts.c
 +++ b/drivers/input/touchscreen/novatek-nvt-ts.c
-@@ -49,15 +49,31 @@
+@@ -49,15 +49,49 @@
  
  struct nvt_ts_i2c_chip_data {
  	u8 chip_id;
+-};
 +	/*
 +	 * Newer NT365xx firmware keeps the event/parameter map at this SRAM address
 +	 * instead of the default page; it must be selected (command 0xff) after
@@ -85179,7 +85180,25 @@
 +	 * before the IRQ is armed leaves the line stuck low forever.
 +	 */
 +	unsigned long irq_trigger;
- };
++};
++
++/*
++ * The NT36523N raises one interrupt per scan frame (about 440 per second, independent of the display refresh
++ * and not changeable from the host), which keeps the SoC from idling even with no finger down (apps_rsc about
++ * 490 wakeups per second). The IRQ is one-shot, so sleeping at the end of the IRQ thread masks it and skips the
++ * frames in between. Sleep longer while nothing touches the panel and not at all (by default) while a finger is
++ * down, so tracking keeps the full rate and only the first-touch latency grows (by up to idle_delay_us).
++ * Both default to 0 (every frame): at 8 ms the interrupt rate falls from 442 to 83 per second and the SoC wakeups from
++ * 526 to 229 per second, but a battery A/B with the screen on (3 rounds x 40 s) showed no power change beyond the
++ * +-60 mW noise (1714 / 1669 / 1718 mW at 0 / 8 / 16 ms), so the latency is not worth paying by default.
++ */
++static unsigned int idle_delay_us;
++module_param(idle_delay_us, uint, 0644);
++MODULE_PARM_DESC(idle_delay_us, "Pause after a frame without any touch, microseconds (0 = every frame)");
++
++static unsigned int active_delay_us;
++module_param(active_delay_us, uint, 0644);
++MODULE_PARM_DESC(active_delay_us, "Pause after a frame with a touch, microseconds (0 = every frame)");
  
  struct nvt_ts_data {
  	struct i2c_client *client;
@@ -85194,7 +85213,7 @@
  	u8 buf[NVT_TS_TOUCH_SIZE * NVT_TS_MAX_TOUCHES];
  };
  
-@@ -80,7 +96,27 @@
+@@ -80,7 +114,27 @@
  
  	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
  	if (ret != ARRAY_SIZE(msg)) {
@@ -85223,10 +85242,15 @@
  		return (ret < 0) ? ret : -EIO;
  	}
  
-@@ -95,10 +131,21 @@
- 	bool active;
+@@ -92,13 +146,25 @@
+ 	struct nvt_ts_data *data = dev_id;
+ 	struct device *dev = &data->client->dev;
+ 	int i, error, slot, x, y;
+-	bool active;
++	bool active, touching = false;
++	unsigned int delay;
  	u8 *touch;
- 
++
 +	/* The event page is selected once per reset, not per interrupt: the chip keeps it until it is
 +	 * reset, and the extra transfer was about 40% of the I2C traffic. If that select failed (the
 +	 * chip was still booting) or a read failed, it is retried here until it works. */
@@ -85235,7 +85259,7 @@
 +			goto backoff;
 +		data->page_ok = true;
 +	}
-+
+ 
  	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
  				 data->max_touches * NVT_TS_TOUCH_SIZE);
 -	if (error)
@@ -85247,7 +85271,7 @@
  
  	for (i = 0; i < data->max_touches; i++) {
  		touch = &data->buf[i * NVT_TS_TOUCH_SIZE];
-@@ -107,8 +154,11 @@
+@@ -107,8 +173,11 @@
  			continue;
  
  		slot = touch[0] >> NVT_TS_TOUCH_SLOT_SHIFT;
@@ -85260,7 +85284,7 @@
  			continue;
  		}
  
-@@ -121,7 +171,7 @@
+@@ -121,10 +190,11 @@
  			active = false;
  			break;
  		default:
@@ -85269,21 +85293,29 @@
  			continue;
  		}
  
-@@ -138,6 +188,13 @@
++		touching |= active;
+ 		slot--;
+ 		x = (touch[1] << 4) | (touch[3] >> 4);
+ 		y = (touch[2] << 4) | (touch[3] & 0x0f);
+@@ -137,6 +207,17 @@
+ 	input_mt_sync_frame(data->input);
  	input_sync(data->input);
  
- 	return IRQ_HANDLED;
++	delay = touching ? active_delay_us : idle_delay_us;
++	if (delay)
++		usleep_range(delay, delay + delay / 4);
++
++	return IRQ_HANDLED;
 +
 +backoff:
 +	/* A chip that NACKs (panel power-down in suspend, reset, still booting) leaves the level IRQ asserted
 +	 * and this thread would re-run every ~0.15 ms until the PM suspend hook masks it (about 420 failures
 +	 * at s2idle entry). Back off so that window costs a few dozen calls instead. */
 +	usleep_range(4000, 6000);
-+	return IRQ_HANDLED;
+ 	return IRQ_HANDLED;
  }
  
- static int nvt_ts_start(struct input_dev *dev)
-@@ -151,8 +208,17 @@
+@@ -151,8 +232,17 @@
  		return error;
  	}
  
@@ -85302,7 +85334,7 @@
  
  	return 0;
  }
-@@ -166,31 +232,43 @@
+@@ -166,31 +256,43 @@
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  }
  
@@ -85356,7 +85388,7 @@
  
  static int nvt_ts_probe(struct i2c_client *client)
  {
-@@ -214,6 +292,7 @@
+@@ -214,6 +316,7 @@
  		return -EINVAL;
  
  	data->client = client;
@@ -85364,7 +85396,7 @@
  	i2c_set_clientdata(client, data);
  
  	/*
-@@ -243,9 +322,11 @@
+@@ -243,9 +346,11 @@
  	}
  
  	/* Wait for controller to come out of reset before params read */
@@ -85379,7 +85411,7 @@
  	gpiod_set_value_cansleep(data->reset_gpio, 1); /* Put back in reset */
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  	if (error)
-@@ -294,7 +375,7 @@
+@@ -294,7 +399,7 @@
  
  	error = devm_request_threaded_irq(dev, client->irq, NULL, nvt_ts_irq,
  					  IRQF_ONESHOT | IRQF_NO_AUTOEN |
@@ -85388,7 +85420,7 @@
  					  client->name, data);
  	if (error) {
  		dev_err(dev, "failed to request irq: %d\n", error);
-@@ -316,11 +397,20 @@
+@@ -316,11 +421,20 @@
  
  static const struct nvt_ts_i2c_chip_data nvt_nt36672a_ts_data = {
  	.chip_id = 0x08,
@@ -85409,7 +85441,7 @@
  	{ }
  };
  MODULE_DEVICE_TABLE(of, nvt_ts_of_match);
-@@ -328,6 +418,7 @@
+@@ -328,6 +442,7 @@
  static const struct i2c_device_id nvt_ts_i2c_id[] = {
  	{ .name = "nt11205-ts", .driver_data = (unsigned long)&nvt_nt11205_ts_data },
  	{ .name = "nt36672a-ts", .driver_data = (unsigned long)&nvt_nt36672a_ts_data },
