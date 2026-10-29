@@ -8,8 +8,10 @@ SRC_EXT = ('.c', '.h', '.S', '.dts', '.dtsi', '.dtso', '.yaml', '.txt', '.rst', 
 SRC_NAMES = ('Kconfig', 'Makefile', 'Kbuild')
 SKIP_DIRS = ('include/generated', 'include/config', 'arch/arm64/include/generated', '.tmp', 'modules-out', 'tools/objtool', 'tools/bpf', 'scripts/basic',
              'scripts/mod', 'scripts/kconfig', 'scripts/dtc', 'scripts/selinux', 'scripts/genksyms', 'scripts/gcc-plugins')
+GENERATED = ('security/apparmor/rlim_names.h', 'security/apparmor/capability_names.h', 'security/apparmor/net_names.h')   # written by the AppArmor build
 def is_src(rel):
     b = os.path.basename(rel)
+    if rel in GENERATED: return False
     if b.endswith(('.mod.c', '.dtb.S', '.o.cmd')) or b.startswith('.'): return False
     if any(rel.startswith(d + '/') or rel == d for d in SKIP_DIRS): return False
     return b.endswith(SRC_EXT) or b in SRC_NAMES or b.startswith('Kconfig')

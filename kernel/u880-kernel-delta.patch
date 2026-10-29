@@ -85162,7 +85162,7 @@
  MODULE_DEVICE_TABLE(of, pm8xxx_vib_id_table);
 --- a/drivers/input/touchscreen/novatek-nvt-ts.c
 +++ b/drivers/input/touchscreen/novatek-nvt-ts.c
-@@ -49,10 +49,24 @@
+@@ -49,15 +49,31 @@
  
  struct nvt_ts_i2c_chip_data {
  	u8 chip_id;
@@ -85187,10 +85187,25 @@
  	struct input_dev *input;
  	struct gpio_desc *reset_gpio;
  	struct regulator_bulk_data regulators[2];
-@@ -87,6 +101,26 @@
- 	return 0;
- }
+ 	struct touchscreen_properties prop;
+ 	int max_touches;
++	bool page_ok;	/* event page selected since the last reset; only the IRQ thread and start() touch it */
++	bool stopped_for_pm;	/* nvt_ts_prepare() stopped the chip; nvt_ts_complete() restarts it */
+ 	u8 buf[NVT_TS_TOUCH_SIZE * NVT_TS_MAX_TOUCHES];
+ };
  
+@@ -80,7 +96,27 @@
+ 
+ 	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
+ 	if (ret != ARRAY_SIZE(msg)) {
+-		dev_err(&client->dev, "Error reading from 0x%02x: %d\n", reg, ret);
++		dev_err_ratelimited(&client->dev, "Error reading from 0x%02x: %d\n", reg, ret);
++		return (ret < 0) ? ret : -EIO;
++	}
++
++	return 0;
++}
++
 +static int nvt_ts_set_page(struct nvt_ts_data *data)
 +{
 +	u32 addr = data->chip->event_buf_addr;
@@ -85205,27 +85220,34 @@
 +		/* The chip is unreachable (in reset, unpowered, or mid-boot) and a level IRQ re-fires at
 +		 * its scan rate, so an unbounded dev_err floods the console and starves the box. */
 +		dev_err_ratelimited(&data->client->dev, "Error selecting event page: %d\n", ret);
-+		return (ret < 0) ? ret : -EIO;
-+	}
-+
-+	return 0;
-+}
-+
- static irqreturn_t nvt_ts_irq(int irq, void *dev_id)
- {
- 	struct nvt_ts_data *data = dev_id;
-@@ -95,6 +129,10 @@
+ 		return (ret < 0) ? ret : -EIO;
+ 	}
+ 
+@@ -95,10 +131,21 @@
  	bool active;
  	u8 *touch;
  
-+	error = nvt_ts_set_page(data);
-+	if (error)
-+		return IRQ_HANDLED;
++	/* The event page is selected once per reset, not per interrupt: the chip keeps it until it is
++	 * reset, and the extra transfer was about 40% of the I2C traffic. If that select failed (the
++	 * chip was still booting) or a read failed, it is retried here until it works. */
++	if (!data->page_ok) {
++		if (nvt_ts_set_page(data))
++			goto backoff;
++		data->page_ok = true;
++	}
 +
  	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
  				 data->max_touches * NVT_TS_TOUCH_SIZE);
- 	if (error)
-@@ -107,6 +145,9 @@
+-	if (error)
+-		return IRQ_HANDLED;
++	if (error) {
++		data->page_ok = false;
++		goto backoff;
++	}
+ 
+ 	for (i = 0; i < data->max_touches; i++) {
+ 		touch = &data->buf[i * NVT_TS_TOUCH_SIZE];
+@@ -107,8 +154,11 @@
  			continue;
  
  		slot = touch[0] >> NVT_TS_TOUCH_SLOT_SHIFT;
@@ -85233,9 +85255,35 @@
 +		if (slot == 0)
 +			continue;
  		if (slot < 1 || slot > data->max_touches) {
- 			dev_warn(dev, "slot %d out of range, ignoring\n", slot);
+-			dev_warn(dev, "slot %d out of range, ignoring\n", slot);
++			dev_warn_ratelimited(dev, "slot %d out of range, ignoring\n", slot);
  			continue;
-@@ -151,8 +192,12 @@
+ 		}
+ 
+@@ -121,7 +171,7 @@
+ 			active = false;
+ 			break;
+ 		default:
+-			dev_warn(dev, "slot %d unknown state %d\n", slot, touch[0] & 7);
++			dev_warn_ratelimited(dev, "slot %d unknown state %d\n", slot, touch[0] & 7);
+ 			continue;
+ 		}
+ 
+@@ -138,6 +188,13 @@
+ 	input_sync(data->input);
+ 
+ 	return IRQ_HANDLED;
++
++backoff:
++	/* A chip that NACKs (panel power-down in suspend, reset, still booting) leaves the level IRQ asserted
++	 * and this thread would re-run every ~0.15 ms until the PM suspend hook masks it (about 420 failures
++	 * at s2idle entry). Back off so that window costs a few dozen calls instead. */
++	usleep_range(4000, 6000);
++	return IRQ_HANDLED;
+ }
+ 
+ static int nvt_ts_start(struct input_dev *dev)
+@@ -151,8 +208,17 @@
  		return error;
  	}
  
@@ -85244,12 +85292,71 @@
 +	 * of failed I2C reads (seen on the U880 every time the display turns off and back on). */
 +	gpiod_set_value_cansleep(data->reset_gpio, 0);
 +	msleep(data->chip->reset_delay_ms ?: 100);
++
++	/* The reset cleared the page register: select the event page now; if the chip is not ready yet the
++	 * IRQ thread retries (page_ok). */
++	data->page_ok = !nvt_ts_set_page(data);
++
  	enable_irq(data->client->irq);
 -	gpiod_set_value_cansleep(data->reset_gpio, 0);
  
  	return 0;
  }
-@@ -214,6 +259,7 @@
+@@ -166,31 +232,43 @@
+ 	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
+ }
+ 
+-static int nvt_ts_suspend(struct device *dev)
++/*
++ * Quiesce in .prepare, not .suspend: on the U880 the panel (a TDDI that shares the chip's power and reset)
++ * goes down in its own .suspend, which can run before this device's .suspend. The chip then NACKs while its
++ * level IRQ is still enabled, and the IRQ thread spins on failed transfers (about 420 per s2idle entry,
++ * some timing out for 1 s each once the I2C controller is down). .prepare runs before any .suspend.
++ */
++static int nvt_ts_prepare(struct device *dev)
+ {
+ 	struct nvt_ts_data *data = i2c_get_clientdata(to_i2c_client(dev));
+ 
+ 	guard(mutex)(&data->input->mutex);
+ 
+-	if (input_device_enabled(data->input))
++	if (input_device_enabled(data->input)) {
+ 		nvt_ts_stop(data->input);
++		data->stopped_for_pm = true;
++	}
+ 
+ 	return 0;
+ }
+ 
+-static int nvt_ts_resume(struct device *dev)
++static void nvt_ts_complete(struct device *dev)
+ {
+ 	struct nvt_ts_data *data = i2c_get_clientdata(to_i2c_client(dev));
+ 
+ 	guard(mutex)(&data->input->mutex);
+ 
+-	if (input_device_enabled(data->input))
+-		nvt_ts_start(data->input);
+-
+-	return 0;
+-}
+-
+-static DEFINE_SIMPLE_DEV_PM_OPS(nvt_ts_pm_ops, nvt_ts_suspend, nvt_ts_resume);
++	if (data->stopped_for_pm) {
++		data->stopped_for_pm = false;
++		if (input_device_enabled(data->input))
++			nvt_ts_start(data->input);
++	}
++}
++
++static const struct dev_pm_ops nvt_ts_pm_ops = {
++	.prepare = nvt_ts_prepare,
++	.complete = nvt_ts_complete,
++};
+ 
+ static int nvt_ts_probe(struct i2c_client *client)
+ {
+@@ -214,6 +292,7 @@
  		return -EINVAL;
  
  	data->client = client;
@@ -85257,7 +85364,7 @@
  	i2c_set_clientdata(client, data);
  
  	/*
-@@ -243,9 +289,11 @@
+@@ -243,9 +322,11 @@
  	}
  
  	/* Wait for controller to come out of reset before params read */
@@ -85272,7 +85379,7 @@
  	gpiod_set_value_cansleep(data->reset_gpio, 1); /* Put back in reset */
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  	if (error)
-@@ -294,7 +342,7 @@
+@@ -294,7 +375,7 @@
  
  	error = devm_request_threaded_irq(dev, client->irq, NULL, nvt_ts_irq,
  					  IRQF_ONESHOT | IRQF_NO_AUTOEN |
@@ -85281,7 +85388,7 @@
  					  client->name, data);
  	if (error) {
  		dev_err(dev, "failed to request irq: %d\n", error);
-@@ -316,11 +364,20 @@
+@@ -316,11 +397,20 @@
  
  static const struct nvt_ts_i2c_chip_data nvt_nt36672a_ts_data = {
  	.chip_id = 0x08,
@@ -85302,7 +85409,7 @@
  	{ }
  };
  MODULE_DEVICE_TABLE(of, nvt_ts_of_match);
-@@ -328,6 +385,7 @@
+@@ -328,6 +418,7 @@
  static const struct i2c_device_id nvt_ts_i2c_id[] = {
  	{ .name = "nt11205-ts", .driver_data = (unsigned long)&nvt_nt11205_ts_data },
  	{ .name = "nt36672a-ts", .driver_data = (unsigned long)&nvt_nt36672a_ts_data },
