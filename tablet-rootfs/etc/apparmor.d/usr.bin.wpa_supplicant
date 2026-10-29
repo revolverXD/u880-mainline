@@ -1,0 +1,36 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# Wi-Fi authentication daemon (root, parses frames from access points). Started by D-Bus
+# activation for NetworkManager.
+/usr/bin/wpa_supplicant flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability net_admin,
+  capability net_raw,
+  capability sys_admin,
+
+  network inet dgram,
+  network inet6 dgram,
+  network netlink raw,
+  network packet dgram,
+  network packet raw,
+  network unix dgram,
+  network unix stream,
+
+  unix,
+  dbus,
+
+  /usr/bin/wpa_supplicant mr,
+  /etc/libnl/** r,
+  /etc/wpa_supplicant/ r,
+  /etc/wpa_supplicant/** r,
+  /dev/rfkill r,
+  @{PROC}/sys/net/** rw,
+  /sys/class/net/** r,
+  /sys/devices/** r,
+  /run/wpa_supplicant/ rw,
+  /run/wpa_supplicant/** rw,
+}

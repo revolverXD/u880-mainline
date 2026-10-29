@@ -4,7 +4,7 @@ include <tunables/global>
 
 # NetworkManager daemon (root, network-facing: DHCP, RA, D-Bus). Helpers it starts (dispatcher,
 # wpa_supplicant, dnsmasq for hotspot sharing) run as their own units or unconfined.
-/usr/bin/NetworkManager {
+/usr/bin/NetworkManager flags=(attach_disconnected) {
   include <abstractions/base>
   include <abstractions/nameservice>
 
@@ -30,6 +30,7 @@ include <tunables/global>
   unix,
   signal (send, receive),
 
+  / r,
   /usr/bin/NetworkManager mr,
   /usr/lib/NetworkManager/** mr,
   /usr/lib/NetworkManager/** Ux,

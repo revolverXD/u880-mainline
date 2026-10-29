@@ -1,0 +1,44 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# Bluetooth daemon (root; parses data from remote devices). bluetooth.service is sandboxed
+# in its own mount namespace, hence attach_disconnected.
+/usr/lib/bluetooth/bluetoothd flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability net_admin,
+  capability net_bind_service,
+
+  network alg seqpacket,
+  network bluetooth raw,
+  network bluetooth seqpacket,
+  network bluetooth stream,
+  network bluetooth dgram,
+  network netlink raw,
+  network unix dgram,
+  network unix stream,
+
+  unix,
+  dbus,
+  signal (receive),
+
+  /usr/lib/bluetooth/bluetoothd mr,
+  /usr/lib/bluetooth/** r,
+
+  /etc/bluetooth/ r,
+  /etc/bluetooth/** r,
+  /var/lib/bluetooth/ r,
+  /var/lib/bluetooth/** rwkl,
+
+  /dev/rfkill rw,
+  /dev/uhid rw,
+  /dev/uinput rw,
+
+  @{PROC}/sys/kernel/hostname r,
+  @{PROC}/sys/kernel/random/boot_id r,
+  /sys/devices/** r,
+  /sys/class/** r,
+  /run/udev/** r,
+}

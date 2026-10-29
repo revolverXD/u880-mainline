@@ -55,3 +55,7 @@
 /etc/apparmor.d/usr.lib.ssh.sshd-auth
 /etc/apparmor.d/usr.lib.ssh.sshd-session
 /etc/apparmor.d/usr.bin.NetworkManager
+/etc/apparmor.d/usr.bin.wpa_supplicant
+/etc/apparmor.d/usr.lib.bluetooth.bluetoothd
+/etc/apparmor.d/usr.lib.systemd.systemd-resolved
+/etc/apparmor.d/usr.lib.systemd.systemd-timesyncd
