@@ -61,3 +61,4 @@
 /etc/apparmor.d/usr.lib.systemd.systemd-timesyncd
 /etc/apparmor.d/usr.bin.pipewire
 /etc/apparmor.d/usr.bin.wireplumber
+/etc/systemd/resolved.conf.d/10-no-llmnr.conf
