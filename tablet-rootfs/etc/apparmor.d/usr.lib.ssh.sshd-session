@@ -1,0 +1,16 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# Post-auth session handler. Left in complain mode: it runs PAM and the user's shell (Ux),
+# so an enforcing profile would confine little and risks locking us out.
+/usr/lib/ssh/sshd-session flags=(complain) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/authentication>
+
+  /usr/lib/ssh/sshd-session mr,
+  /usr/lib/ssh/sshd-auth Px,
+  /usr/bin/** Ux,
+  /usr/lib/ssh/sftp-server Ux,
+}

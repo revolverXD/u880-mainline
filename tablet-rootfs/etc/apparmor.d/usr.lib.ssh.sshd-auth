@@ -1,0 +1,22 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# Pre-authentication child of sshd-session: the network-facing parser. Needs almost nothing.
+/usr/lib/ssh/sshd-auth {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability setuid,
+  capability setgid,
+  capability sys_chroot,
+
+  network inet stream,
+  network inet6 stream,
+  network unix stream,
+
+  /usr/lib/ssh/sshd-auth mr,
+  /etc/passwd r,
+  /etc/nsswitch.conf r,
+  /var/empty/ r,
+}

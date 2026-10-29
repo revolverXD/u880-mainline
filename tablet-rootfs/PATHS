@@ -50,3 +50,7 @@
 /home/USER/.local/share/applications/steam-x86.desktop
 /usr/local/bin/steam-arm64
 /home/USER/.local/share/applications/steam-arm64.desktop
+/etc/apparmor/parser.conf
+/etc/apparmor.d/usr.bin.sshd
+/etc/apparmor.d/usr.lib.ssh.sshd-auth
+/etc/apparmor.d/usr.lib.ssh.sshd-session

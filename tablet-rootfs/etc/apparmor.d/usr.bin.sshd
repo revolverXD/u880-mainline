@@ -1,0 +1,38 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# Listener. Sessions run in sshd-session (own profile).
+/usr/bin/sshd {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability net_bind_service,
+  capability setgid,
+  capability setuid,
+  capability sys_resource,
+  capability sys_chroot,
+  capability chown,
+  capability kill,
+  capability audit_write,
+
+  network inet stream,
+  network inet6 stream,
+  network inet6 dgram,
+  network netlink raw,
+  network unix stream,
+  network unix dgram,
+
+  signal (send),
+
+  /usr/bin/sshd ix,
+  /usr/lib/ssh/sshd-session Px,
+
+  /etc/ssh/ r,
+  /etc/ssh/** r,
+  /dev/tty r,
+  /etc/gai.conf r,
+  /run/sshd.pid rw,
+  /run/systemd/notify w,
+  /proc/*/oom_score_adj rw,
+}
