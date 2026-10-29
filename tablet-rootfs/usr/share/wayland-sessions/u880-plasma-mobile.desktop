@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Plasma Mobile (U880)
+Comment=Plasma Mobile on the panel's DRM card
+Exec=/usr/local/bin/u880-plasma-session
+Type=Application
+DesktopNames=KDE

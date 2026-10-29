@@ -1,0 +1,10 @@
+[SddmGreeterTheme]
+Name=u880
+Description=Touch login for the U880 tablet: user and password fields with the Qt on-screen keyboard
+Author=u880 mainline
+License=GPL-2.0-or-later
+Type=sddm-theme
+Version=0.1
+MainScript=Main.qml
+ConfigFile=theme.conf
+QtVersion=6

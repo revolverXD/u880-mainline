@@ -18,7 +18,6 @@
 /etc/systemd/system/u880-usb-ss-retrain.service
 /etc/systemd/system/hexagonrpcd-adsp-sensorspd.service.d/u880.conf
 /etc/systemd/system/iio-sensor-proxy.service.d/restart.conf
-/etc/systemd/system/getty@tty1.service.d/autologin.conf
 /etc/NetworkManager/conf.d/10-u880-usb0-unmanaged.conf
 /etc/NetworkManager/conf.d/20-u880-wifi-mac.conf
 /etc/NetworkManager/conf.d/30-u880-wifi-powersave.conf
@@ -64,3 +63,12 @@
 /etc/systemd/resolved.conf.d/10-no-llmnr.conf
 /etc/nsswitch.conf
 /etc/systemd/resolved.conf.d/20-no-mdns-avahi.conf
+/etc/sddm.conf.d/10-u880.conf
+/usr/share/sddm/themes/u880/Main.qml
+/usr/share/sddm/themes/u880/metadata.desktop
+/usr/share/sddm/themes/u880/theme.conf
+/usr/local/bin/u880-plasma-session
+/usr/share/wayland-sessions/u880-plasma-mobile.desktop
+/var/lib/sddm/state.conf
+/var/lib/sddm/.config/kwinrc
+/var/lib/sddm/.config/kwinoutputconfig.json

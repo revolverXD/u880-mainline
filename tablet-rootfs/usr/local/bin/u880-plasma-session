@@ -1,0 +1,4 @@
+#!/bin/sh
+# Plasma Mobile session for SDDM: same device pinning as ~/.bash_profile does for the tty1 start.
+export KWIN_DRM_DEVICES=/dev/dri/by-path/platform-ae01000.display-controller-card
+exec /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasmamobile
