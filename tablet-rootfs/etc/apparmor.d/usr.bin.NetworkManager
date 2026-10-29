@@ -1,0 +1,68 @@
+abi <abi/4.0>,
+
+include <tunables/global>
+
+# NetworkManager daemon (root, network-facing: DHCP, RA, D-Bus). Helpers it starts (dispatcher,
+# wpa_supplicant, dnsmasq for hotspot sharing) run as their own units or unconfined.
+/usr/bin/NetworkManager {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+
+  capability audit_write,
+  capability bpf,
+  capability dac_override,
+  capability net_admin,
+  capability net_bind_service,
+  capability net_raw,
+
+  network inet dgram,
+  network inet stream,
+  network inet raw,
+  network inet6 dgram,
+  network inet6 stream,
+  network inet6 raw,
+  network packet dgram,
+  network packet raw,
+  network netlink raw,
+  network unix dgram,
+  network unix stream,
+
+  unix,
+  signal (send, receive),
+
+  /usr/bin/NetworkManager mr,
+  /usr/lib/NetworkManager/** mr,
+  /usr/lib/NetworkManager/** Ux,
+  /usr/bin/dnsmasq Ux,
+
+  /etc/NetworkManager/ r,
+  /etc/NetworkManager/** r,
+  /etc/NetworkManager/system-connections/** rwk,
+  /etc/machine-id r,
+  /etc/hostname r,
+  /etc/resolv.conf rwkl,
+  /etc/hosts r,
+
+  /run/NetworkManager/ rw,
+  /run/NetworkManager/** rwkl,
+  /run/systemd/resolve/** r,
+  /run/udev/** r,
+  /var/lib/NetworkManager/ rw,
+  /var/lib/NetworkManager/** rwk,
+
+  /dev/rfkill rw,
+
+  @{PROC}/cmdline r,
+  @{PROC}/sys/kernel/random/boot_id r,
+  @{PROC}/sys/net/** rw,
+  @{PROC}/net/** r,
+  @{PROC}/*/stat r,
+  @{PROC}/*/cmdline r,
+  @{PROC}/*/status r,
+
+  /sys/bus/ r,
+  /sys/class/ r,
+  /sys/class/** r,
+  /sys/devices/** r,
+  /sys/devices/**/net/** r,
+}

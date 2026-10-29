@@ -54,3 +54,4 @@
 /etc/apparmor.d/usr.bin.sshd
 /etc/apparmor.d/usr.lib.ssh.sshd-auth
 /etc/apparmor.d/usr.lib.ssh.sshd-session
+/etc/apparmor.d/usr.bin.NetworkManager
