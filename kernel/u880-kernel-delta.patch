@@ -14440,7 +14440,7 @@
 +obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += qcom-proxy-consumer-uke.o
 --- /dev/null
 +++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
-@@ -0,0 +1,2137 @@
+@@ -0,0 +1,2145 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
 +/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
@@ -16454,6 +16454,14 @@
 +	    strcmp(aggr_vreg->resource_name, "ldob5") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob12") &&
 +	    strcmp(aggr_vreg->resource_name, "ldod3") &&
++	    /* U880 camera sensor rails (PM8010M L1-L7, DT ldom1-7): registered only so the CCI sensor drivers can power their modules (NOTES 2026-11-01) */
++	    strcmp(aggr_vreg->resource_name, "ldom1") &&
++	    strcmp(aggr_vreg->resource_name, "ldom2") &&
++	    strcmp(aggr_vreg->resource_name, "ldom3") &&
++	    strcmp(aggr_vreg->resource_name, "ldom4") &&
++	    strcmp(aggr_vreg->resource_name, "ldom5") &&
++	    strcmp(aggr_vreg->resource_name, "ldom6") &&
++	    strcmp(aggr_vreg->resource_name, "ldom7") &&
 +	    /* U880 native display (DISP=4 DT only): dispcc vdd_mm and panel vddio. Other builds leave them to firmware. */
 +	    !(of_machine_u880_native_display() &&
 +	      (!strcmp(aggr_vreg->resource_name, "mmcx.lvl") || !strcmp(aggr_vreg->resource_name, "ldob8"))))
