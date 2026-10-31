@@ -3,7 +3,7 @@
 # Output: stage1/u880-boot.img. Flash: fastboot flash boot_b stage1/u880-boot.img (see NOTES.md "Standalone boot").
 set -e
 M=/home/USER/External/work/src/mainline
-KIMG=$M/linux-7.2.9/arch/arm64/boot/Image
+KIMG=$M/linux-7.3.1/arch/arm64/boot/Image
 DTB=$M/stage1/dtb2-disabled.dtb
 # Native display (DISP=4): GPU and KMS in one msm DRM device, so no msm.separate_gpu_kms.
 [ "${DISP:-0}" = 4 ] && SEP= || SEP=msm.separate_gpu_kms=1

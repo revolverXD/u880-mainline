@@ -7,7 +7,7 @@ python3 -I $M/scripts/disable-stock-dts.py $M/stock-dt/dtb2.dts $S/dtb2-disabled
 dtc -q -I dts -O dtb $S/dtb2-disabled.dts -o $S/dtb2-disabled.dtb
 # Optional GPU overlay (GPU=1): uke Adreno 732 nodes on top of the stock GPU/GMU/SMMU nodes (sets them okay)
 if [ "${GPU:-0}" = 1 ]; then
-  K=$M/linux-7.2.9; U=$M/ref/senemos-uke-kernel-mainline/src/boot
+  K=$M/linux-7.3.1; U=$M/ref/senemos-uke-kernel-mainline/src/boot
   cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $K/include -I $U $S/gpu-overlay.dtso > $S/gpu-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/gpu-overlay.dtbo $S/gpu-overlay.pp.dts
   fdtoverlay -i $S/dtb2-disabled.dtb -o $S/dtb2-disabled.gpu.dtb $S/gpu-overlay.dtbo && mv $S/dtb2-disabled.gpu.dtb $S/dtb2-disabled.dtb
@@ -204,12 +204,12 @@ fdtput -t s $O $I/aw882xx_smartpa@34 sound-name-prefix Right
 fdtput -t s $O $I/aw882xx_smartpa@35 sound-name-prefix Left
 fdtput -t x $O $I/aw882xx_smartpa@34 phandle 0x7f000410
 fdtput -t x $O $I/aw882xx_smartpa@35 phandle 0x7f000411
-cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/audio-overlay.dtso > $S/audio-overlay.pp.dts
+cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/audio-overlay.dtso > $S/audio-overlay.pp.dts
 dtc -q -@ -I dts -O dtb -o $S/audio-overlay.dtbo $S/audio-overlay.pp.dts
 fdtoverlay -i $O -o $S/dtb2-disabled.aud.dtb $S/audio-overlay.dtbo && mv $S/dtb2-disabled.aud.dtb $O && echo "audio overlay applied"
 
 # 5 UFS (internal storage), read-only first. Overlay from stage1/ufs-overlay.dtso (uke-derived), then drop what the generic host cannot use.
-cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/ufs-overlay.dtso > $S/ufs-overlay.pp.dts
+cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/ufs-overlay.dtso > $S/ufs-overlay.pp.dts
 dtc -q -@ -I dts -O dtb -o $S/ufs-overlay.dtbo $S/ufs-overlay.pp.dts
 fdtoverlay -i $O -o $S/dtb2-disabled.ufs.dtb $S/ufs-overlay.dtbo && mv $S/dtb2-disabled.ufs.dtb $O && echo "ufs overlay applied"
 for property in msi-parent shared-ice-cfg; do fdtput -d $O /soc/ufshc@1d84000 $property; done
@@ -224,7 +224,7 @@ fdtput -t x $O $RR mode-bootloader 0x02
 # 6 USB-C step 1: USB2 peripheral through the uke DWC3 glue (stage1/usb-overlay.dtso), replacing the fastboot-dependent flattened node above.
 fdtput -r $O /usb@a600000
 for p in dmas dma-names interconnects interconnect-names; do fdtput -d $O /soc/qcom,qupv3_0_geni_se@ac0000/i2c@a80000 $p; done
-cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/usb-overlay.dtso > $S/usb-overlay.pp.dts
+cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/usb-overlay.dtso > $S/usb-overlay.pp.dts
 dtc -q -@ -I dts -O dtb -o $S/usb-overlay.dtbo $S/usb-overlay.pp.dts
 fdtoverlay -i $O -o $S/dtb2-disabled.usb.dtb $S/usb-overlay.dtbo && mv $S/dtb2-disabled.usb.dtb $O && echo "usb overlay applied"
 for property in interrupts-extended extcon usb-role-switch; do
@@ -258,7 +258,7 @@ echo "USB mode: $USB_MODE"
 # 6c USB3=1: SuperSpeed through the QMP combo PHY + NB7VPQ904M redriver (stage1/usb3-overlay.dtso; needs USB_MODE=otg).
 if [ "${USB3:-0}" = 1 ]; then
   [ "$USB_MODE" = otg ] || { echo "USB3=1 needs USB_MODE=otg"; exit 1; }
-  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/usb3-overlay.dtso > $S/usb3-overlay.pp.dts
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/usb3-overlay.dtso > $S/usb3-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/usb3-overlay.dtbo $S/usb3-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.usb3.dtb $S/usb3-overlay.dtbo && mv $S/dtb2-disabled.usb3.dtb $O
   # The PIPE clock now comes from the QMP PHY, not UTMI; GPI stays non-coherent like the other DMA masters here.
@@ -310,7 +310,7 @@ echo "fastrpc (adsp) nodes added"
 # Replaces stages 1-3 (none of their overlays are applied). Kernel: uke providers + panel-alldocube-u880.
 if [ "${DISP:-0}" = 4 ]; then
   fdtput -t x $O /u880-backlight phandle 0x7f000202
-  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp4-overlay.dtso > $S/disp4-overlay.pp.dts
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/disp4-overlay.dtso > $S/disp4-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp4-overlay.dtbo $S/disp4-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp4.dtb $S/disp4-overlay.dtbo && mv $S/dtb2-disabled.disp4.dtb $O && echo "disp4 overlay applied"
   fdtput -d $O /soc/clock-controller@af00000 clock-names
@@ -322,14 +322,14 @@ fi
 # 7e DP=1: DisplayPort out over USB-C (stage1/dp-overlay.dtso). Needs DISP=4 and USB3=1; applied after both overlays.
 if [ "${DP:-0}" = 1 ]; then
   [ "${DISP:-0}" = 4 ] && [ "${USB3:-0}" = 1 ] || { echo "DP=1 needs DISP=4 USB3=1"; exit 1; }
-  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/dp-overlay.dtso > $S/dp-overlay.pp.dts
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/dp-overlay.dtso > $S/dp-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/dp-overlay.dtbo $S/dp-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.dp.dtb $S/dp-overlay.dtbo && mv $S/dtb2-disabled.dp.dtb $O && echo "dp overlay applied"
 fi
 
 # 7 Display stage 1 (DISP=1): mainline SM8650-variant dispcc on the stock Cliffs display clock controller (stage1/disp-overlay.dtso).
 if [ "$DISP_STAGED" -ge 1 ]; then
-  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp-overlay.dtso > $S/disp-overlay.pp.dts
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/disp-overlay.dtso > $S/disp-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp-overlay.dtbo $S/disp-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp.dtb $S/disp-overlay.dtbo && mv $S/dtb2-disabled.disp.dtb $O && echo "disp overlay applied"
   fdtput -d $O /soc/clock-controller@af00000 clock-names vdd_mm-supply vdd_mxa-supply
@@ -337,14 +337,14 @@ fi
 
 # 7b Display stage 2 (DISP=2): MDSS + DPU nodes (stage1/disp2-overlay.dtso). Needs kernel patch 0022 and dispcc from stage 1.
 if [ "$DISP_STAGED" -ge 2 ]; then
-  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp2-overlay.dtso > $S/disp2-overlay.pp.dts
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/disp2-overlay.dtso > $S/disp2-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp2-overlay.dtbo $S/disp2-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp2.dtb $S/disp2-overlay.dtbo && mv $S/dtb2-disabled.disp2.dtb $O && echo "disp2 overlay applied"
 fi
 
 # 7c Display stage 3 (DISP=3): DP0 controller + combo PHY + connector graph (stage1/disp3-overlay.dtso). Needs kernel patches 0022/0023.
 if [ "$DISP_STAGED" -ge 3 ]; then
-  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.2.9/include $S/disp3-overlay.dtso > $S/disp3-overlay.pp.dts
+  cpp -nostdinc -undef -D__DTS__ -x assembler-with-cpp -I $M/linux-7.3.1/include $S/disp3-overlay.dtso > $S/disp3-overlay.pp.dts
   dtc -q -@ -I dts -O dtb -o $S/disp3-overlay.dtbo $S/disp3-overlay.pp.dts
   fdtoverlay -i $O -o $S/dtb2-disabled.disp3.dtb $S/disp3-overlay.dtbo && mv $S/dtb2-disabled.disp3.dtb $O && echo "disp3 overlay applied"
 fi

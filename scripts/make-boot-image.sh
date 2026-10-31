@@ -12,7 +12,7 @@ CMDLINE=${CMDLINE:-"console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore
 # Production images turn debugfs off (issue #24); DEV=1 keeps it on for display/power bring-up (RAM-boot that image, do not flash it).
 [ "${DEV:-0}" = 1 ] || CMDLINE="$CMDLINE debugfs=off"
 python3 /home/USER/External/work/src/LineageOS/system/tools/mkbootimg/mkbootimg.py --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \
-  --kernel ${KIMAGE:-$M/linux-7.2.9/arch/arm64/boot/Image} --ramdisk ${RAMDISK:-$M/stage1/initramfs-u880c.cpio.gz} --dtb "$DTB" \
+  --kernel ${KIMAGE:-$M/linux-7.3.1/arch/arm64/boot/Image} --ramdisk ${RAMDISK:-$M/stage1/initramfs-u880c.cpio.gz} --dtb "$DTB" \
   --base 0x0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --tags_offset 0x100 --dtb_offset 0x1f00000 --pagesize 4096 \
   --cmdline "$CMDLINE" \
   -o "$OUT"

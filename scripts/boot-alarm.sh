@@ -5,5 +5,5 @@
 M=/home/USER/External/work/src/mainline
 # Native display (DISP=4): GPU and KMS in one msm DRM device, so no msm.separate_gpu_kms.
 [ "${DISP:-0}" = 4 ] && SEP= || SEP=msm.separate_gpu_kms=1
-KIMG=$M/linux-7.2.9/arch/arm64/boot/Image EXTRA="regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=sd $SEP cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 ${MORE:-}" \
+KIMG=$M/linux-7.3.1/arch/arm64/boot/Image EXTRA="regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=sd $SEP cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 ${MORE:-}" \
   exec $M/scripts/run-live.sh "$@"

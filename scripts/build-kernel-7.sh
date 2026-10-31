@@ -4,7 +4,7 @@ set -e
 M=/home/USER/External/work/src/mainline
 CL=/home/USER/External/work/src/LineageOS/prebuilts/clang/host/linux-x86/clang-r574158/bin
 C=$M/ref/senemos-uke-kernel-mainline/configs
-cd $M/linux-7.2.9
+cd $M/linux-7.3.1
 make LLVM=$CL/ ARCH=arm64 defconfig >/dev/null
 KCONFIG_CONFIG=.config ./scripts/kconfig/merge_config.sh -m .config $C/arm64-qcom.config $C/uke.config $M/scripts/u880-7.config >/dev/null
 make LLVM=$CL/ ARCH=arm64 olddefconfig >/dev/null

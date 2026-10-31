@@ -8,7 +8,7 @@ if timeout 5 fastboot devices 2>/dev/null | grep -q .; then :
 elif timeout 5 adb devices 2>/dev/null | grep -q 'device$'; then :
 else timeout 15 scripts/rssh.sh 'sync; reboot bootloader' >/dev/null 2>&1
      for i in $(seq 1 40); do timeout 5 fastboot devices 2>/dev/null | grep -q . && break; sleep 3; done; fi
-DISP=4 MORE="msm.u880_dbg=$mask" KIMG=linux-7.2.9/arch/arm64/boot/Image scripts/boot-alarm.sh stage1/dtb2-disabled.dtb 2>&1 | tail -1
+DISP=4 MORE="msm.u880_dbg=$mask" KIMG=linux-7.3.1/arch/arm64/boot/Image scripts/boot-alarm.sh stage1/dtb2-disabled.dtb 2>&1 | tail -1
 sleep 25
 scripts/cam.sh photos/dbg-$tag.jpg
 timeout 30 scripts/rssh.sh 'cat /sys/module/msm/parameters/u880_dbg; cat /sys/kernel/debug/dri/1/encoder-0/status | head -1;

@@ -1,6 +1,6 @@
 # Mainline Linux + Plasma Mobile on the Alldocube iPlay 70 mini Ultra (U880)
 
-A mainline Linux 7.2.9 port for one tablet: **Alldocube iPlay 70 mini Ultra, Global model, codename U880**
+A mainline Linux 7.3.1 port for one tablet: **Alldocube iPlay 70 mini Ultra, Global model, codename U880**
 (Qualcomm Snapdragon 7+ Gen 3, SM7675 "Cliffs", 12 GB RAM, UFS 3.1, 8.8" 1600x2560 144 Hz panel). It runs Arch Linux ARM with
 KDE Plasma Mobile (and the Denial shell), native ARM64 Steam and Proton, with the GPU, display, touch, Wi-Fi, Bluetooth,
 audio, sensors, USB-C (host, DisplayPort, PD), battery and thermal control working.
@@ -16,7 +16,7 @@ It does **not** contain the Linux source tree, vendor firmware or any keys (see 
 
 ## What works
 
-Tested on kernel `7.2.9-u880e`, boot slot B, Plasma Mobile 6.8.
+Tested on kernel `7.3.1-u880e`, boot slot B, Plasma Mobile 6.8.
 
 | Area | Status |
 |---|---|
@@ -46,13 +46,13 @@ Open work is tracked in the GitHub issues; the full engineering log is `NOTES.md
 - SoC `qcom,cliffs` (SM7675, soc_id 643); the downstream platform is the `pineapple` (SM8650) family.
 - Boot chain: Qualcomm ABL (Android bootloader), A/B slots, Virtual A/B, boot header v2.
 - The kernel base and many drivers come from the [senemos-uke-kernel-mainline](https://github.com/MCC45TR/senemos-uke-kernel-mainline) series (MIT) for
-  the Xiaomi Pad 7 / POCO Pad X1, which has the same SoC. Our delta on top of vanilla Linux 7.2.9 is `kernel/u880-kernel-delta.patch`.
+  the Xiaomi Pad 7 / POCO Pad X1, which has the same SoC. Our delta on top of vanilla Linux 7.3.1 is `kernel/u880-kernel-delta.patch`.
 
 ## Repository map
 
 | Path | What |
 |---|---|
-| `kernel/` | `u880-kernel-delta.patch` (every source change vs vanilla 7.2.9), `u880_defconfig`, `u880.config` |
+| `kernel/` | `u880-kernel-delta.patch` (every source change vs vanilla 7.3.1), `u880_defconfig`, `u880.config` |
 | `dts/u880.dts` | the production device tree as one source file (decompiled from the working DTB, plus our additions) |
 | `stage1/*.dtso`, `stage1/initramfs/` | DT overlays used while bringing the board up; the rescue/boot initramfs source (busybox, `init`) |
 | `stock-dt/` | device trees extracted from the stock firmware (`dtb2` = SoC DT, `o25` = board overlay) and parsers |
@@ -118,9 +118,9 @@ On the PC (outside the container) you also need `dtc`, `fastboot`, `e2fsprogs`, 
 ### 3. Build the kernel
 
 ```
-curl -LO https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.2.9.tar.xz      # keep it in the repo root, it is git-ignored
-tar -xf linux-7.2.9.tar.xz
-cd linux-7.2.9
+curl -LO https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.1.tar.xz      # keep it in the repo root, it is git-ignored
+tar -xf linux-7.3.1.tar.xz
+cd linux-7.3.1
 patch -p1 < ../kernel/u880-kernel-delta.patch                                   # all our changes (about 220 files)
 cp ../kernel/u880_defconfig arch/arm64/configs/
 make LLVM=<clang>/bin/ ARCH=arm64 u880_defconfig                                # must equal kernel/u880.config
@@ -130,7 +130,7 @@ make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e INSTALL_MOD_PATH=$PWD/../m
 
 `LOCALVERSION` **must stay pinned** (`-u880e`): the initramfs and the rootfs carry modules for that exact release and the display driver silently never probes otherwise
 (FINDINGS F7). `scripts/clean-rebuild.sh` does the pristine-tarball rebuild and compares the result with a working tree (used to prove the delta is complete).
-After you change anything under `linux-7.2.9/`, regenerate the delta: `python3 scripts/snapshot-kernel-delta.py <pristine linux-7.2.9 dir> linux-7.2.9`.
+After you change anything under `linux-7.3.1/`, regenerate the delta: `python3 scripts/snapshot-kernel-delta.py <pristine linux-7.3.1 dir> linux-7.3.1`.
 
 ### 4. Device tree
 
@@ -162,7 +162,7 @@ The three UFS modules must come from the same build/release as the kernel (a mis
 
 ```
 python3 <aosp>/system/tools/mkbootimg/mkbootimg.py --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \
-  --kernel linux-7.2.9/arch/arm64/boot/Image.gz --ramdisk stage1/initramfs.cpio.gz --dtb stage1/dtb2-u880.dtb \
+  --kernel linux-7.3.1/arch/arm64/boot/Image.gz --ramdisk stage1/initramfs.cpio.gz --dtb stage1/dtb2-u880.dtb \
   --pagesize 0x1000 --base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --second_offset 0 --tags_offset 0x100 --dtb_offset 0x1f00000 \
   --cmdline 'console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout' \
   -o stage1/u880-boot.img
@@ -191,7 +191,7 @@ should be replaced by your own, see below). From your tablet's stock `vendor`/`o
 2. **This destroys Android's userdata.** Format the UFS `userdata` partition as ext4 with label `u880root` and extract the tarball into it (as root, with xattrs, ACLs, numeric owners).
    The history of how this was done (via an SD card first) is in `NOTES.md`, section 15 "Android removed, Linux root on internal UFS".
    Every UFS partition except `userdata` is made read-only by `/etc/udev/rules.d/99-u880-ufs-readonly.rules`; keep it.
-3. Install the kernel modules into `/usr/lib/modules/7.2.9-u880e/` and run `depmod`.
+3. Install the kernel modules into `/usr/lib/modules/7.3.1-u880e/` and run `depmod`.
 4. Change the default passwords (`alarm`/`alarm`, `root`/`root`) before putting the tablet on a network, and generate your own SSH key (the scripts expect a project key in `alarm/ssh/`, which is not in git).
 5. Push our configs: `U880_HOST=<ip> scripts/tablet-config.sh push` (units, udev rules, sleep hook, UCM, thermal guard, Bluetooth and display services, Denial settings, `~/.bash_profile` session
    switch). `scripts/tablet-config.sh status` shows differences, `pull` captures them back.
@@ -216,7 +216,7 @@ tablet: check yours with `ls -l /dev/disk/by-partlabel/` before writing anything
 
 ### 10. Verify
 
-On the tablet: `uname -r` is `7.2.9-u880e`; `ls /sys/class/drm` shows `card1-DSI-1`; `dmesg | grep "UBWC programmed"` shows `STATIC=0x103e CTRL_2=0x2 PRED=0x1`;
+On the tablet: `uname -r` is `7.3.1-u880e`; `ls /sys/class/drm` shows `card1-DSI-1`; `dmesg | grep "UBWC programmed"` shows `STATIC=0x103e CTRL_2=0x2 PRED=0x1`;
 `modetest -M msm -p` lists the four refresh modes; thermal zones show the cooling maps (`ls /sys/class/thermal/thermal_zone*/trip_point_*_temp`); `bluetoothctl show` has the factory address;
 `iio-sensor-proxy` sees accelerometer and light; `pactl list short sinks` has `HiFi__Speaker__sink`; `scripts/dpms-fuzz.sh 100 200 4000` finishes without a wedge. Stress and game checks: `scripts/stress-run.sh`, `scripts/game-profile.sh`.
 
@@ -228,7 +228,7 @@ from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and th
 
 ## What is not in this repo
 
-- The Linux source tree (download 7.2.9 from kernel.org; our delta is `kernel/u880-kernel-delta.patch`).
+- The Linux source tree (download 7.3.1 from kernel.org; our delta is `kernel/u880-kernel-delta.patch`).
 - Vendor firmware and the stock images (extract from your own tablet), the Chinese `abl.elf` unlock files, the AOSP clang and `mkbootimg`.
 - Any keys or passwords: the tablet's SSH key lives in `alarm/ssh/` (git-ignored). Default passwords of the Arch Linux ARM image must be changed.
 - Build outputs and boot images (`stage1/*.img`, `.ko`, ...). They are rebuilt from the sources above.
