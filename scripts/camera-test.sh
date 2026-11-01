@@ -29,6 +29,10 @@ detect() {
   [ -n "$rear" ] && [ -n "$front" ]
 }
 power() { for d in $devs; do echo on > $d/power/control; done; sleep 1; }
+# The DTB may describe the slots with a compatible that binds no driver (COMPAT0/1 in scripts/camera-cci-dtb.sh). Then the client exists with all its
+# supplies, pinctrl and reset gpio but nothing is claimed; bind the driver here, after the modules are up. EBUSY (already bound) is fine.
+bind() { for d in $devs; do echo gc05a2 > $d/driver_bind 2>/dev/null; done; sleep 2; }
+unbind() { for d in $devs; do echo gc05a2 > $d/driver_unbind 2>/dev/null; done; }
 scan() { for b in $buses; do printf "  bus %s:" $b
   for a in $ADDR; do i2ctransfer -f -y $b w0@$a 2>/dev/null && printf " ACK@%s" $a; done; echo; done; }
 rails() { grep "pm8010m_l[1-7] " /sys/kernel/debug/regulator/regulator_summary | awk '{print $1" use="$2" "$5}'; }
@@ -47,7 +51,7 @@ ids() {
 }
 
 echo "tlmm=$TLMM"
-load; detect
+load; detect; bind
 echo "sensors:${devs:- NONE}  buses=$buses"
 [ -n "$devs" ] || { echo "no sensor devices: CCI or DT problem, see the dmesg tail"; }
 power; echo "== rails/clocks after power-up"; rails; mclk
@@ -72,5 +76,7 @@ case "${1:-}" in
   rails) rails;;
   mclk) mclk;;
   ids) ids;;
-  *) echo "===== $0 rails mclk detect load unload scan ids on off";;
+  bind) bind; echo bound;;
+  unbind) unbind; echo unbound;;
+  *) echo "===== $0 rails mclk detect load unload scan ids bind unbind on off";;
 esac

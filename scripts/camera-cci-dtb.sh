@@ -30,6 +30,9 @@ done
 # sensorDriverData "Default" block carries an 8-bit I2C SID and the chip-ID register/value): rear OV13B10-family SID 0x20 -> 7-bit 0x10, chip id
 # 0x300a/0x300b = 0d 42; front GC05A2 SID 0x6e -> 7-bit 0x37, chip id 0x03f0 = 05 a2. Stock slot map: cam-sensor1 = cci-master 0 = rear, cam-sensor4 = 1 = front. phandles: 0x16c tlmm, 0x154 camcc,
 # 0x361/0x363/0x365 = L1M/L3M/L5M (rear dvdd/avdd/dovdd), L2M/L4M/L5M for the front are looked up by label below.
+# COMPAT0/COMPAT1 override the driver matched by the slot. "u880,cam-probe" binds nothing at boot (the client still exists with all its DT supplies,
+# pinctrl and reset gpio; bind it later with camera-test.sh's `bind`), which is how to tell a bad boot apart from a bad driver probe: a client at 0x10
+# with gc05a2 bound stopped the boot at ~11 s with no panic and no DWC3 (pstore console-ramoops, 2026-11-01), the same node at 0x36 booted.
 sensor() { # node reg compat mclk-idx rate reset-gpio mclk-pin rst-pin pwd-pin dovdd avdd dvdd lanes linkfreq
   local n=$1; local b=${n##*i2c-bus@}; b=${b%%/*}   # which CCI port this slot is on (selects the env knobs)
   local rf=RESET_FLAG$b
@@ -46,10 +49,17 @@ sensor() { # node reg compat mclk-idx rate reset-gpio mclk-pin rst-pin pwd-pin d
 # and a "unexpected sensor id" line prove the address and the rails. Ports need a remote endpoint in an *available* node or the drivers refuse to probe.
 # phandles in our own base DTB: 0x482/0x48e/0x490 = cam_sensor_mclk0_active/active_rst0/active_pwd0 (gpio64 cam_mclk, gpio15, gpio6),
 # 0x48a/0x498/0x49a = the same for sensor4 (gpio68, gpio3, gpio2). Rails: L1M/L3M/L5M rear, L2M/L4M/L5M front (the stock o25 overlay's cam_vdig/vana/vio).
-sensor $N/i2c-bus@0/camera@10 0x10 galaxycore,gc05a2 0x60 0x16e3600 0xf 0x482 0x48e 0x490 0x365 0x363 0x361 "1 2" 0x1ab3f000
-sensor $N/i2c-bus@1/camera@37 0x37 galaxycore,gc05a2 0x68 0x16e3600 0x3 0x48a 0x498 0x49a 0x365 0x364 0x362 "1 2" 0x1ab3f000
-p -t x $N/i2c-bus@0/camera@10/port/endpoint phandle 0x7001; p -t x $N/i2c-bus@1/camera@37/port/endpoint phandle 0x7003
-p -t x $N/i2c-bus@0/camera@10/port/endpoint remote-endpoint 0x7002; p -t x $N/i2c-bus@1/camera@37/port/endpoint remote-endpoint 0x7004
+# ADDR0/ADDR1: the I2C client address per port. The *true* rear address is 0x10 (see the identity comment above), but an OF I2C client at 0x10 on this CCI
+# adapter hangs our boot - the kernel stops producing output at ~11 s (fw_devlink sync_state timeout), no panic, no USB gadget, and the tablet has to be
+# power-cycled; tested with the node renamed, and with a compatible that binds no driver, while the identical DTB with reg=<0x36> boots fine (2026-11-01).
+# So the default is the address that boots, and 0x10 stays behind the knob until that hang is understood. The raw probe at 0x10 was already done and NACKed
+# (camera-test.sh scans it), which is why the wrong default does not hide the sensor.
+A0=${ADDR0:-36}; A1=${ADDR1:-37}
+N0=$N/i2c-bus@0/camera@$A0; N1=$N/i2c-bus@1/camera@$A1
+sensor $N0 0x$A0 ${COMPAT0:-galaxycore,gc05a2} 0x60 0x16e3600 0xf 0x482 0x48e 0x490 0x365 0x363 0x361 "1 2" 0x1ab3f000
+sensor $N1 0x$A1 ${COMPAT1:-galaxycore,gc05a2} 0x68 0x16e3600 0x3 0x48a 0x498 0x49a 0x365 0x364 0x362 "1 2" 0x1ab3f000
+p -t x $N0/port/endpoint phandle 0x7001; p -t x $N1/port/endpoint phandle 0x7003
+p -t x $N0/port/endpoint remote-endpoint 0x7002; p -t x $N1/port/endpoint remote-endpoint 0x7004
 p -c /soc/cam-dummy-csiphy; p -t s /soc/cam-dummy-csiphy status okay
 for k in 0 1; do
   P=/soc/cam-dummy-csiphy/port@$k; p -c $P; p -t x $P reg $k; p -c $P/endpoint
