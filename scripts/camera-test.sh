@@ -11,6 +11,8 @@ TLMM=$(gpioinfo | awk '/gpioinfo|gpiochip[0-9]+ - 1[0-9][0-9] lines:/{print $1}'
 # driver's own default SID, and the 0x50/0x58 we actually see): 0x10 OV13B10 (rear), 0x37 GC05A2, 0x3e BF2553L,
 # 0x6e BF2553FF, 0x06 DW9714v AF (8-bit 0x0c; Linux allows it as a DT client but excludes it from address *scanning*), the
 # other module SIDs (0x1a, 0x2d, 0x56, 0x7f...) and empty addresses (0x18, 0x29...) as the negative control for the method itself.
+# 0x06 and 0x7f stay in the list for completeness, but i2ctransfer refuses them ("address out of range");
+# reserved addresses are probed by the `res` mode with i2cset -a.
 ADDR="0x06 0x10 0x18 0x1a 0x20 0x29 0x2d 0x34 0x36 0x37 0x3c 0x3e 0x50 0x58 0x6c 0x6e 0x7f"
 
 load() { # our own build in /root/cammods wins over the installed module tree (that is what the dev image is for)
@@ -57,6 +59,14 @@ shape() { local b=$1 a=$2 s=$3 cmd out rc
   else r="rc$rc ${out#*Error: }"; fi   # i2ctransfer says "err Not supported" for a NACK, "Communication error" otherwise
   printf "%s=%s " $s $r
 }
+# Limits of this adapter, measured 2026-11-02 (they decide what a probe can mean):
+#  - reads longer than 12 bytes are refused before they reach the bus ("adapter quirk: msg
+#    too long"; the cci_v2 i2c_adapter_quirks are max_read_len 12, max_write_len 11).
+#  - i2ctransfer and i2cset/i2cget refuse the reserved addresses (<0x08, >0x77) unless -a
+#    is given, so 0x06 (the stock AF) and 0x7f (the TPG entry) need `res` below.
+#  - the DATA of a read is not trustworthy here even when the address ACKs: three identical
+#    reads of 0x58@0x10 gave three different answers, and overlapping reads disagreed. Only
+#    the address ACK/NACK is a reliable signal on this bus.
 probe() { for b in $buses; do for a in $ADDR; do printf "  bus %s @%s " $b $a
   for s in w0 r1 w2r1; do shape $b $a $s; done; echo; done; done; }
 rails() { grep "pm8010m_l[1-7] " /sys/kernel/debug/regulator/regulator_summary | awk '{print $1" use="$2" "$5}'; }
@@ -67,7 +77,7 @@ mclk() { grep -E "cam_cc_mclk[04]_clk " /sys/kernel/debug/clk/clk_summary | awk 
 # rear OV13B10-family SID 0x20 -> 7-bit 0x10, regs 0x300a/0x300b must read 0d 42; front GC05A2 SID 0x6e -> 7-bit 0x37, reg 0x03f0 = 05 a2.
 # The vendor config declares no EEPROM driver (only actuator dw9714v on the rear), so the 0x50/0x58 devices are unidentified hardware.
 ids() {
-  on
+  power
   echo "--- rear 0x10: OV13B10 chip id (expect 0d 42)"; timeout 10 i2ctransfer -f -y "$REAR" w2@0x10 0x30 0x0a r2
   echo "--- front 0x37: GC05A2 chip id (expect 05 a2)"; timeout 10 i2ctransfer -f -y "$FRONT" w2@0x37 0x03 0xf0 r2
   echo "--- the devices that answer on the rear bus, 16-bit addressed read of 8 bytes"
@@ -76,11 +86,29 @@ ids() {
 # eep: 0x50/0x58 answer to an address probe and to reads, but NACK writes with data: that is the behaviour of a
 # write-protected EEPROM, which addresses with 1 byte (7-bit 0x50/0x58 = 8-bit 0xa0/0xb0, the standard EEPROM pattern).
 # 16-bit addressing was tried (F26); the 1-byte form had not been.
-eep() { on
+eep() { power
   for b in $buses; do for a in 0x50 0x58; do for o in 0x00 0x10 0x80; do
     printf "  bus %s 8bit @%s off %s: " $b $a $o
     timeout 10 i2ctransfer -f -y $b w1@$a $o r8 2>&1
   done; done; done; }
+# res: the reserved addresses, which i2ctransfer will not touch without -a. A one-byte
+# write is exactly what stock's probe_af does to find the AF (DW9714v SID 0x0c -> 7-bit
+# 0x06), and 0x7f is the TPG entry of the vendor config. 2026-11-02: nothing at 0x00-0x07
+# or 0x78-0x7f on either bus, which is what an unpowered VAF (L7M never enabled) predicts.
+res() {
+  for b in $buses; do
+    echo "== bus $b, reserved addresses, one-byte write"
+    for a in 0x00 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x78 0x79 0x7a 0x7b 0x7c 0x7d 0x7e 0x7f; do
+      printf "  w1@%s: " $a
+      out=$(timeout 10 i2cset -f -a -y $b $a 0x00 2>&1)
+      case "$out" in
+        *"No such device"*) echo NACK ;;
+        "") echo ACK ;;
+        *) echo "rc: $(echo "$out" | head -1)" ;;
+      esac
+    done
+  done
+}
 # railab: which module does an ACK belong to? L1M/L3M feed only the rear client, L2M/L4M only the front one, L5M both,
 # so switching one client off is a differential test the "all rails off" test (F26) cannot make.
 railab() {
@@ -120,9 +148,10 @@ case "${1:-}" in
   mclk) mclk;;
   ids) ids;;
   probe) power; probe;;
+  res) power; res;;
   eep) eep;;
   railab) railab;;
   bind) bind; echo bound;;
   unbind) unbind; echo unbound;;
-  *) echo "===== $0 rails mclk detect load unload scan ids bind unbind on off";;
+  *) echo "===== $0 rails mclk detect load unload scan ids bind unbind on off probe res eep railab";;
 esac
