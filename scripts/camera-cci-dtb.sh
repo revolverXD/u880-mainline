@@ -26,18 +26,22 @@ done
 
 # sensor guesses from the stock o25 overlay + vendor libs (rear OV13B10 on bus 0, front GC05A2 on bus 1); phandles: 0x16c tlmm, 0x154 camcc,
 # 0x361/0x363/0x365 = L1M/L3M/L5M (rear dvdd/avdd/dovdd), L2M/L4M/L5M for the front are looked up by label below.
-sensor() { # node reg compat mclk-idx rate reset-gpio mclk-pin pwd-pin dovdd avdd dvdd lanes linkfreq
+sensor() { # node reg compat mclk-idx rate reset-gpio mclk-pin rst-pin pwd-pin dovdd avdd dvdd lanes linkfreq
   local n=$1; p -c $n; p -t x $n reg $2; p -t s $n compatible "$3"
   p -t x $n clocks 0x154 $4; p -t x $n assigned-clocks 0x154 $4; p -t x $n assigned-clock-rates $5
-  p -t x $n reset-gpios 0x16c $6 ${RESET_FLAG:-1}; p -t s $n pinctrl-names default; p -t x $n pinctrl-0 $7 $8
-  p -t x $n dovdd-supply $9; p -t x $n avdd-supply ${10}; p -t x $n dvdd-supply ${11}
+  # pinctrl-0 must contain all three stock states (mclk, reset, standby) like the vendor node does: without cam_sensor_active_rst0/rst4 the reset pin
+  # is never muxed to "gpio", so driving it changes nothing on the pad and the sensor stays unreachable (NOTES 2026-11-01 "gpio reads out low func1").
+  p -t x $n reset-gpios 0x16c $6 ${RESET_FLAG:-1}; p -t s $n pinctrl-names default; p -t x $n pinctrl-0 $7 $8 $9
+  p -t x $n dovdd-supply ${10}; p -t x $n avdd-supply ${11}; p -t x $n dvdd-supply ${12}
   p -t x $n power-domains 0x154 0x0   # stock: cam_clk-supply = cam_cc_titan_top_gdsc; MCLK stays "stuck at off" without it
-  p -c $n/port; p -c $n/port/endpoint; p -t x $n/port/endpoint data-lanes ${12}; p -t x $n/port/endpoint link-frequencies 0 ${13}
+  p -c $n/port; p -c $n/port/endpoint; p -t x $n/port/endpoint data-lanes ${13}; p -t x $n/port/endpoint link-frequencies 0 ${14}
 }
 # ov13b10 in 7.3.1 is ACPI-only (no OF match), so the rear slot borrows the gc05a2 driver: it powers the module and reads 0x03f0, an ACK (not -ENXIO)
 # and a "unexpected sensor id" line prove the address and the rails. Ports need a remote endpoint in an *available* node or the drivers refuse to probe.
-sensor $N/i2c-bus@0/camera@36 0x36 galaxycore,gc05a2 0x60 0x16e3600 0xf 0x482 0x490 0x365 0x363 0x361 "1 2" 0x1ab3f000
-sensor $N/i2c-bus@1/camera@37 0x37 galaxycore,gc05a2 0x68 0x16e3600 0x3 0x48a 0x49a 0x365 0x364 0x362 "1 2" 0x1ab3f000
+# phandles in our own base DTB: 0x482/0x48e/0x490 = cam_sensor_mclk0_active/active_rst0/active_pwd0 (gpio64 cam_mclk, gpio15, gpio6),
+# 0x48a/0x498/0x49a = the same for sensor4 (gpio68, gpio3, gpio2). Rails: L1M/L3M/L5M rear, L2M/L4M/L5M front (the stock o25 overlay's cam_vdig/vana/vio).
+sensor $N/i2c-bus@0/camera@36 0x36 galaxycore,gc05a2 0x60 0x16e3600 0xf 0x482 0x48e 0x490 0x365 0x363 0x361 "1 2" 0x1ab3f000
+sensor $N/i2c-bus@1/camera@37 0x37 galaxycore,gc05a2 0x68 0x16e3600 0x3 0x48a 0x498 0x49a 0x365 0x364 0x362 "1 2" 0x1ab3f000
 p -t x $N/i2c-bus@0/camera@36/port/endpoint phandle 0x7001; p -t x $N/i2c-bus@1/camera@37/port/endpoint phandle 0x7003
 p -t x $N/i2c-bus@0/camera@36/port/endpoint remote-endpoint 0x7002; p -t x $N/i2c-bus@1/camera@37/port/endpoint remote-endpoint 0x7004
 p -c /soc/cam-dummy-csiphy; p -t s /soc/cam-dummy-csiphy status okay
