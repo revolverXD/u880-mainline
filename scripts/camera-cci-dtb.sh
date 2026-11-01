@@ -20,18 +20,22 @@ p -t x $N '#address-cells' 1
 p -t x $N '#size-cells' 0
 for c in qcom,i2c_standard_mode qcom,i2c_fast_mode qcom,i2c_custom_mode qcom,i2c_fast_plus_mode; do p -t s $N/$c status disabled; done
 for b in 0 1; do
-  p -c $N/i2c-bus@$b; p -t x $N/i2c-bus@$b reg $b; p -t x $N/i2c-bus@$b clock-frequency 400000
+  # clock-frequency is the only knob mainline uses (the vendor qcom,i2c_*_mode children are disabled above); a sensor that
+  # only answers at 100 kHz is a real possibility, so it is selectable per port: CLKFREQ0/CLKFREQ1.
+  cf=CLKFREQ$b; p -c $N/i2c-bus@$b; p -t x $N/i2c-bus@$b reg $b; p -t x $N/i2c-bus@$b clock-frequency ${!cf:-400000}
   p -t x $N/i2c-bus@$b '#address-cells' 1; p -t x $N/i2c-bus@$b '#size-cells' 0
 done
 
 # sensor guesses from the stock o25 overlay + vendor libs (rear OV13B10 on bus 0, front GC05A2 on bus 1); phandles: 0x16c tlmm, 0x154 camcc,
 # 0x361/0x363/0x365 = L1M/L3M/L5M (rear dvdd/avdd/dovdd), L2M/L4M/L5M for the front are looked up by label below.
 sensor() { # node reg compat mclk-idx rate reset-gpio mclk-pin rst-pin pwd-pin dovdd avdd dvdd lanes linkfreq
-  local n=$1; p -c $n; p -t x $n reg $2; p -t s $n compatible "$3"
+  local n=$1; local b=${n##*i2c-bus@}; b=${b%%/*}   # which CCI port this slot is on (selects the env knobs)
+  local rf=RESET_FLAG$b
+  p -c $n; p -t x $n reg $2; p -t s $n compatible "$3"
   p -t x $n clocks 0x154 $4; p -t x $n assigned-clocks 0x154 $4; p -t x $n assigned-clock-rates $5
   # pinctrl-0 must contain all three stock states (mclk, reset, standby) like the vendor node does: without cam_sensor_active_rst0/rst4 the reset pin
   # is never muxed to "gpio", so driving it changes nothing on the pad and the sensor stays unreachable (NOTES 2026-11-01 "gpio reads out low func1").
-  p -t x $n reset-gpios 0x16c $6 ${RESET_FLAG:-1}; p -t s $n pinctrl-names default; p -t x $n pinctrl-0 $7 $8 $9
+  p -t x $n reset-gpios 0x16c $6 ${!rf:-1}; p -t s $n pinctrl-names default; p -t x $n pinctrl-0 $7 $8 $9
   p -t x $n dovdd-supply ${10}; p -t x $n avdd-supply ${11}; p -t x $n dvdd-supply ${12}
   p -t x $n power-domains 0x154 0x0   # stock: cam_clk-supply = cam_cc_titan_top_gdsc; MCLK stays "stuck at off" without it
   p -c $n/port; p -c $n/port/endpoint; p -t x $n/port/endpoint data-lanes ${13}; p -t x $n/port/endpoint link-frequencies 0 ${14}
@@ -53,6 +57,13 @@ done
 # The stock "standby" pins (rear gpio6, front gpio2) are only muxed as GPIO in the active state, never driven: the vendor driver set them low
 # (gpio-req-tbl-flags 0 = OUT_INIT_LOW). Without a level the sensors NACK every address (bus 7/8 scans, NOTES 2026-11-01).
 for s in cam_sensor_active_pwd0 cam_sensor_active_pwd4; do p /soc/pinctrl@f000000/$s/config output-low ""; done
+
+# VAF_RAILS=1: switch on the two module rails no mainline node ever requests. The stock config uses
+# cam_vaf = L7M (rear) / L6M (front), 2.8 V; they are registered but off, so a module that needs them is
+# missing a supply. Always-on is enough for a bring-up test.
+if [ "${VAF_RAILS:-0}" = 1 ]; then
+  for r in 6 7; do p /soc/rsc@17a00000/drv@2/rpmh-regulator-ldom$r/regulator-pm8010m-l$r regulator-always-on ""; done
+fi
 
 # NOTE: the stock vendor sensor/actuator nodes under the CCI are NOT in this DTB: the bootloader applies the stock dtbo overlay (labels/paths of cam_cci0
 # are its targets, which is why renaming the node made the bootloader refuse to boot).
