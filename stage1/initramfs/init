@@ -1,8 +1,9 @@
 #!/bin/busybox sh
-# Stage 2 init (v10). Default: rescue = root shell on USB serial (ttyGS0), usb0 172.16.42.2/24 (PC is .1),
+# Stage 2 init (v11). Default: rescue = root shell on USB serial (ttyGS0), usb0 172.16.42.2/24 (PC is .1),
 # kernel log pages on screen. With "u880root=sd" on the cmdline: mount microSD p1 and switch_root into its /sbin/init.
 # With "u880root=ufs": load the UFS modules (lib/modules-ufs, built for this kernel), mount the internal partition named
-# "userdata" (formatted ext4 "u880root", Android removed 2026-10-19) and switch_root into it; falls back to the SD card.
+# "archdata" (formatted ext4 "u880root"; it carried Android's name "userdata" until 2026-11-02, and that name is still
+# accepted so an old GPT boots - FINDINGS F39) and switch_root into it; falls back to the SD card.
 /bin/busybox --install -s /bin
 for a in httpd telnetd udhcpd; do ln -sf busybox-extras /bin/$a; done   # nc comes from the main busybox
 mount -t devtmpfs dev /dev
@@ -24,7 +25,12 @@ if grep -q 'u880root=ufs' /proc/cmdline; then
   for m in qcom_ice phy-qcom-qmp-ufs ufs-qcom; do insmod /lib/modules-ufs/$m.ko; done
   part=
   for i in $(seq 1 30); do
-    for u in /sys/class/block/sd*/uevent; do grep -q '^PARTNAME=userdata$' "$u" 2>/dev/null && part=${u%/uevent} && part=${part##*/}; done
+    # 2026-11-02: our root partition is now named archdata; the name `userdata` went back to Android (FINDINGS F39).
+    # Both names are accepted so an old GPT still boots.
+    for n in archdata userdata; do
+        for u in /sys/class/block/sd*/uevent; do grep -q "^PARTNAME=$n$" "$u" 2>/dev/null && part=${u%/uevent} && part=${part##*/}; done
+        [ -n "$part" ] && break
+    done
     [ -n "$part" ] && [ -b /dev/$part ] && break; sleep 1
   done
   if [ -n "$part" ]; then

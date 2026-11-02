@@ -1,5 +1,6 @@
-# Internal UFS: everything read-only EXCEPT the Linux root (Android userdata partition, PARTNAME=userdata, formatted ext4 "u880root"
-# on 2026-10-19). The sda disk itself must stay writable, because a read-only whole disk blocks writes to all its partitions;
-# each other partition on it is still set read-only individually. Never relax this for boot/modem/persist partitions.
-ACTION=="add|change", SUBSYSTEM=="block", DEVPATH=="*/1d84000.ufshc/*", ENV{DEVTYPE}=="partition", ENV{PARTNAME}!="userdata", RUN+="/usr/bin/blockdev --setro /dev/%k"
+# Internal UFS: everything read-only EXCEPT the Linux root, which we identify by its filesystem label `u880root` (not by partition
+# name: that partition was Android's `userdata` until 2026-11-02, when the two names were swapped so stock Android can have a real
+# /data again, FINDINGS F39). The sda disk itself must stay writable, because a read-only whole disk blocks writes to all its
+# partitions; each other partition on it is still set read-only individually. Never relax this for boot/modem/persist partitions.
+ACTION=="add|change", SUBSYSTEM=="block", DEVPATH=="*/1d84000.ufshc/*", ENV{DEVTYPE}=="partition", ENV{ID_FS_LABEL}!="u880root", RUN+="/usr/bin/blockdev --setro /dev/%k"
 ACTION=="add|change", SUBSYSTEM=="block", DEVPATH=="*/1d84000.ufshc/*", ENV{DEVTYPE}=="disk", KERNEL!="sda", RUN+="/usr/bin/blockdev --setro /dev/%k"
