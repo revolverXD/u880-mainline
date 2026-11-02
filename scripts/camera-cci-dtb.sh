@@ -6,13 +6,19 @@ set -euo pipefail
 I=${1:?in.dtb}; O=${2:?out.dtb}; cp "$I" "$O"
 N=/soc/qcom,cci0@ac15000
 p() { fdtput "$O" "$@"; }
+# CCI1CLK=1: i2c-qcom-cci.c enables exactly the clocks the DT lists (devm_clk_bulk_get_all), and this node has only ever
+# listed master 0's. The controller's second master (i2c-bus@1, GPIO_72/73 - its pinctrl states 0x464/0x465 are already in
+# pinctrl-0) has never had a clock here, which is the leading suspect for its "master 1 queue 0 timeout". Stock runs that
+# RCG at 37.5 MHz like master 0's.
+c1=""; c1n=""; a1=""
+if [ "${CCI1CLK:-0}" = 1 ]; then c1="0x154 0xd 0x154 0xc"; c1n="cci_1_clk_src cci_1_clk"; a1="0x154 0xd"; fi
 p -t s $N status okay
 p -t s $N compatible qcom,sm8650-cci qcom,msm8996-cci
 p -t x $N power-domains 0x154 0x0
-p -t x $N clocks 0x154 0x5 0x154 0x11 0x154 0xa
-p -t s $N clock-names camnoc_axi cpas_ahb cci
-p -t x $N assigned-clocks 0x154 0xa
-p -t x $N assigned-clock-rates 0x23c3460
+p -t x $N clocks 0x154 0x5 0x154 0x11 0x154 0xa $c1
+p -t s $N clock-names camnoc_axi cpas_ahb cci $c1n
+p -t x $N assigned-clocks 0x154 0xa $a1
+p -t x $N assigned-clock-rates 0x23c3460 ${a1:+0x23c3460}
 p -t x $N pinctrl-0 0x460 0x461 0x464 0x465
 p -t x $N pinctrl-1 0x462 0x463 0x466 0x467
 p -t s $N pinctrl-names default sleep
@@ -20,9 +26,10 @@ p -t x $N '#address-cells' 1
 p -t x $N '#size-cells' 0
 for c in qcom,i2c_standard_mode qcom,i2c_fast_mode qcom,i2c_custom_mode qcom,i2c_fast_plus_mode; do p -t s $N/$c status disabled; done
 for b in 0 1; do
-  # clock-frequency is the only knob mainline uses (the vendor qcom,i2c_*_mode children are disabled above); a sensor that
-  # only answers at 100 kHz is a real possibility, so it is selectable per port: CLKFREQ0/CLKFREQ1.
-  cf=CLKFREQ$b; p -c $N/i2c-bus@$b; p -t x $N/i2c-bus@$b reg $b; p -t x $N/i2c-bus@$b clock-frequency ${!cf:-400000}
+  # clock-frequency is the only knob mainline uses (the vendor qcom,i2c_*_mode children are disabled above). fdtput -t x reads its argument as HEX, so a
+  # decimal knob has to be converted: before that, "400000" written 0x400000 = 4194304 matched none of the driver's exact compares (i2c-qcom-cci.c:554
+  # accepts only 100000/400000/1000000) and the bus silently stayed I2C_MODE_STANDARD - every CCI test here ran at 100 kHz (NOTES 2026-11-02).
+  cf=CLKFREQ$b; p -c $N/i2c-bus@$b; p -t x $N/i2c-bus@$b reg $b; p -t x $N/i2c-bus@$b clock-frequency $(printf 0x%x ${!cf:-400000})
   p -t x $N/i2c-bus@$b '#address-cells' 1; p -t x $N/i2c-bus@$b '#size-cells' 0
 done
 
@@ -116,7 +123,7 @@ if [ "${CCI1:-0}" = 1 ]; then
   p -t x $C pinctrl-0 0x468 0x469; p -t x $C pinctrl-1 0x46a 0x46b; p -t s $C pinctrl-names default sleep
   p -t x $C '#address-cells' 1; p -t x $C '#size-cells' 0
   for c in qcom,i2c_standard_mode qcom,i2c_fast_mode qcom,i2c_custom_mode qcom,i2c_fast_plus_mode; do p -t s $C/$c status disabled; done
-  p -c $C/i2c-bus@0; p -t x $C/i2c-bus@0 reg 0; p -t x $C/i2c-bus@0 clock-frequency ${CLKFREQ2:-400000}
+  p -c $C/i2c-bus@0; p -t x $C/i2c-bus@0 reg 0; p -t x $C/i2c-bus@0 clock-frequency $(printf 0x%x ${CLKFREQ2:-400000})
   p -t x $C/i2c-bus@0 '#address-cells' 1; p -t x $C/i2c-bus@0 '#size-cells' 0
   sensor $N2 0x$A2 ${COMPAT2:-galaxycore,gc05a2} 0x68 0x16e3600 0x3 0x48a 0x498 0x49a 0x365 0x364 0x362 "1 2" 0x1ab3f000
   # a sensor port needs a remote endpoint in an available node or its driver refuses to probe, so the dummy csiphy gets a third port.
