@@ -72,10 +72,43 @@ for s in cam_sensor_active_pwd0 cam_sensor_active_pwd4; do p /soc/pinctrl@f00000
 
 # VAF_RAILS=1: switch on the two module rails no mainline node ever requests. The stock config uses
 # cam_vaf = L7M (rear) / L6M (front), 2.8 V; they are registered but off, so a module that needs them is
-# missing a supply. Always-on is enough for a bring-up test.
-if [ "${VAF_RAILS:-0}" = 1 ]; then
-  for r in 6 7; do p /soc/rsc@17a00000/drv@2/rpmh-regulator-ldom$r/regulator-pm8010m-l$r regulator-always-on ""; done
+# missing a supply. Always-on is enough for a bring-up test. VAF_REAR=1 does only L7M, VAF_FRONT=1 only L6M: the boot with both of them always-on never
+# reported back (F28), so they have to be tried one at a time.
+if [ "${VAF_RAILS:-0}" = 1 ] || [ "${VAF_REAR:-0}" = 1 ] || [ "${VAF_FRONT:-0}" = 1 ]; then
+  rails=""; [ "${VAF_RAILS:-0}" = 1 ] && rails="6 7"; [ "${VAF_REAR:-0}" = 1 ] && rails="$rails 7"; [ "${VAF_FRONT:-0}" = 1 ] && rails="$rails 6"
+  for r in $rails; do p /soc/rsc@17a00000/drv@2/rpmh-regulator-ldom$r/regulator-pm8010m-l$r regulator-always-on ""; done
 fi
 
 # NOTE: the stock vendor sensor/actuator nodes under the CCI are NOT in this DTB: the bootloader applies the stock dtbo overlay (labels/paths of cam_cci0
 # are its targets, which is why renaming the node made the bootloader refuse to boot).
+
+# CCI1=1: bring up the SECOND CCI controller of this SoC. It is in the stock DT (`cam_cci1: qcom,cci1@ac16000`, status disabled, own IRQ CCI1), and
+# the vendor pin naming numbers the lines across controllers: cci_i2c_sda0/scl0 = GPIO_70/71 and sda1/scl1 = GPIO_72/73 are cci0's two masters,
+# **sda2/scl2 = GPIO_74/75 are cci1's master 0** (sda3/scl3 = GPIO_21 is its master 1, unused here). The vendor sensor nodes say only
+# `cci-master = <0/1>` and never name a controller, so "front = cci-master 1" does not prove it is cci0's master 1: the front module may sit on a
+# controller we never enabled, and driving an unused master port is what "master 1 queue 0 timeout" (F31) looks like. The stock node's clock cells are
+# in the *vendor* index space (cci_0 = 0x1f/0x20), not mainline's - use mainline's: CCI_1_CLK 0xc, CCI_1_CLK_SRC 0xd
+# (include/dt-bindings/clock/qcom,sm8650-camcc.h), at the same 37.5 MHz as cci0. Pinctrl phandles of this base DTB: 0x468/0x469 =
+# cci_i2c_scl2/sda2 active (gpio75/74), 0x46a/0x46b = suspend. Nothing is known about which module is wired to this controller, so the slot reuses the
+# front module's power recipe (mclk4, gpio3 reset, L2M/L4M/L5M): if a sensor answers there, that is the front one.
+A2=${ADDR2:-37}
+if [ "${CCI1:-0}" = 1 ]; then
+  C=/soc/qcom,cci1@ac16000; N2=$C/i2c-bus@0/camera@$A2
+  p -t s $C status okay
+  p -t s $C compatible qcom,sm8650-cci qcom,msm8996-cci
+  p -t x $C power-domains 0x154 0x0
+  p -t x $C clocks 0x154 0x5 0x154 0x11 0x154 0xc
+  p -t s $C clock-names camnoc_axi cpas_ahb cci
+  p -t x $C assigned-clocks 0x154 0xd
+  p -t x $C assigned-clock-rates 0x23c3460
+  p -t x $C pinctrl-0 0x468 0x469; p -t x $C pinctrl-1 0x46a 0x46b; p -t s $C pinctrl-names default sleep
+  p -t x $C '#address-cells' 1; p -t x $C '#size-cells' 0
+  for c in qcom,i2c_standard_mode qcom,i2c_fast_mode qcom,i2c_custom_mode qcom,i2c_fast_plus_mode; do p -t s $C/$c status disabled; done
+  p -c $C/i2c-bus@0; p -t x $C/i2c-bus@0 reg 0; p -t x $C/i2c-bus@0 clock-frequency ${CLKFREQ2:-400000}
+  p -t x $C/i2c-bus@0 '#address-cells' 1; p -t x $C/i2c-bus@0 '#size-cells' 0
+  sensor $N2 0x$A2 ${COMPAT2:-galaxycore,gc05a2} 0x68 0x16e3600 0x3 0x48a 0x498 0x49a 0x365 0x364 0x362 "1 2" 0x1ab3f000
+  # a sensor port needs a remote endpoint in an available node or its driver refuses to probe, so the dummy csiphy gets a third port.
+  p -t x $N2/port/endpoint phandle 0x7005; p -t x $N2/port/endpoint remote-endpoint 0x7006
+  P2=/soc/cam-dummy-csiphy/port@2; p -c $P2; p -t x $P2 reg 2; p -c $P2/endpoint
+  p -t x $P2/endpoint phandle 0x7006; p -t x $P2/endpoint remote-endpoint 0x7005
+fi

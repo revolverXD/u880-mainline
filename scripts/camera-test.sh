@@ -25,13 +25,14 @@ unload() { rmmod gc05a2 i2c_qcom_cci camcc_sm8650 2>/dev/null; devs=""; }
 # the sensor clients are found by their DT path (of_node has no full_name attribute here: read the symlink).
 # The adapter itself appears as i2c-N with the same of_node path, so match the sensor node, not just the bus.
 detect() {
-  devs=""; rear=""; front=""
+  devs=""; rear=""; front=""; cci1=""
   for d in /sys/bus/i2c/devices/*-*; do
     case "$(readlink $d/of_node 2>/dev/null)" in *cci0*/i2c-bus@0/camera@*) rear=$d; devs="$devs $d";;
-                                    *cci0*/i2c-bus@1/camera@*) front=$d; devs="$devs $d";; esac
+                                    *cci0*/i2c-bus@1/camera@*) front=$d; devs="$devs $d";;
+                                    *cci1*/i2c-bus@0/camera@*) cci1=$d; devs="$devs $d";; esac   # the second CCI controller, CCI1=1
   done
   buses=$(for d in $devs; do basename $d | cut -d- -f1; done | sort -u | tr '\n' ' ')
-  REAR=$(basename "$rear" | cut -d- -f1); FRONT=$(basename "$front" | cut -d- -f1)
+  REAR=$(basename "$rear" | cut -d- -f1); FRONT=$(basename "$front" | cut -d- -f1); C1=$(basename "$cci1" | cut -d- -f1)
   [ -n "$rear" ] && [ -n "$front" ]
 }
 power() { for d in $devs; do echo on > $d/power/control; done; sleep 1; }
@@ -113,7 +114,7 @@ res() {
 # so switching one client off is a differential test the "all rails off" test (F26) cannot make.
 railab() {
   power; echo "== both clients on"; rails; scan
-  for which in rear front; do
+  for which in rear front ${cci1:+cci1}; do
     for d in $devs; do echo on > $d/power/control; done
     echo auto > "${!which}/power/control"; sleep 4
     echo "== ${which} client off"; rails; scan
@@ -123,7 +124,7 @@ railab() {
 
 echo "tlmm=$TLMM"
 load; detect; bind
-echo "sensors:${devs:- NONE}  buses=$buses"
+echo "sensors:${devs:- NONE}  buses=$buses  rear_bus=$REAR front_bus=$FRONT${cci1:+ cci1_bus=$C1}"
 [ -n "$devs" ] || { echo "no sensor devices: CCI or DT problem, see the dmesg tail"; }
 power; echo "== rails/clocks after power-up"; rails; mclk
 echo "== scan, powered"; scan
