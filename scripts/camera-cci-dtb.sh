@@ -79,6 +79,18 @@ if [ "${VAF_RAILS:-0}" = 1 ] || [ "${VAF_REAR:-0}" = 1 ] || [ "${VAF_FRONT:-0}" 
   for r in $rails; do p /soc/rsc@17a00000/drv@2/rpmh-regulator-ldom$r/regulator-pm8010m-l$r regulator-always-on ""; done
 fi
 
+# DW9714=1: the rear module's voice-coil AF as a real driver instead of only the always-on L7M hack. F33: it
+# answers at 7-bit 0x0c (not the 0x06 in stock's actuator config) and only while L7M = cam_vaf is on, so keep
+# VAF_REAR=1: dw9714_runtime_suspend() disables vcc, so the driver alone would drop the rail again. A sibling of
+# the sensor slot needs no port/graph; drivers/media/i2c/dw9714.c is a plain i2c driver (vcc + optional
+# powerdown gpio, no chip-id check at probe), and its register model (16-bit writes) is what tells a real VCM
+# apart from an address that only ACKs.
+if [ "${DW9714:-0}" = 1 ]; then
+  AF=${AFADDR:-c}; V=$N/i2c-bus@0/dw9714@$AF
+  p -c $V; p -t x $V reg 0x$AF; p -t s $V compatible dongwoon,dw9714
+  p -t x $V vcc-supply 0x367   # phandle of /soc/rsc@17a00000/drv@2/rpmh-regulator-ldom7/regulator-pm8010m-l7
+fi
+
 # NOTE: the stock vendor sensor/actuator nodes under the CCI are NOT in this DTB: the bootloader applies the stock dtbo overlay (labels/paths of cam_cci0
 # are its targets, which is why renaming the node made the bootloader refuse to boot).
 
