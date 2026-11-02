@@ -4,12 +4,12 @@
 The ParamFile ("com.qti.sensormodule.*.bin") stores a register write as u32:
 <type=4> <8-bit SID> <reg-addr-len> <data-len> <reg> <value>. In every config of
 this vendor image exactly one such entry exists, the chip-ID check of the
-sensorDriverData "Default" block - the power-up sequences are stored in another
-form, so the address set below is what the stack *verifies*, not every write it
+sensorDriverData "Default" block. There are no power-up records in these files (2026-11-02: scanning every 4-byte offset of a config finds exactly one such record, and
+no section is named `powerUpSeq` - that lead is closed, see FINDINGS F37), so the address set below is what the stack *addresses*, not every write it
 ever makes (the AF address comes from the actuator driver, not from these files).
 It also lists the ParamFile sections of each config: an EEPROM-less module config
-has no EEPROMDriverData section, which is the control for "the devices at
-0x50/0x58 are not vendor-configured".
+has no EEPROMDriverData section, which is part of the evidence that the devices at 0x50/0x58 are not vendor-configured (the other part: no `qcom,cam-eeprom` node exists
+in stock-dt/o25.dts at all).
 
 usage: tools/camso-sids.py logs/camso   (files dumped from vendor.img by debugfs)
 """
