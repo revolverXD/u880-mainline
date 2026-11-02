@@ -4,6 +4,8 @@
 Needs a kernel with DEVMEM=y (merge kernel/dev-devmem.config), RAM-booted, run as root:
   python3 mclk-check.py            # everything
   python3 mclk-check.py 64 68      # only poll the mux pad of GPIO_64 (rear) and GPIO_68 (front)
+  python3 mclk-check.py 72 73      # the front port's SDA1/SCL1 pads - run it while that bus has traffic
+                                   # (a probe loop), that is what proves a master really drives its pins
 
 Register offsets are the ones the kernel drivers use: drivers/clk/qcom/camcc-sm8650.c (camcc at 0xade0000),
 and the NEW TLMM layout of this SoC, drivers/pinctrl/qcom/pinctrl-cliffs.c PINGROUP(): every pin has its own
@@ -34,6 +36,8 @@ CLKS = {
     "mclk4": (0x15088, "branch"),
     "cci0_src": (0x131cc, "rcg2, proves a working camcc output for comparison (37.5 MHz)"),
     "cci0": (0x131e4, "branch"),
+    "cci1_src": (0x131e8, "rcg2, the CCI controller's second master (the front port), F37"),
+    "cci1": (0x13200, "branch"),
 }
 
 
@@ -62,7 +66,7 @@ def main():
                       f"VCO would be {REF * l / 1e6:.1f} MHz")
             else:
                 vals = [(o, rd(cam, o)) for o in (off, off + 4, off + 8, off + 12, off + 16)]
-                if name.startswith("mclk") and not name.endswith("_src"):
+                if not name.endswith("_src"):
                     v = vals[0][1]
                     fsm = (v >> 28) & 7
                     print(f"cam_cc_{name} (0x{CAMCC + off:x}) = 0x{v:08x}  "
@@ -80,6 +84,7 @@ def main():
         66: "cam_mclk prng_rosc0 qdss_gpio2", 67: "cam_mclk qdss_gpio3",
         68: "cam_aon_mclk4 prng_rosc1 qdss_gpio4", 69: "cam_mclk tmess_prng3 qdss_gpio5",
         70: "cci_i2c_sda0 tmess_prng2 qdss_gpio6", 71: "cci_i2c_scl0 qdss_gpio7",
+        72: "cci_i2c_sda1 tmess_prng1 qdss_gpio8", 73: "cci_i2c_scl1 tmess_prng0 qdss_gpio9",
     }
     tlmm = region(TLMM, 0x100000 + 0x1000 * 80)
     for pin in (poll_only or [64, 68, 70, 71]):
