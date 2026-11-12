@@ -18,7 +18,7 @@ Open problems are the GitHub issues of this repository.
   `grep -rIl '/home/USER/External/work/src/mainline' scripts tools tablet-rootfs steam | xargs sed -i "s#/home/USER/External/work/src/mainline#$PWD#g"` and fix `CL=` and the `mkbootimg.py` path.
 - Kernel builds run in an Ubuntu 24.04 distrobox called `aosp` (recipe in `README.md` step 2): `distrobox enter aosp -- bash scripts/<script>.sh`. Host tools needed outside it: `dtc`, `fastboot`, `e2fsprogs`, `cpio`, `python3`.
 - Reaching the tablet: Wi-Fi (`U880_HOST=<ip> scripts/rssh.sh '<cmd>'`, root, project key) or the USB gadget (`172.16.42.2`, PC side `172.16.42.1/24`). The gadget interface name on the PC changes between boots; the
-  NetworkManager profile `u880-usb` must have an empty `connection.interface-name` (`nmcli connection modify u880-usb connection.interface-name ""`). IPv6 link-local ssh works too: `ssh root@fe80::<tablet>%<iface>`.
+  NetworkManager profile `u880-usb` must have an empty `connection.interface-name` **and** `match.interface-name enp*u*` (`nmcli connection modify u880-usb connection.interface-name "" match.interface-name 'enp*u*'`): without the match it is a `shared` profile for any ethernet device and takes over the PC's wired NIC, serving DHCP onto the LAN. IPv6 link-local ssh works too: `ssh root@fe80::<tablet>%<iface>`.
   The USB link does not survive suspend; after a reboot it needs the cable plugged in the PC's USB port, not behind a hub or with a hub/dongle on the tablet port.
 - Do not run `btmgmt` subcommands that wait for input over ssh (it hangs); use `timeout`. Do not `pkill -f <pattern>` with a pattern that appears in your own command line.
 
