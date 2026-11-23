@@ -7104,7 +7104,7 @@
  	.config = &disp_cc_sm8550_regmap_config,
  	.clks = disp_cc_sm8550_clocks,
  	.num_clks = ARRAY_SIZE(disp_cc_sm8550_clocks),
-@@ -1758,15 +1772,87 @@
+@@ -1758,15 +1772,95 @@
  	{ .compatible = "qcom,sar2130p-dispcc" },
  	{ .compatible = "qcom,sm8550-dispcc" },
  	{ .compatible = "qcom,sm8650-dispcc" },
@@ -7150,9 +7150,15 @@
 +
 +	if (ret)
 +		return ret;
++	/*
++	 * F20: MMCX (vdd_mm) is only voted per prepared display clock, and the boot-time proxy vote is gone after sync_state, so the
++	 * GDSC power-up ran with MMCX unvoted and its completion bit never set ("stuck at 'off'"). Hold a vote while it toggles.
++	 */
++	clk_vdd_proxy_vote(u880_dispcc_dev, &disp_cc_sm8550_desc);
 +	ret = u880_mdss_gdsc_on(pd);
 +	if (ret == -ETIMEDOUT)
 +		ret = u880_mdss_wait_complete(BIT(16));
++	clk_vdd_proxy_unvote(u880_dispcc_dev, &disp_cc_sm8550_desc);
 +	if (ret || u880_mdss_gdsc_held)
 +		pm_runtime_put(u880_dispcc_dev);
 +	if (!ret)
@@ -7166,9 +7172,11 @@
 +
 +	if (ret)
 +		return ret;
++	clk_vdd_proxy_vote(u880_dispcc_dev, &disp_cc_sm8550_desc);
 +	ret = u880_mdss_gdsc_off(pd);
 +	if (ret == -ETIMEDOUT)
 +		ret = u880_mdss_wait_complete(BIT(15));
++	clk_vdd_proxy_unvote(u880_dispcc_dev, &disp_cc_sm8550_desc);
 +	pm_runtime_put(u880_dispcc_dev);
 +	if (!ret && u880_mdss_gdsc_held) {
 +		u880_mdss_gdsc_held = false;
@@ -7192,7 +7200,7 @@
  	ret = devm_pm_runtime_enable(&pdev->dev);
  	if (ret)
  		return ret;
-@@ -1781,9 +1867,12 @@
+@@ -1781,9 +1875,12 @@
  		goto err_put_rpm;
  	}
  
@@ -7207,7 +7215,7 @@
  		disp_cc_mdss_dptx1_usb_router_link_intf_clk.clkr.hw.init->parent_hws[0] =
  			&disp_cc_mdss_dptx1_link_div_clk_src.clkr.hw;
  	} else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sar2130p-dispcc")) {
-@@ -1794,11 +1883,17 @@
+@@ -1794,11 +1891,17 @@
  		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sar2130p;
  	}
  
@@ -7230,7 +7238,7 @@
  
  	/* Keep some clocks always-on */
  	qcom_branch_set_clk_en(regmap, 0xe054); /* DISP_CC_XO_CLK */
-@@ -1806,6 +1901,19 @@
+@@ -1806,6 +1909,19 @@
  	ret = qcom_cc_really_probe(&pdev->dev, &disp_cc_sm8550_desc, regmap);
  	if (ret)
  		goto err_put_rpm;
@@ -7250,7 +7258,7 @@
  
  	pm_runtime_put(&pdev->dev);
  
-@@ -1821,6 +1929,7 @@
+@@ -1821,6 +1937,7 @@
  	.probe = disp_cc_sm8550_probe,
  	.driver = {
  		.name = "disp_cc-sm8550",
@@ -20989,7 +20997,17 @@
  	if (ret)
  		return ERR_PTR(ret);
  
-@@ -478,6 +511,13 @@
+@@ -421,6 +454,9 @@
+ 	irq_set_chained_handler_and_data(irq, msm_mdss_irq,
+ 					 msm_mdss);
+ 
++	/* U880 (F20 experiment): delay the runtime suspend (GDSC collapse) after the last child went idle; tune live via power/autosuspend_delay_ms */
++	pm_runtime_set_autosuspend_delay(&pdev->dev, 500);
++	pm_runtime_use_autosuspend(&pdev->dev);
+ 	pm_runtime_enable(&pdev->dev);
+ 
+ 	return msm_mdss;
+@@ -478,6 +514,13 @@
  		return PTR_ERR(mdss);
  
  	platform_set_drvdata(pdev, mdss);
@@ -21003,7 +21021,7 @@
  
  	/*
  	 * MDP5/DPU based devices don't have a flat hierarchy. There is a top
-@@ -525,6 +565,7 @@
+@@ -525,6 +568,7 @@
  };
  
  static const struct of_device_id mdss_dt_match[] = {
