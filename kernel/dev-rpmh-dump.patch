@@ -1,6 +1,6 @@
 --- drivers/soc/qcom/rpmh-uke.c
 +++ drivers/soc/qcom/rpmh-uke.c
-@@ -391,12 +391,42 @@
+@@ -391,12 +391,52 @@
  	return rpmh_rsc_write_ctrl_data(ctrlr_to_drv(ctrlr), &rpm_msg.msg, ch);
  }
  
@@ -9,6 +9,16 @@
 +module_param_named(u880_dump, u880_dump, int, 0644);
 +static int u880_lvl_sleep;
 +module_param_named(u880_lvl_sleep, u880_lvl_sleep, int, 0644);
++/* U880 (#13): withdraw BCM votes that have no sleep command. bit0 MM0 MM1, bit1 SH2-5, bit2 MC1-4, bit3 SN1-5, bit4 CE0 CO0 LP0 CN1 ALC IP0 */
++static int u880_bcm_sleep;
++module_param_named(u880_bcm_sleep, u880_bcm_sleep, int, 0644);
++static const u32 u880_bcm_groups[5][6] = {
++	{ 0x50028, 0x5002c },
++	{ 0x5000c, 0x50070, 0x50078, 0x5005c },
++	{ 0x5006c, 0x50074, 0x5007c, 0x50058 },
++	{ 0x50014, 0x50018, 0x5001c, 0x50020, 0x50024 },
++	{ 0x50034, 0x50044, 0x50048, 0x50060, 0x5004c, 0x50038 },
++};
 +
 +static void u880_dump_rpmh(struct rpmh_ctrlr *ctrlr, int ch)
 +{
@@ -40,11 +50,11 @@
 +	if (u880_dump && cmpxchg(&u880_dump, 1, 0) == 1)
 +		u880_dump_rpmh(ctrlr, ch);
 +
-+	if (!ctrlr->dirty && !u880_lvl_sleep) {
++	if (!ctrlr->dirty && !u880_lvl_sleep && !u880_bcm_sleep) {
  		pr_debug("Skipping flush, TCS has latest data.\n");
  		return ret;
  	}
-@@ -411,6 +441,17 @@
+@@ -411,6 +451,17 @@
  
  	for (i = 0; i < ctrlr->non_batch_cache_idx; i++) {
  		p = &ctrlr->non_batch_cache[i];
@@ -62,3 +72,25 @@
  		if (!is_req_valid(p)) {
  			pr_debug("%s: skipping RPMH req: a:%#x s:%#x w:%#x\n",
  				 __func__, p->addr, p->sleep_val, p->wake_val);
+@@ -426,6 +477,21 @@
+ 			return ret;
+ 	}
+ 
++	for (i = 0; u880_bcm_sleep && i < 5; i++) {
++		int k;
++
++		if (!(u880_bcm_sleep & BIT(i)))
++			continue;
++		for (k = 0; k < 6 && u880_bcm_groups[i][k]; k++) {
++			ret = send_single(ctrlr, RPMH_SLEEP_STATE, u880_bcm_groups[i][k], 0x60000000, ch);
++			if (ret)
++				return ret;
++			ret = send_single(ctrlr, RPMH_WAKE_ONLY_STATE, u880_bcm_groups[i][k], 0x60000000, ch);
++			if (ret)
++				return ret;
++		}
++	}
++
+ 	ctrlr->dirty = false;
+ 
+ 	return ret;
