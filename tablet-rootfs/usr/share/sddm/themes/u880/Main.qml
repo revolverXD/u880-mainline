@@ -9,6 +9,8 @@ Rectangle {
     height: 2560
     color: "#1b1e2b"
     property real u: Math.min(width, height) / 40
+    property int sessionIndex: sessionModel.lastIndex
+    property string sessionName: ""
 
     Connections {
         target: sddm
@@ -47,16 +49,40 @@ Rectangle {
                 echoMode: TextInput.Password
                 inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
                 focus: true
-                onAccepted: sddm.login(user.text, pass.text, sessionModel.lastIndex)
+                onAccepted: sddm.login(user.text, pass.text, root.sessionIndex)
             }
             Text { visible: pass.text.length === 0 && !pass.activeFocus; text: "password"; color: "#7d8299"
                    anchors.left: parent.left; anchors.leftMargin: root.u / 2; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: root.u * 1.4 }
+        }
+        // Session chooser (tap to open, tap an entry): the last used session is preselected (RememberLastSession=true).
+        Rectangle {
+            width: parent.width; height: root.u * 3; radius: root.u / 2; color: "#2a2e42"
+            Text { anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: root.u / 2
+                   color: "#ffffff"; font.pixelSize: root.u * 1.4; text: root.sessionName }
+            Text { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: root.u / 2
+                   color: "#7d8299"; font.pixelSize: root.u * 1.4; text: sessionList.visible ? "\u25B4" : "\u25BE" }
+            MouseArea { anchors.fill: parent; onClicked: sessionList.visible = !sessionList.visible }
+        }
+        Column {
+            id: sessionList
+            visible: false; width: parent.width; spacing: root.u / 4
+            Repeater {
+                model: sessionModel
+                delegate: Rectangle {
+                    width: sessionList.width; height: root.u * 3; radius: root.u / 2
+                    color: index === root.sessionIndex ? "#3b6ef5" : "#2a2e42"
+                    Component.onCompleted: if (index === root.sessionIndex) root.sessionName = model.name
+                    Text { anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: root.u / 2
+                           color: "#ffffff"; font.pixelSize: root.u * 1.4; text: model.name }
+                    MouseArea { anchors.fill: parent; onClicked: { root.sessionIndex = index; root.sessionName = model.name; sessionList.visible = false } }
+                }
+            }
         }
         Text { id: err; color: "#ff7b7b"; font.pixelSize: root.u * 1.1; anchors.horizontalCenter: parent.horizontalCenter }
         Rectangle {
             width: parent.width; height: root.u * 3; radius: root.u / 2; color: "#3b6ef5"
             Text { anchors.centerIn: parent; text: "Log in"; color: "#ffffff"; font.pixelSize: root.u * 1.4 }
-            MouseArea { anchors.fill: parent; onClicked: sddm.login(user.text, pass.text, sessionModel.lastIndex) }
+            MouseArea { anchors.fill: parent; onClicked: sddm.login(user.text, pass.text, root.sessionIndex) }
         }
         Row {
             spacing: root.u

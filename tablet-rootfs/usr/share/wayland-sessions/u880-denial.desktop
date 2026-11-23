@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Denial (U880)
+Comment=Denial shell, mobile profile, on the panel's DRM card
+Exec=/usr/local/bin/u880-denial-session
+Type=Application
+DesktopNames=Denial

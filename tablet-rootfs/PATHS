@@ -71,7 +71,9 @@
 /usr/share/sddm/themes/u880/metadata.desktop
 /usr/share/sddm/themes/u880/theme.conf
 /usr/local/bin/u880-plasma-session
+/usr/local/bin/u880-denial-session
 /usr/share/wayland-sessions/u880-plasma-mobile.desktop
+/usr/share/wayland-sessions/u880-denial.desktop
 /var/lib/sddm/state.conf
 /var/lib/sddm/.config/kwinrc
 /var/lib/sddm/.config/kwinoutputconfig.json
