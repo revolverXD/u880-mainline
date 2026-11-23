@@ -1,0 +1,14 @@
+#!/bin/sh
+# Mark the running slot "successful" in the boot-LUN GPT once this boot has proved itself (FINDINGS F42).
+# A slot that is NOT successful has its retry counter counted down by ABL on every boot; after 7 failed boots ABL falls back to the other slot.
+# A slot that IS successful is never counted down: a bad image then just stops in ABL's fastboot.
+# So scripts/flash-boot-b-dd.sh clears the bit after flashing and this unit sets it again after a good boot.
+# shortcut: "good" = 90 s of uptime with a login session manager running; upgrade to a display/network check if a half-booted image ever passes.
+set -eu
+sleep 90
+loginctl list-sessions --no-legend | grep -q . || exit 0
+b=$(readlink -f /dev/disk/by-partlabel/boot_b)
+disk=/dev/$(basename "$(readlink -f /sys/class/block/$(basename "$b")/..)")
+blockdev --setrw "$disk"
+trap 'blockdev --setro "$disk"' EXIT
+exec python3 /usr/local/bin/u880-gpt-mark-successful "$disk" active --write

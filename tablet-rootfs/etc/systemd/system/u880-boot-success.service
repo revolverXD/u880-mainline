@@ -1,0 +1,10 @@
+[Unit]
+Description=U880: mark this boot slot successful after a good boot
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/u880-boot-success
+
+[Install]
+WantedBy=multi-user.target
