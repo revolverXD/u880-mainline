@@ -69,8 +69,8 @@ Rectangle {
             Repeater {
                 model: sessionModel
                 delegate: Rectangle {
-                    // only our tested sessions (u880-*.desktop); the stock gnome/phosh/weston ones stay hidden
-                    visible: model.file.indexOf("/u880-") >= 0
+                    // our sessions (u880-*.desktop) plus stock Phosh; the stock gnome/plasma/weston ones stay hidden
+                    visible: model.file.indexOf("/u880-") >= 0 || model.file.indexOf("/phosh.desktop") >= 0
                     width: sessionList.width; height: root.u * 3; radius: root.u / 2
                     color: index === root.sessionIndex ? "#3b6ef5" : "#2a2e42"
                     Component.onCompleted: {
