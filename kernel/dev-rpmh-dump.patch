@@ -1,0 +1,64 @@
+--- drivers/soc/qcom/rpmh-uke.c
++++ drivers/soc/qcom/rpmh-uke.c
+@@ -391,12 +391,42 @@
+ 	return rpmh_rsc_write_ctrl_data(ctrlr_to_drv(ctrlr), &rpm_msg.msg, ch);
+ }
+ 
++/* U880 (#13): one-shot dump of the cached RPMh sleep/wake sets; write 1 to /sys/module/qcom_rpmh/parameters/u880_dump before a suspend. */
++static int u880_dump;
++module_param_named(u880_dump, u880_dump, int, 0644);
++static int u880_lvl_sleep;
++module_param_named(u880_lvl_sleep, u880_lvl_sleep, int, 0644);
++
++static void u880_dump_rpmh(struct rpmh_ctrlr *ctrlr, int ch)
++{
++	int i, k, st;
++
++	pr_info("u880-rpmh: ==== dump ch=%d dirty=%d non_batch=%u\n", ch, ctrlr->dirty, ctrlr->non_batch_cache_idx);
++	for (i = 0; i < ctrlr->non_batch_cache_idx; i++) {
++		struct cache_req *p = &ctrlr->non_batch_cache[i];
++
++		pr_info("u880-rpmh: single addr=%#x sleep=%#x wake=%#x %s\n", p->addr, p->sleep_val, p->wake_val,
++			is_req_valid(p) ? "SENT" : (p->sleep_val == UINT_MAX ? "no-sleep-val" : "equal"));
++	}
++	for (st = 0; st < RPMH_ACTIVE_ONLY_STATE; st++) {
++		struct rpmh_request *r = &ctrlr->batch_cache[st];
++
++		for (k = 0; k < r->msg.num_cmds; k++)
++			pr_info("u880-rpmh: batch %s addr=%#x data=%#x\n", st == RPMH_SLEEP_STATE ? "sleep" : "wake",
++				r->msg.cmds[k].addr, r->msg.cmds[k].data);
++	}
++	pr_info("u880-rpmh: ==== end\n");
++}
++
+ int _rpmh_flush(struct rpmh_ctrlr *ctrlr, int ch)
+ {
+ 	struct cache_req *p;
+ 	int ret = 0, i;
+ 
+-	if (!ctrlr->dirty) {
++	if (u880_dump && cmpxchg(&u880_dump, 1, 0) == 1)
++		u880_dump_rpmh(ctrlr, ch);
++
++	if (!ctrlr->dirty && !u880_lvl_sleep) {
+ 		pr_debug("Skipping flush, TCS has latest data.\n");
+ 		return ret;
+ 	}
+@@ -411,6 +441,17 @@
+ 
+ 	for (i = 0; i < ctrlr->non_batch_cache_idx; i++) {
+ 		p = &ctrlr->non_batch_cache[i];
++		/* U880 (#13) experiment: cx.lvl/mx.lvl carry an ACTIVE level vote and no sleep value, so the vote survives the suspend. */
++		if (u880_lvl_sleep && p->sleep_val == UINT_MAX && p->wake_val != UINT_MAX && p->wake_val != 0 &&
++		    (p->addr == 0x30000 || p->addr == 0x30010)) {
++			ret = send_single(ctrlr, RPMH_SLEEP_STATE, p->addr, 0, ch);
++			if (ret)
++				return ret;
++			ret = send_single(ctrlr, RPMH_WAKE_ONLY_STATE, p->addr, p->wake_val, ch);
++			if (ret)
++				return ret;
++			continue;
++		}
+ 		if (!is_req_valid(p)) {
+ 			pr_debug("%s: skipping RPMH req: a:%#x s:%#x w:%#x\n",
+ 				 __func__, p->addr, p->sleep_val, p->wake_val);
