@@ -15424,6 +15424,8 @@
 			qupv3_se4_i2c: i2c@a90000 {
 				interconnect-names = "qup-core", "qup-config", "qup-memory";
 				interconnects = <0x1d9 0x24 0x1d9 0x23c 0x1a3 0x02 0x1a4 0x21c 0x1a2 0x06 0x189 0x200>;
+				/* U880 (touch): 400 kHz; the 100 kHz default could not keep up with ~350 IRQs/s x 60 bytes (clumped drags, lost taps) */
+				clock-frequency = <0x61a80>;
 				compatible = "qcom,geni-i2c";
 				reg = <0xa90000 0x4000>;
 				#address-cells = <0x01>;
