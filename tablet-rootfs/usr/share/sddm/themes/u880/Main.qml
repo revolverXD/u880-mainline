@@ -69,9 +69,15 @@ Rectangle {
             Repeater {
                 model: sessionModel
                 delegate: Rectangle {
+                    // only our tested sessions (u880-*.desktop); the stock gnome/phosh/weston ones stay hidden
+                    visible: model.file.indexOf("/u880-") >= 0
                     width: sessionList.width; height: root.u * 3; radius: root.u / 2
                     color: index === root.sessionIndex ? "#3b6ef5" : "#2a2e42"
-                    Component.onCompleted: if (index === root.sessionIndex) root.sessionName = model.name
+                    Component.onCompleted: {
+                        if (!visible) return
+                        if (index === sessionModel.lastIndex) { root.sessionIndex = index; root.sessionName = model.name }
+                        else if (root.sessionName === "") { root.sessionIndex = index; root.sessionName = model.name }
+                    }
                     Text { anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: root.u / 2
                            color: "#ffffff"; font.pixelSize: root.u * 1.4; text: model.name }
                     MouseArea { anchors.fill: parent; onClicked: { root.sessionIndex = index; root.sessionName = model.name; sessionList.visible = false } }
