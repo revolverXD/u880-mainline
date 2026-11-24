@@ -83,3 +83,7 @@
 /var/lib/sddm/.config/kwinoutputconfig.json
 /etc/systemd/system/u880-zram.service
 /etc/sysctl.d/99-u880-zram.conf
+/usr/local/bin/u880-gpu-sample
+/etc/systemd/system/u880-gpu-sample.service
+/home/USER/.local/share/plasma/plasmoids/org.u880.gpumon/metadata.json
+/home/USER/.local/share/plasma/plasmoids/org.u880.gpumon/contents/ui/main.qml

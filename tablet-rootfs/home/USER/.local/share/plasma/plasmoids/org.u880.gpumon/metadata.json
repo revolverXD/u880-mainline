@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Authors": [{ "Name": "U880 mainline" }],
+        "Description": "GPU clock, busy % and temperature (Adreno, from /run/u880-gpu.txt)",
+        "Icon": "preferences-system-performance",
+        "Id": "org.u880.gpumon",
+        "License": "GPL-2.0+",
+        "Name": "GPU monitor (U880)",
+        "Version": "1.0"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,12 @@
+[Unit]
+Description=GPU clock / busy % / temperature sampler for the KDE widget (issue #9)
+
+[Service]
+ExecStart=/usr/local/bin/u880-gpu-sample
+Restart=always
+Nice=19
+CPUSchedulingPolicy=idle
+CPUAffinity=0-3
+
+[Install]
+WantedBy=multi-user.target
