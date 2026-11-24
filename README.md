@@ -22,8 +22,8 @@ Tested on kernel `7.3.1-u880e`, boot slot B, Plasma Mobile 6.8.
 |---|---|
 | CPU, cpufreq, cpuidle, thermal (DT cooling maps + userspace guard) | works |
 | GPU Adreno 735 (msm DRM, Mesa freedreno/turnip, GL 4.6, Vulkan 1.4) | works (non-fatal page-fault messages in games, issue #2) |
-| Display: native DPU + dual DSI, DSC, UBWC, 144/120/90/60 Hz, DPMS, backlight, auto-brightness | works (a power-domain wedge is worked around, issue #1) |
-| Touch (Novatek NT36523N, 10 points) | works |
+| Display: native DPU + dual DSI, DSC, UBWC, 144/120/90/60 Hz, DPMS, backlight, auto-brightness | works (the MDSS power-domain wedge is fixed, issue #1; touch reports are best at 144 Hz) |
+| Touch (Novatek NT36523N, 10 points) | works; the IC publishes only ~31-47 frames/s and about 1 in 5 light taps is lost (IC firmware, FINDINGS/NOTES 2026-11-24) |
 | Wi-Fi 6 (ath11k WCN6750) | works |
 | Bluetooth 5.4 (A2DP incl. LDAC, HID, BLE central and peripheral, factory address) | works; LE Audio untested |
 | Audio: 2 speakers (AW88261), DisplayPort audio, PipeWire | works; microphones missing (issue #3) |
