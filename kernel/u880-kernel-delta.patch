@@ -88927,6 +88927,38 @@
 +	return ret;
 +}
 +EXPORT_SYMBOL(rpmh_drv_stop);
+--- a/drivers/hid/hid-microsoft.c
++++ b/drivers/hid/hid-microsoft.c
+@@ -71,6 +71,29 @@
+ 		hid_info(hdev, "fixing up Microsoft Wireless Receiver Model 1028 report descriptor\n");
+ 		rdesc[557] = 0x35;
+ 		rdesc[559] = 0x45;
++	}
++
++	/*
++	 * Bluetooth gamepad (1708, 045e:02fd) over Bluetooth Classic: the SDP record
++	 * carries a 306-byte descriptor that stops after "Usage (Loop Count),
++	 * Logical Minimum 0" in the rumble output report: the rest of that item
++	 * and both End Collection items are missing, so hid_parse() fails with
++	 * "unbalanced collection". Append them.
++	 */
++	if (hdev->bus == BUS_BLUETOOTH && hdev->vendor == USB_VENDOR_ID_MICROSOFT &&
++	    hdev->product == USB_DEVICE_ID_MS_XBOX_CONTROLLER_MODEL_1708 &&
++	    *rsize == 306 && rdesc[304] == 0x15 && rdesc[305] == 0x00) {
++		static const __u8 tail[] = { 0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x01,
++					     0x91, 0x02, 0xc0, 0xc0 };
++		__u8 *fixed = devm_kmalloc(&hdev->dev, *rsize + sizeof(tail), GFP_KERNEL);
++
++		if (fixed) {
++			hid_info(hdev, "completing truncated Xbox controller report descriptor\n");
++			memcpy(fixed, rdesc, *rsize);
++			memcpy(fixed + *rsize, tail, sizeof(tail));
++			*rsize += sizeof(tail);
++			return fixed;
++		}
+ 	}
+ 	return rdesc;
+ }
 --- /dev/null
 +++ b/drivers/tty/vt/ucs_width_table.h
 @@ -0,0 +1,490 @@
