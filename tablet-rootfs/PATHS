@@ -81,3 +81,5 @@
 /var/lib/sddm/state.conf
 /var/lib/sddm/.config/kwinrc
 /var/lib/sddm/.config/kwinoutputconfig.json
+/etc/systemd/system/u880-zram.service
+/etc/sysctl.d/99-u880-zram.conf
