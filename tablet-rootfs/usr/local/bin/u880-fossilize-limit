@@ -1,0 +1,14 @@
+#!/bin/sh
+# Keep Steam's shader pre-caching (fossilize_replay: 8 processes at ~560 % CPU for hours) from stuttering games and heating the SoC (#12):
+# confine every replay process to the little cores (0-2), idle scheduling class, idle I/O class. The caches still fill, just slower and out of the way.
+# shortcut: polls every 3 s (new replay processes start and stop all the time); upgrade: run Steam in a cgroup slice with CPUQuota/AllowedCPUs.
+# The [f] keeps the pattern from matching this script's own command line.
+P='[f]ossilize_replay'
+while :; do
+	for pid in $(pgrep -f "$P"); do
+		taskset -a -pc 0-2 "$pid" >/dev/null 2>&1
+		chrt -a -i -p 0 "$pid" >/dev/null 2>&1
+		ionice -c3 -p "$pid" >/dev/null 2>&1
+	done
+	sleep 3
+done

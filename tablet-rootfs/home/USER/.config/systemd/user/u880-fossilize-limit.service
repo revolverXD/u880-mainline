@@ -1,0 +1,11 @@
+[Unit]
+Description=U880: keep Steam shader pre-caching on the little cores at idle priority
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/u880-fossilize-limit
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
