@@ -28,6 +28,8 @@
 /usr/local/bin/u880-mem-sleep
 /usr/local/bin/u880-boot-success
 /usr/local/bin/u880-gpt-mark-successful
+/usr/local/bin/u880-game-inhibit
+/home/USER/.config/systemd/user/u880-game-inhibit.service
 /usr/local/bin/u880-sdp-budget
 /usr/local/bin/u880-icc-sync
 /usr/local/bin/u880-touch-follow-screen

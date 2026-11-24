@@ -1,0 +1,11 @@
+[Unit]
+Description=U880: inhibit screen lock and sleep while a Steam game runs
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/u880-game-inhibit
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
