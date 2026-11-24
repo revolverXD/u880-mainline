@@ -1,9 +1,9 @@
 #!/bin/sh
 # Keep the screen from locking or sleeping while a Steam game runs (#10): gamepad input does not reset KDE's idle timer.
-# Holds a KDE inhibition (screen saver + power management) exactly as long as a "SteamLaunch AppId=" process (Steam's per-game wrapper) exists.
+# Holds a KDE inhibition (screen saver + power management) exactly as long as a game wrapper ("SteamLaunch AppId=<id> --"; runtime installers have "Install=1" in between and are skipped) exists.
 # shortcut: polls every 5 s because Steam gives no start/stop event; upgrade: a launch option `kde-inhibit ... %command%` per game or a /proc watcher.
 # The [S] keeps the pattern from matching this script's own command line.
-P='[S]teamLaunch AppId='
+P='[S]teamLaunch AppId=[0-9]+ --'
 while :; do
 	if pgrep -f "$P" >/dev/null; then
 		kde-inhibit --power --screenSaver sh -c "while pgrep -f '$P' >/dev/null; do sleep 5; done"
