@@ -199,6 +199,16 @@ should be replaced by your own, see below). From your tablet's stock `vendor`/`o
    pipewire-audio wireplumber bluez bluez-utils iio-sensor-proxy libssc hunspell-en_us stress-ng lm_sensors rrdtool gamescope`, plus Mesa (freedreno/turnip) from the distribution. Steam and Proton: `steam/README-arm64.md`.
 7. Session selection is done by flag files read by `~/.bash_profile`: `touch ~/.u880-plasma` for Plasma Mobile (default shell of this project), none for Denial. Important KDE settings are recorded in `NOTES.md`
    (on-screen keyboard: `kwinrc [Wayland] InputMethod=org.kde.plasma.keyboard.desktop`, `VirtualKeyboardMode=1`).
+8. Flatpak (Flathub has `aarch64` builds; `flatpak bubblewrap xdg-desktop-portal`) needs two one-time steps, and apps must be started from the tablet's desktop session (from an ssh shell GTK finds no display):
+   - **AppArmor:** the stock `flatpak` profile moves `bwrap` into a child profile where it fails with `bwrap: setting up uid map: Permission denied` / `ldconfig failed`. `tablet-config.sh push` installs
+     `/etc/apparmor.d/local/flatpak` (`/usr/bin/bwrap Ux,`); then reload the profile once: `apparmor_parser -r /etc/apparmor.d/flatpak` (details: `NOTES.md`, 2026-11-25).
+   - **Wallet:** apps that store passwords (Komikku, for example) crash with `No such object path '/org/freedesktop/secrets/aliases/default'` until a default wallet exists. KDE does not create one by itself, and the KWallet
+     settings page shows no prompt. Create it once on the tablet (as the desktop user, in the session); a dialog asks for the wallet password, which is your choice and is not stored in this repo:
+     ```
+     busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service CreateCollection 'a{sv}s' 1 org.freedesktop.Secret.Collection.Label s Default default
+     busctl --user call org.freedesktop.secrets /org/freedesktop/secrets/prompt/p0 org.freedesktop.Secret.Prompt Prompt s ""   # use the prompt path the first command printed
+     ```
+     Check: `busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service ReadAlias s default` no longer returns `"/"`.
 
 ### 9. Flash and boot
 
