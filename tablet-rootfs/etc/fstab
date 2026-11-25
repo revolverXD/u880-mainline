@@ -1,3 +1,2 @@
 # root on internal UFS (Android userdata partition, ext4 label u880root)
 LABEL=u880root  /  ext4  rw,noatime  0 1
-UUID=0c04659e-80db-4b9a-b8e1-26fd06358972 /home/USER/sd ext4 defaults,nofail 0 2
