@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Write kernel/u880-kernel-delta.patch = every SOURCE-type file in linux-7.2.9/ that differs from the pristine tarball tree (new files included),
 and kernel/u880.config = the .config. Build outputs and generated files are skipped.
-usage: snapshot-kernel-delta.py <pristine linux-7.2.9 dir> [current dir=linux-7.2.9]"""
+usage: [SUFFIX=-7.4] snapshot-kernel-delta.py <pristine linux-X dir> [current dir=linux-7.2.9]
+(SUFFIX writes kernel/u880-kernel-delta<SUFFIX>.patch and kernel/u880<SUFFIX>.config instead, so a port to another release does not overwrite the current files)"""
 import os, sys, difflib, shutil
 pri, cur = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2] if len(sys.argv) > 2 else 'linux-7.2.9')
 SRC_EXT = ('.c', '.h', '.S', '.dts', '.dtsi', '.dtso', '.yaml', '.txt', '.rst', '.py', '.sh', '.json', '.dtbo')
@@ -32,6 +33,7 @@ for root, dirs, files in os.walk(cur):
         b = cb.decode('utf-8', 'replace').splitlines(keepends=True)
         d = list(difflib.unified_diff(a, b, 'a/' + rel if a else '/dev/null', 'b/' + rel))
         if d: out.extend(d); n += 1
-open('kernel/u880-kernel-delta.patch', 'w').write(''.join(out))
-shutil.copy(os.path.join(cur, '.config'), 'kernel/u880.config')
+SUF = os.environ.get('SUFFIX', '')
+open(f'kernel/u880-kernel-delta{SUF}.patch', 'w').write(''.join(out))
+shutil.copy(os.path.join(cur, '.config'), f'kernel/u880{SUF}.config')
 print(n, 'files in delta;', sum(1 for l in out if l.startswith('+') and not l.startswith('+++')), 'added lines')
