@@ -52,7 +52,7 @@ Kernel 7.3.1-u880e, Mesa 26.3.1, on battery, cooler fitted, `scripts/bench.sh` (
 | Memory | 1257 memcpy bogo ops/s (8 workers) |
 | Storage (UFS, ext4, direct I/O) | 986 MB/s sequential write, 1.2 GB/s sequential read, 6478 random 4 KiB reads/s at queue depth 1 |
 | Wi-Fi (Wi-Fi 6, 5 GHz, 80 MHz, 2x2) | 182 Mbit/s PC to tablet, 170 Mbit/s tablet to PC (the PC's own Wi-Fi is the limit; tablet link 576 Mbit/s at -74 dBm) |
-| Games | Borderlands 2 playable at 720p / 30 fps cap with Proton Experimental ARM64, no OOM kill over 26 min with zram (`NOTES.md` 2026-11-24) |
+| Games | Borderlands 2 (32-bit DX9 game, Proton Experimental ARM64): 40-60 FPS on the DXVK HUD at 1024x768 with effects reduced (FXAA, ambient occlusion, bloom, depth of field and motion blur off, detail mode 2); about 47 min of play without an out-of-memory kill, with zram (`NOTES.md` 2026-11-25) |
 
 These are bogo-op and synthetic numbers meant for before/after comparisons on this tablet, not cross-device rankings. Repeat runs of the same test were within a few percent (single-thread 44.9 vs 45.2, glmark2 1159 vs 1204).
 
