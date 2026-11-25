@@ -1,0 +1,3 @@
+# Stock apparmor profile "flatpak" (complain mode) moves bwrap into a null child profile where bwrap cannot open /proc/self/uid_map
+# (EACCES -> "bwrap: setting up uid map: Permission denied", "ldconfig failed"). Run bwrap unconfined, as without the profile.
+/usr/bin/bwrap Ux,
