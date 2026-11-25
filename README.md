@@ -197,7 +197,7 @@ Vendor firmware is not redistributable and is **not** in this repo. Extract it f
   `435c7bac9a328b8a100df930b84b65b4d579e42be44785d0e60e3729291bb864 gen71100_gmu.bin`, `b6df660d109504dbea5a266910b037a33d893a11c6de52f524a5fd112008c401 gen71100_sqe.fw`,
   `966d2984e1ac7a86f9a25c66fab3fd660423396f1375baf4432db0f1d80f9485 gen71100_zap.mbn` (other firmware versions may differ).
 - ADSP (battery/charging, sensors, audio): the `adsp2*` set -> `/lib/firmware/qcom/u880/`, plus the sensor registry service (`hexagonrpcd`, see `sensors/README.md`).
-- Wi-Fi: `ath11k/WCN6750/hw1.0/regdb.bin` and a `board-2.bin` built from the vendor `bdwlan.elf` with `scripts/make-ath11k-board2.py`; WPSS `qca6750/wpss.*`.
+- Wi-Fi: `ath11k/WCN6750/hw1.0/regdb.bin` and a `board-2.bin` built from the vendor `bdwlan.elf` with `scripts/make-ath11k-board2.py`; WPSS `qca6750/wpss.*` (the whole `qca6750/` directory, including `wpss.mdt` and the `wpss.bNN` parts, goes to `/lib/firmware/qca6750/`; without it `ath11k` fails with `Direct firmware load for qca6750/wpss.mdt failed with error -2` and there is no `wlan0`; the base tarball also lacks `wireless-regdb`, so install it too).
 - Bluetooth: `qca/msbtfw12.mbn`, `qca/msnv12.bin` (+ `.tlv`).
 - Speaker amps: `aw882xx_acf.bin`.
 - The AudioReach topology is built from `topology/U880.m4` into `/lib/firmware/qcom/u880/U880-tplg.bin`.

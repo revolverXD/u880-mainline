@@ -10,3 +10,6 @@
 /lib/firmware/aw882xx_acf.bin
 /lib/firmware/ath11k/WCN6750/hw1.0/regdb.bin
 /lib/firmware/updates/ath11k/WCN6750/hw1.0/board-2.bin
+/lib/firmware/qca6750/wpss.mdt
+/lib/firmware/qca6750/wpss.qdb
+/lib/firmware/qca6750/regdb.bin
