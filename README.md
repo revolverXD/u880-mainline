@@ -164,7 +164,7 @@ and re-applying our additions with `scripts/build-stock-disabled.sh` and the ove
 ### 5. Initramfs
 
 `stage1/initramfs/` holds a busybox rescue `init` (v10). With `u880root=ufs` on the kernel command line it loads the UFS modules from `lib/modules-ufs/`, mounts the partition named
-`userdata` (ext4, label `u880root`) and `switch_root`s; otherwise it gives a rescue shell on the USB serial gadget (`usb0` 172.16.42.2).
+`userdata` (ext4, label `u880root`) and `switch_root`s; otherwise it is meant to give a rescue shell on the USB serial gadget (`usb0` 172.16.42.2). **On the 7.3/7.4 kernels this rescue is dead** (tested 2026-11-25): the USB PHY (`phy-qcom-qmp-combo`), `qcom_pmic_glink`, the eUSB2 repeater and the display clock (`dispcc-sm8550`) are modules that only the real root filesystem loads, so a rescue boot shows kernel text and then a black screen and never appears on the PC's USB. It has no `mkfs` or GNU `tar` either. Do not flash a rescue image unless those modules are in the initramfs.
 
 ```
 mkdir -p stage1/initramfs/lib/modules-ufs
