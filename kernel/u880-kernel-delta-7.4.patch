@@ -21532,6 +21532,24 @@
  extern const struct dpu_mdss_cfg dpu_sm8750_cfg;
  extern const struct dpu_mdss_cfg dpu_x1e80100_cfg;
  
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_rm.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_rm.c
+@@ -674,6 +674,15 @@
+ 	int ret;
+ 
+ 	ret = _dpu_rm_reserve_lms(rm, global_state, crtc_id, topology);
++	/*
++	 * U880 (sm7675): 4 mixers but only 3 DSPPs, LM_3 has none. A 1920-wide mode on the second
++	 * output needs LM_2+LM_3, so gamma/CTM (num_dspp) can never be met there. Drop the colour
++	 * pipeline for this CRTC instead of failing the whole commit; dpu_crtc copes with fewer DSPPs.
++	 */
++	if (ret && topology->num_dspp) {
++		topology->num_dspp = 0;
++		ret = _dpu_rm_reserve_lms(rm, global_state, crtc_id, topology);
++	}
+ 	if (ret) {
+ 		DPU_ERROR("unable to find appropriate mixers\n");
+ 		return ret;
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
 @@ -3,6 +3,7 @@

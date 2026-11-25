@@ -18,7 +18,7 @@ CMD=$(sed -n 's/^command line args: //p' "$W/unpack.txt")
 # 2. ramdisk: installed one with the three UFS modules replaced
 mkdir "$W/rd" && (cd "$W/rd" && gzip -dc ../u/ramdisk | cpio -id --quiet)
 cp "$K/drivers/ufs/host/ufs-qcom.ko" "$K/drivers/soc/qcom/qcom_ice.ko" "$K/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko" "$W/rd/lib/modules-ufs/"
-for m in ufs-qcom qcom_ice phy-qcom-qmp-ufs; do strings -a "$W/rd/lib/modules-ufs/$m.ko" | grep -q "^vermagic=$REL " || { echo "$m.ko is not release $REL"; exit 3; }; done
+for m in ufs-qcom qcom_ice phy-qcom-qmp-ufs; do [ "$(strings -a "$W/rd/lib/modules-ufs/$m.ko" | grep -c "^vermagic=$REL ")" = 1 ] || { echo "$m.ko is not release $REL"; exit 3; }; done
 (cd "$W/rd" && find . | LC_ALL=C sort | cpio -o -H newc -R 0:0 --quiet | gzip -9 > "$W/ramdisk.cpio.gz")
 # 3. pack with the installed parameters (python3 without -I: mkbootimg imports its own directory)
 python3 "$MKB/mkbootimg.py" --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 --kernel "$K/arch/arm64/boot/Image" --ramdisk "$W/ramdisk.cpio.gz" \
