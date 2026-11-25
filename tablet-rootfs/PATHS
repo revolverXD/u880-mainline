@@ -90,3 +90,4 @@
 /etc/apparmor.d/local/flatpak
 /home/USER/.local/share/flatpak/overrides/net.example.App
 /etc/default/earlyoom
+etc/fstab
