@@ -15,6 +15,8 @@ REL=$(cat "$K/include/config/kernel.release")
 "$M/scripts/rssh.sh" 'dd if=/dev/disk/by-partlabel/boot_b bs=4M count=14 2>/dev/null' > "$W/boot_b.img"
 python3 -I "$MKB/unpack_bootimg.py" --boot_img "$W/boot_b.img" --out "$W/u" > "$W/unpack.txt"
 CMD=$(sed -n 's/^command line args: //p' "$W/unpack.txt")
+# DROP_ARGS="u880root=ufs": remove these words from the installed cmdline (rescue image: no root mount, shell on USB, FINDINGS/NOTES 2026-11-25 reinstall test)
+for a in ${DROP_ARGS:-}; do CMD=$(printf '%s' " $CMD " | sed "s# $a # #g; s#^ *##; s# *\$##"); done
 # 2. ramdisk: installed one with the three UFS modules replaced
 mkdir "$W/rd" && (cd "$W/rd" && gzip -dc ../u/ramdisk | cpio -id --quiet)
 cp "$K/drivers/ufs/host/ufs-qcom.ko" "$K/drivers/soc/qcom/qcom_ice.ko" "$K/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko" "$W/rd/lib/modules-ufs/"
@@ -30,6 +32,7 @@ open(out, "ab").write(b"\0" * (T - n))
 a, b = open(out, "rb").read(4096), open(ref, "rb").read(4096)
 d = [i for i in range(4096) if a[i] != b[i]]
 allowed = set(range(8, 12)) | set(range(16, 20)) | set(range(576, 596))     # kernel_size, ramdisk_size, id hash
+if os.environ.get("DROP_ARGS"): allowed |= set(range(64, 576))              # cmdline, changed on purpose
 assert set(d) <= allowed, f"header differs outside size fields/id: {d}"
 print("header ok: only kernel/ramdisk size and id differ; padded to", T)
 EOF
