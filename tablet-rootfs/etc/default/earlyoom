@@ -1,0 +1,4 @@
+# earlyoom for the U880 (11 GB RAM, 6 GB zram). The 2026-11-25 freeze: free RAM ~85 MB, only 2.2 of 6 GB zram used, so earlyoom's default
+# (act when memory AND swap are both low) never fires. -s 100,100 = ignore swap in both stages, act on available RAM alone: below 6 % (~680 MB) SIGTERM, below 3 % SIGKILL (a single -s 100 would leave the SIGKILL stage waiting for swap to be half used).
+# Process names are the 15-character comm values. Never kill the session or the network; prefer the game, browsers and Steam helpers.
+EARLYOOM_ARGS="-m 6,3 -s 100,100 -r 60 --avoid '^(sshd|systemd|systemd-journal|kwin_wayland|plasmashell|pipewire|wireplumber|NetworkManager|bluetoothd|sddm|Xwayland|earlyoom)$' --prefer '^(Borderlands2|firefox|steamwebhelper|fossilize)'"
