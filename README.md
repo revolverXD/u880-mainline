@@ -55,7 +55,7 @@ Open work is tracked in the GitHub issues; the full engineering log is `NOTES.md
 | `kernel/` | `u880-kernel-delta.patch` (every source change vs vanilla 7.3.1), `u880_defconfig`, `u880.config` |
 | `dts/u880.dts` | the production device tree as one source file (decompiled from the working DTB, plus our additions) |
 | `stage1/*.dtso`, `stage1/initramfs/` | DT overlays used while bringing the board up; the rescue/boot initramfs source (busybox, `init`) |
-| `stock-dt/` | device trees extracted from the stock firmware (`dtb2` = SoC DT, `o25` = board overlay) and parsers |
+| `stock-dt/` | parsers for the device trees in the stock firmware (`dtbo.py`, `vb.py`). The decompiled vendor trees (`dtb2` = SoC DT, `o25` = board overlay) are **not published**: regenerate them from your own `vendor_boot`/`dtbo` |
 | `topology/`, `ucm/` | AudioReach topology source and ALSA UCM profiles (speakers `HiFi`, DisplayPort `HDMI`) |
 | `tablet-rootfs/` | mirror of every file on the tablet's root filesystem that we changed (units, udev rules, configs, scripts); pushed with `scripts/tablet-config.sh` |
 | `power/`, `usb/`, `sensors/` | extra tablet config grouped by area, with their own notes |
@@ -173,10 +173,12 @@ python3 <aosp>/system/tools/mkbootimg/mkbootimg.py --header_version 2 --os_versi
 
 ### 7. Firmware you must extract yourself
 
-Vendor firmware is not redistributable and is **not** in this repo (the three `gen71100_*` GPU files under `stage1/initramfs/lib/firmware/qcom/` are the only exception and
-should be replaced by your own, see below). From your tablet's stock `vendor`/`odm`/`modem` images (they are ext4/erofs; `debugfs -R "cat ..."` works read-only):
+Vendor firmware is not redistributable and is **not** in this repo. Extract it from your own tablet's stock `vendor`/`odm`/`modem` images (they are ext4/erofs; `debugfs -R "cat ..."` works read-only), never from someone else's copy:
 
-- Adreno 735: `gen71100_sqe.fw`, `gen71100_gmu.bin`, `gen71100_zap.mbn` -> `/lib/firmware/qcom/` (also in the initramfs so the GPU probes before the root mounts).
+- Adreno 735: `gen71100_sqe.fw`, `gen71100_gmu.bin`, `gen71100_zap.mbn` -> `/lib/firmware/qcom/` on the root filesystem, and also into `stage1/initramfs/lib/firmware/qcom/` (the initramfs build `scripts/build-initramfs.sh` stops with a message if they are missing).
+  SHA-256 of the files of the reference tablet (stock firmware `U880_B14_V3.0L.1_0311`), to check you extracted the right ones:
+  `435c7bac9a328b8a100df930b84b65b4d579e42be44785d0e60e3729291bb864 gen71100_gmu.bin`, `b6df660d109504dbea5a266910b037a33d893a11c6de52f524a5fd112008c401 gen71100_sqe.fw`,
+  `966d2984e1ac7a86f9a25c66fab3fd660423396f1375baf4432db0f1d80f9485 gen71100_zap.mbn` (other firmware versions may differ).
 - ADSP (battery/charging, sensors, audio): the `adsp2*` set -> `/lib/firmware/qcom/u880/`, plus the sensor registry service (`hexagonrpcd`, see `sensors/README.md`).
 - Wi-Fi: `ath11k/WCN6750/hw1.0/regdb.bin` and a `board-2.bin` built from the vendor `bdwlan.elf` with `scripts/make-ath11k-board2.py`; WPSS `qca6750/wpss.*`.
 - Bluetooth: `qca/msbtfw12.mbn`, `qca/msnv12.bin` (+ `.tlv`).
@@ -244,7 +246,6 @@ from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and th
 - Vendor firmware and the stock images (extract from your own tablet), the Chinese `abl.elf` unlock files, the AOSP clang and `mkbootimg`.
 - Any keys or passwords: the tablet's SSH key lives in `alarm/ssh/` (git-ignored). Default passwords of the Arch Linux ARM image must be changed.
 - Build outputs and boot images (`stage1/*.img`, `.ko`, ...). They are rebuilt from the sources above.
-- Note for publishing: `stage1/initramfs/lib/firmware/qcom/gen71100_*` (Qualcomm GPU firmware) and `stock-dt/` (device trees extracted from the vendor firmware) are tracked in this private repo and should be removed or replaced before the repo is made public.
 
 ## How much of this is verified
 
@@ -257,4 +258,4 @@ from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and th
 
 Linux (GPL-2.0), the [senemos-uke-kernel-mainline](https://github.com/MCC45TR/senemos-uke-kernel-mainline) series (MIT) and the uke drivers it carries, Qualcomm's AudioReach topology and UCM
 conventions, Arch Linux ARM, KDE Plasma Mobile, Mesa, gamescope, Valve's Steam/Proton for ARM64, bkerler/edl. Our own files in this repo (scripts, notes, DT additions, overlays) are published under the
-GPL-2.0 for the kernel parts and as-is for the rest; add a `LICENSE` before making the repository public.
+GPL-2.0-only (see `LICENSE`). Vendor firmware and stock images are not part of this repository and keep their own licences.
