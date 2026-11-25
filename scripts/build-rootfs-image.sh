@@ -16,7 +16,10 @@ OUT=${1:?out.img}; M=$(cd "$(dirname "$0")/.." && pwd); R=$M/tablet-rootfs
 for f in "$TARBALL" "$MODULES/modules.dep" "$FWDIR"; do [ -e "$f" ] || { echo "missing: $f"; exit 2; }; done
 REL=$(basename "$MODULES"); W=$(mktemp -d /var/tmp/u880-rootfs.XXXXXX); trap 'rm -rf "$W"' EXIT; T=$W/root; mkdir "$T"
 echo "== 1. unpack the Arch tarball (numeric owners, xattrs, ACLs)"
-tar --numeric-owner --xattrs --xattrs-include='*' --acls -xpf "$TARBALL" -C "$T"
+# the ALARM tarball is made by libarchive: only bsdtar restores its file capabilities (ping, newuidmap, ...); GNU tar prints "Ignoring unknown extended header keyword" and drops them
+if command -v bsdtar >/dev/null; then bsdtar -xpf "$TARBALL" -C "$T" --numeric-owner --xattrs --acls
+else echo "WARNING: no bsdtar (libarchive): file capabilities are lost (ping, newuidmap); install libarchive or reinstall those packages after first boot"
+  tar --numeric-owner --xattrs --xattrs-include='*' --acls -xpf "$TARBALL" -C "$T"; fi
 echo "== 2. kernel modules $REL + depmod"
 mkdir -p "$T/usr/lib/modules"; rm -rf "$T/usr/lib/modules/$REL"
 tar -C "$(dirname "$MODULES")" --exclude="$REL/build" --exclude="$REL/source" -cf - "$REL" | tar -C "$T/usr/lib/modules" -xf -
@@ -48,7 +51,7 @@ ExecStart=/usr/bin/resize2fs /dev/disk/by-label/u880root
 WantedBy=multi-user.target
 EOF
 for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerlog u880-sdp-budget u880-touch-follow-screen u880-usb-ss-retrain hexagonrpcd-adsp-sensorspd u880-growfs; do
-  [ -e "$T/etc/systemd/system/$u.service" ] || [ -e "$T/usr/lib/systemd/system/$u.service" ] || { echo "  unit missing, not enabled: $u"; continue; }
+  [ -e "$T/etc/systemd/system/$u.service" ] || [ -e "$T/usr/lib/systemd/system/$u.service" ] || [ -e "$T/usr/local/lib/systemd/system/$u.service" ] || { echo "  unit missing, not enabled: $u"; continue; }
   systemctl --root="$T" enable "$u.service" >/dev/null 2>&1 || echo "  could not enable $u"
 done
 echo "== 5. ext4 image $SZ (label u880root)"
