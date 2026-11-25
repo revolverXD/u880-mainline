@@ -202,6 +202,8 @@ should be replaced by your own, see below). From your tablet's stock `vendor`/`o
 8. Flatpak (Flathub has `aarch64` builds; `flatpak bubblewrap xdg-desktop-portal`) needs two one-time steps, and apps must be started from the tablet's desktop session (from an ssh shell GTK finds no display):
    - **AppArmor:** the stock `flatpak` profile moves `bwrap` into a child profile where it fails with `bwrap: setting up uid map: Permission denied` / `ldconfig failed`. `tablet-config.sh push` installs
      `/etc/apparmor.d/local/flatpak` (`/usr/bin/bwrap Ux,`); then reload the profile once: `apparmor_parser -r /etc/apparmor.d/flatpak` (details: `NOTES.md`, 2026-11-25).
+   - **QtWebEngine app (QtWebEngine):** the browser engine's own sandbox aborts (`bwrap: creation of new user namespaces was not disabled as requested`, then `FATAL ... zygote_host_impl_linux.cc`) and QtWebEngine app stays alive with no window.
+     `flatpak override --user --env=QTWEBENGINE_DISABLE_SANDBOX=1 net.example.App` (mirrored in `tablet-rootfs/`) turns off Chromium's inner sandbox for QtWebEngine app only; Flatpak's sandbox stays. Reset: `flatpak override --user --reset net.example.App`.
    - **Wallet:** apps that store passwords (Komikku, for example) crash with `No such object path '/org/freedesktop/secrets/aliases/default'` until a default wallet exists. KDE does not create one by itself, and the KWallet
      settings page shows no prompt. Create it once on the tablet (as the desktop user, in the session); a dialog asks for the wallet password, which is your choice and is not stored in this repo:
      ```

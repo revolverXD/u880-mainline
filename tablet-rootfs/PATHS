@@ -88,3 +88,4 @@
 /home/USER/.local/share/plasma/plasmoids/org.u880.gpumon/metadata.json
 /home/USER/.local/share/plasma/plasmoids/org.u880.gpumon/contents/ui/main.qml
 /etc/apparmor.d/local/flatpak
+/home/USER/.local/share/flatpak/overrides/net.example.App
