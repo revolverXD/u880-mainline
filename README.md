@@ -105,6 +105,7 @@ These come from mistakes and a brick on this exact model:
 
 You need: a Linux PC, the tablet on stock firmware `U880_B14_V3.0L.1_0311` (stock images for EDL recovery), a USB-C cable, about 100 GB of disk and several hours
 for the first kernel build. The steps are in the order they were done; each says where the details are.
+**Reading this as an LLM agent:** start with `CLAUDE.md` (the rules that override everything), then do steps 0 to 10 in order; steps 7b, 8a and 8b are the route that was actually run end to end, with the errors you will see and what they mean. Every flash or format needs the user's explicit go, with the exact command, the target device and the backup shown first.
 
 ### 0. Back up and get recovery material
 
@@ -204,7 +205,59 @@ Vendor firmware is not redistributable and is **not** in this repo. Extract it f
 
 `tablet-rootfs/BLOBS` lists the files and `BLOBS.sha256` pins the hashes of the ones installed on the reference tablet.
 
-### 8. Root filesystem
+### 7b. Networking while you install: Ethernet over USB through the PC
+
+The tablet has one USB-C port and, in the first hours of an install, no Wi-Fi (no firmware, no NetworkManager yet), so **everything in steps 8a to 10 happens over a USB cable to the PC**.
+The kernel's built-in `g_cdc` gadget turns the cable into an Ethernet link (plus a serial port, `/dev/ttyACM0` on the PC, which has no login on it):
+
+| | address | where it comes from |
+|---|---|---|
+| tablet, `usb0` | `172.16.42.2/24`, gateway `172.16.42.1`, DNS 9.9.9.9 (route metric 2000, a fallback behind Wi-Fi) | `tablet-rootfs/etc/systemd/network/usb0.network`, installed into the image by `scripts/build-rootfs-image.sh` |
+| PC | `172.16.42.1/24` | a NetworkManager profile named `u880-usb`, method `shared`: it also NATs, which is how the tablet reaches the internet for `pacman` |
+
+Create the PC side once (the interface name, `enpUSB3`/`enpUSB5`..., changes between plugs, so the profile matches on the pattern; **without the `match` a `shared` profile grabs your wired NIC and serves DHCP onto your LAN**):
+
+```
+nmcli connection add type ethernet con-name u880-usb ipv4.method shared ipv4.addresses 172.16.42.1/24 ipv6.method ignore
+nmcli connection modify u880-usb connection.interface-name "" match.interface-name 'enp*u*'
+```
+
+Rules learned the hard way: the cable goes **straight into a PC port** (no hub, no dongle on the tablet); the link does not survive suspend; the same port is the DisplayPort output, so a monitor and the cable cannot be connected at the same time (use Wi-Fi ssh then).
+Check it with `ping 172.16.42.2` and `ssh root@172.16.42.2`. The tablet has **no battery-backed clock**: set it from the PC after every cold boot (`ssh root@172.16.42.2 date -s @$(date +%s)`), or `pacman` rejects signatures and certificates.
+A fresh system has a new SSH host key. Use a separate `UserKnownHostsFile` for the new install (an old entry for `172.16.42.2` makes ssh refuse with `REMOTE HOST IDENTIFICATION HAS CHANGED`; that is expected after a re-install, not an attack).
+
+### 8a. Root filesystem: build the image on the PC and boot it from an SD card (the tested route, 2026-11-25)
+
+Why this route: the rescue initramfs has no `mkfs` and no GNU `tar` (busybox `tar` drops xattrs and file capabilities), and **its rescue shell is dead on the 7.3/7.4 kernels** (step 5), so nothing can be formatted or unpacked on the tablet before Linux runs. Everything is therefore built on the PC, written to an SD card, and the first boot comes from the card. The internal storage (Android or an older Linux) is not touched until you decide to move.
+You need: an SD card of 16 GB or more (a SanDisk or Samsung UHS-I card; see the card notes below), a card reader on the PC, root on the PC, and the files from steps 3 to 7.
+
+1. **Tarball.** Download `ArchLinuxARM-aarch64-latest.tar.gz` and its `.sig` from `os.archlinuxarm.org`, verify with `gpg --verify` (key `68B3537F39A313B3E574D06777193F152BDBE6A6`).
+2. **Firmware overlay (`FWDIR`).** A directory laid out like `/` that holds **only** the vendor files of step 7 (the paths in `tablet-rootfs/BLOBS`, the `u880/adsp2.*` set, `qca6750/` as a whole directory). **Do not copy whole directories of distro-owned firmware** (`qca/`, `ath11k/`): `pacman -Syu` later stops with `linux-firmware-atheros: /usr/lib/firmware/qca/... exists in filesystem`.
+3. **Image.** As root, with `bsdtar` (libarchive) installed so that file capabilities (`ping`, `newuidmap`) survive; GNU `tar` prints `Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.security.capability'` and drops them:
+   ```
+   sudo TARBALL=ArchLinuxARM-aarch64-latest.tar.gz MODULES=<modules_install dir>/lib/modules/<release> FWDIR=<overlay> \
+        SSH_PUBKEY=~/.ssh/id_ed25519.pub ROOT_LABEL=u880root scripts/build-rootfs-image.sh rootfs.img
+   ```
+   (on NixOS: `sudo nix-shell -p libarchive --run '...'` with absolute paths; `$HOME` becomes `/root` under sudo.) It unpacks the tarball, installs the modules and runs `depmod`, copies the overlay, installs everything listed in `tablet-rootfs/PATHS` (the offline equivalent of `tablet-config.sh push`; the mirror's home directory becomes `/home/alarm`), enables the project's units and a first-boot `u880-growfs.service`, and writes a 10 GB sparse ext4 image. Use another `ROOT_LABEL` (for example `u880sdtest`) when the tablet still has another root labelled `u880root`: fstab, growfs and the read-only udev rule all key on it. The tarball's default logins `alarm/alarm` and `root/root` stay: change them before the tablet joins a network.
+4. **Shrink it** (the card is the slow part): `cp --sparse=always rootfs.img min.img; e2fsck -f min.img; resize2fs -M min.img; truncate -s $((BLOCKS*4096)) min.img` (`BLOCKS` from `dumpe2fs -h`). A 10 GiB image shrinks to about 3.6 GB.
+5. **Write the card on the PC** (not in the tablet, whose slot wrote a slow card at 1 to 2 MB/s where the PC reader did 13 MB/s): `sudo bash scripts/write-sd-image.sh min.img /dev/sdX`. It refuses non-removable or mounted devices, partitions the card, writes the image, compares the sha256 of the written bytes, runs `e2fsck` and grows the filesystem to the whole card.
+6. **Boot image that tries the card first.** `scripts/make-boot-image.sh` with `CMDLINE='... u880root=sd,ufs ...'` (the default cmdline of the script with `u880root=ufs` replaced). `u880root=sd,ufs` makes `init` v12 mount `mmcblk1p1` first and fall back to the internal root when that fails, so a bad card cannot strand the tablet in the dead rescue. **Do not make the SD wait longer than a few seconds in `init`**: with no card the internal root then mounted 21 s late, `dispcc` (a module of the root filesystem) came after `fw_devlink.sync_state=timeout`, and the display never probed (black screen, ssh fine). Flash it as in step 9.
+7. **Card notes.** A card that fails with `mmc1: tuning execution failed: -110` / `DLL failed to LOCK` / `error -110 whilst initialising SD card` cannot do the 200 MHz mode on this board (two of three cards tried). Mask the fast modes in the SD node of the DTB and it runs at high speed (about 24 MB/s read): `fdtput -t x dtb /soc/sdhci@8804000 sdhci-caps-mask 3 0` (`<0x3 0x0>`: SDR50 and SDR104 off). **The mask applies to every card**, also fast ones, so remove it again when your card does not need it.
+
+### 8b. First boot of the fresh system, and the install that needs a reboot in the middle
+
+Boot with the card in. About 6 s of `init`, then Arch Linux ARM: display, USB networking and `sshd` are up (the very first boot can take minutes on a slow card). Then, over USB (step 7b):
+
+1. `ssh root@172.16.42.2` (key from `SSH_PUBKEY`, or `alarm/alarm`), set the date (step 7b).
+2. **Wi-Fi firmware and clock.** Without `/lib/firmware/qca6750/` (`wpss.mdt`, `wpss.bNN`, `wpss.qdb`, `regdb.bin`) the log says `remoteproc0: Direct firmware load for qca6750/wpss.mdt failed with error -2`, `ath11k ... probe with driver ath11k failed with error -2`, and there is no `wlan0`. If you copied the files after boot: `echo start > /sys/class/remoteproc/remoteproc0/state`, or reboot.
+3. `pacman-key --init && pacman-key --populate archlinuxarm`.
+4. **System upgrade, then reboot immediately:** `pacman -Syu --noconfirm --disable-download-timeout` (add `--overwrite '/usr/lib/firmware/qca/*'` etc. if step 8a.2 was not followed). It replaces `systemd`, `glibc`, `openssl` and `openssh` under the running system: afterwards new ssh sessions are reset before the banner (`kex_exchange_identification: Connection reset by peer`), the console shows `udev socket overridden while running` and `failed to send WATCHDOG=1 notification`. **Wait until the post-transaction hooks have finished (the log ends with the hooks list, and `pgrep pacman` is empty), then reboot.** Rebooting earlier leaves `/var/lib/pacman/db.lck` and half-run hooks (the log stops at `running '20-systemd-sysusers.hook'...`); repair with `rm /var/lib/pacman/db.lck; systemd-sysusers; systemd-tmpfiles --create; systemd-hwdb update; ldconfig; update-ca-trust`.
+5. **Packages:** the list of step 8.6 plus `wireless-regdb` and `sddm`: about 660 packages, 800 MB to download, 3.8 GB installed. Run it detached (`systemd-run --unit=pkgs --property=StandardOutput=append:/root/pkg.log /root/script.sh`), because the connection can drop and the card can be slow. Do not reboot while it runs.
+6. Continue with step 8 (passwords, `tablet-config.sh push` is already done by the image build, session flags), step 9 and step 10.
+
+**Not tested yet:** moving the system from the card to the internal storage, installing without any SD card (for someone coming from Android: `fastboot flash userdata rootfs.img` is the obvious route, but this bootloader may not accept it and it destroys Android's data), and everything after the package install (Wi-Fi after a reboot, Bluetooth, audio, GPU, sensors, step 10).
+
+### 8. Root filesystem (details, and the older route onto the internal partition)
 
 1. Download `ArchLinuxARM-aarch64-latest.tar.gz` and verify the signature (key `68B3537F39A313B3E574D06777193F152BDBE6A6`).
 2. **This destroys Android's userdata.** Format the UFS `userdata` partition as ext4 with label `u880root` and extract the tarball into it (as root, with xattrs, ACLs, numeric owners).

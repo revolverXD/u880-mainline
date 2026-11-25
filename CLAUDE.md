@@ -64,3 +64,12 @@ Judge the display with a **camera**, not only screenshots: compositor screenshot
 - Small commits, each explaining the why; update `NOTES.md` (dated entry) for what you did and `FINDINGS.md` for facts that stay true across a kernel upgrade (status + evidence + a command that re-proves it).
 - Measure before claiming: keep logs under `tools/profiles/` (tracked) or `logs/` (ignored). Say what you did not test.
 - Prefer RAM boot tests and reversible changes; keep the previous boot image and module files in `/root/u880-backup/` on the tablet.
+
+## Fresh install on a new tablet (what an agent must know)
+
+- Follow `README.md` steps 0 to 10; the tested route is 7b (USB Ethernet through the PC), 8a (root image built on the PC, written to an SD card on the PC) and 8b (first boot, `pacman -Syu`, **reboot**, then the package set). Nothing can be formatted or unpacked on the tablet before Linux runs: the rescue initramfs is dead on 7.3/7.4 (no USB/display modules, no `mkfs`, no GNU `tar`).
+- Never flash a boot image that drops `u880root=` (rescue) unless the initramfs carries the USB/display modules: it ends in a black screen with no USB, and only EDL (README step 0, FINDINGS F41, `boot_b` at the LBA from the GPT) repairs it. Use `u880root=sd,ufs` so that a failed card falls back to the internal root.
+- Keep the initramfs fast: any wait before the root mount longer than a few seconds makes the display driver miss `dispcc` (black screen, system otherwise fine).
+- The tablet has no RTC: set the date from the PC before `pacman` (`date -s @$(date +%s)`). Use a separate `known_hosts` for a re-installed system.
+- After `pacman -Syu` replaces `systemd`, ssh sessions break until reboot: reboot only when `pgrep pacman` is empty and the post-transaction hooks are done, never in the middle (stale `db.lck`).
+- Cards: write them on the PC. A card that fails SDR104 tuning (`tuning execution failed: -110`) needs `sdhci-caps-mask <0x3 0x0>` in the DTB (applies to every card). Do not kill a `dd` to a stuck card: it sits in state D until the card or the host goes away.

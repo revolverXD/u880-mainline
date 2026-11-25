@@ -7,6 +7,7 @@
 # MODULES  the built kernel modules of the SAME release as the boot image (its `build`/`source` symlinks are skipped)
 # FWDIR    directory laid out like / with the firmware you extracted from your own stock images and the locally built blobs of
 #          tablet-rootfs/BLOBS (README step 7), e.g. FWDIR/usr/lib/firmware/qcom/gen71100_zap.mbn
+# SSH_PUBKEY  file with your SSH public key: installed as authorized_keys for root and TABLET_USER (the tarball has none; otherwise log in as alarm/alarm)
 # ROOT_LABEL  filesystem label (default u880root; use another one, e.g. u880sdtest, for a second root next to an installed one: the udev read-only rule, fstab and u880-growfs all key on it)
 # The image is sparse (IMG_SIZE, default 10G); the first boot grows it to the whole partition (u880-growfs.service).
 # Then write it to the root partition from the rescue shell: README step 8 / scripts/install-from-rescue.md.
@@ -57,6 +58,11 @@ for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerl
   [ -e "$T/etc/systemd/system/$u.service" ] || [ -e "$T/usr/lib/systemd/system/$u.service" ] || [ -e "$T/usr/local/lib/systemd/system/$u.service" ] || { echo "  unit missing, not enabled: $u"; continue; }
   systemctl --root="$T" enable "$u.service" >/dev/null 2>&1 || echo "  could not enable $u"
 done
+if [ -n "${SSH_PUBKEY:-}" ]; then
+  [ -f "$SSH_PUBKEY" ] || { echo "no such file: $SSH_PUBKEY"; exit 4; }
+  install -d -m 700 "$T/root/.ssh" && install -m 600 "$SSH_PUBKEY" "$T/root/.ssh/authorized_keys"
+  install -d -m 700 -o "${UID_U%%:*}" -g "${UID_U##*:}" "$T/home/$U/.ssh" && install -m 600 -o "${UID_U%%:*}" -g "${UID_U##*:}" "$SSH_PUBKEY" "$T/home/$U/.ssh/authorized_keys"
+fi
 echo "== 5. ext4 image $SZ (label u880root)"
 rm -f "$OUT"; truncate -s "$SZ" "$OUT"
 mkfs.ext4 -q -L "$LBL" -b 4096 -m 1 -E root_owner=0:0 -d "$T" "$OUT"
