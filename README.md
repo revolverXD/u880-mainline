@@ -39,6 +39,23 @@ Tested on kernel `7.3.1-u880e`, boot slot B, Plasma Mobile 6.8.
 
 Open work is tracked in the GitHub issues; the full engineering log is `NOTES.md`, the durable verified facts are `FINDINGS.md`.
 
+## Performance (measured on the reference tablet)
+
+Kernel 7.3.1-u880e, Mesa 26.3.1, on battery, cooler fitted, `scripts/bench.sh` (full output and raw logs in `tools/profiles/20261125-bench-7.3.1-baseline/`):
+
+| Test | Result |
+|---|---|
+| GPU, glmark2 (Wayland, default scenes) | **1204** (Adreno 735 / "FD735", Turnip/freedreno, Mesa 26.3.1) |
+| CPU, 1 thread, prime core (Cortex-X4 class, up to 2.8 GHz) | 45.2 stress-ng matrixprod bogo ops/s; OpenSSL AES-256-CBC 1.58 GB/s, SHA-256 1.04 GB/s |
+| CPU, 1 thread, little core (1.9 GHz) | 18.9 matrixprod bogo ops/s (prime core is 2.4x faster) |
+| CPU, all 8 cores, 60 s | 303.8 matrixprod bogo ops/s; OpenSSL AES-256-CBC 8.8 GB/s, SHA-256 11.7 GB/s; SoC at 78 C at the end of 60 s with the cooler |
+| Memory | 1257 memcpy bogo ops/s (8 workers) |
+| Storage (UFS, ext4, direct I/O) | 986 MB/s sequential write, 1.2 GB/s sequential read, 6478 random 4 KiB reads/s at queue depth 1 |
+| Wi-Fi (Wi-Fi 6, 5 GHz, 80 MHz, 2x2) | 182 Mbit/s PC to tablet, 170 Mbit/s tablet to PC (the PC's own Wi-Fi is the limit; tablet link 576 Mbit/s at -74 dBm) |
+| Games | Borderlands 2 playable at 720p / 30 fps cap with Proton Experimental ARM64, no OOM kill over 26 min with zram (`NOTES.md` 2026-11-24) |
+
+These are bogo-op and synthetic numbers meant for before/after comparisons on this tablet, not cross-device rankings. Repeat runs of the same test were within a few percent (single-thread 44.9 vs 45.2, glmark2 1159 vs 1204).
+
 ## Hardware and firmware this was built for
 
 - Tablet: iPlay 70 mini Ultra **Global**, board `U880`, stock firmware **`U880_B14_V3.0L.1_0311`**. Newer stock firmware (3.0L.4, 2026-03) adds ABL
