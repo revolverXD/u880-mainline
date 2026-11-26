@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Pack the production boot image: kernel Image (uncompressed, arch/arm64/boot/Image) + stage1/initramfs.cpio.gz + a DTB, the cmdline of the installed images.
-# usage: [DEV=1] [KIMAGE=<Image>] [RAMDISK=<cpio.gz>] [MKBOOTIMG=<mkbootimg.py>] [CMDLINE=...] make-boot-image.sh <dtb> <out.img>
+# usage: [DEV=1] [ROOT=ufs|sd,ufs] [KIMAGE=<Image>] [RAMDISK=<cpio.gz>] [MKBOOTIMG=<mkbootimg.py>] [CMDLINE=...] make-boot-image.sh <dtb> <out.img>
 #   e.g. scripts/make-boot-image.sh stage1/dtb2-u880.dtb stage1/u880-boot.img
 # KIMAGE defaults to the newest of linux-7.4-rc4/linux-7.3.1 in the repo root; RAMDISK to stage1/initramfs.cpio.gz (scripts/build-initramfs.sh); MKBOOTIMG to AOSP system/tools/mkbootimg next to the repo
-#   (git clone https://android.googlesource.com/platform/system/tools/mkbootimg). CMDLINE=...u880root=sd,ufs... tries an SD card first (README step 8a).
+#   (git clone https://android.googlesource.com/platform/system/tools/mkbootimg). ROOT=sd,ufs tries an SD card first and falls back to the internal root (README step 8a); CMDLINE=... replaces the whole command line.
 # DTB: DISP=4 GPU=1 USB3=1 POWER=1 DP=1 ALLOW=scripts/allow-2a.txt nix-shell -p dtc --run "bash scripts/build-stock-disabled.sh" -> stage1/dtb2-disabled.dtb
 # Flash (from the running tablet, boot_b stays marked successful; boot_a ran out of tries, FINDINGS F18):
 #   cat <out.img> | rssh.sh 'cat > /root/boot.img'; rssh.sh 'dd if=/dev/sde40 of=/root/u880-backup/boot_b-prev.img bs=4M; blockdev --setrw /dev/sde /dev/sde40 &&
@@ -16,7 +16,7 @@ RD=${RAMDISK:-$M/stage1/initramfs.cpio.gz}; MKB=${MKBOOTIMG:-$M/../LineageOS/sys
 [ -s "$KI" ] || { echo "no kernel Image: build the kernel (README step 3) or set KIMAGE="; exit 2; }
 [ -s "$RD" ] || { echo "no ramdisk $RD: run scripts/build-initramfs.sh (README step 5) or set RAMDISK="; exit 2; }
 [ -s "$MKB" ] || { echo "no mkbootimg.py at $MKB: git clone https://android.googlesource.com/platform/system/tools/mkbootimg and set MKBOOTIMG="; exit 2; }
-CMDLINE=${CMDLINE:-"console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout apparmor=1 security=apparmor"}   # CMDLINE=... overrides
+CMDLINE=${CMDLINE:-"console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=${ROOT:-ufs} cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout apparmor=1 security=apparmor"}   # CMDLINE=... overrides
 # Production images turn debugfs off (issue #24); DEV=1 keeps it on for display/power bring-up (there is no RAM boot, FINDINGS F43: flash it only for the measurement and flash the production image back).
 [ "${DEV:-0}" = 1 ] || CMDLINE="$CMDLINE debugfs=off"
 python3 "$MKB" --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \

@@ -17,6 +17,7 @@
 /stage1/*
 !/stage1/*.dtso
 !/stage1/initramfs/
+/stage1/initramfs/lib/firmware/
 !/usb/
 !/power/
 !/tablet-rootfs/
