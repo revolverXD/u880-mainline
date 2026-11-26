@@ -37,6 +37,8 @@ while read -r p; do
   case $p in /home/*) h=${p#/home/}; h=${h%%/*}; dst=/home/$U/${p#/home/$h/}; own=$UID_U;; esac   # the mirror's home directory -> TABLET_USER's
   [ -f "$src" ] || { echo "  not in repo: $p"; continue; }
   install -D -m "$(stat -c %a "$src")" "$src" "$T$dst"
+  # the public export replaces the owner's name by the placeholder USER: use the real user here
+  grep -qI . "$T$dst" && sed -i "s#/home/USER/#/home/$U/#g; s#^User=USER\$#User=$U#" "$T$dst"
   if [ "$own" != 0:0 ]; then d=$T$dst; while [ "$d" != "$T/home/$U" ]; do chown "$own" "$d"; d=$(dirname "$d"); done; else chown 0:0 "$T$dst"; fi
   n=$((n+1))
 done < "$R/PATHS"
