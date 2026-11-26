@@ -75,4 +75,4 @@ rm -f "$OUT"; truncate -s "$SZ" "$OUT"
 mkfs.ext4 -q -L "$LBL" -b 4096 -m 1 -E root_owner=0:0 -d "$T" "$OUT"
 e2fsck -fn "$OUT" | tail -2
 ls -ls "$OUT"; sha256sum "$OUT" | tee "$OUT.sha256"
-echo "OK: $OUT   (default logins alarm/alarm and root/root: change them before the tablet joins a network, README step 8.4)"
+echo "OK: $OUT   (default logins alarm/alarm and root/root: change them before the tablet joins a network, README step 8c.4)"
