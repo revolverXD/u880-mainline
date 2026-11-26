@@ -1,0 +1,13 @@
+[Unit]
+Description=U880 Ambient Light Auto-Brightness (iio-sensor-proxy -> PowerDevil)
+After=plasma-powerdevil.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/u880-autobrightness
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=plasma-workspace.target

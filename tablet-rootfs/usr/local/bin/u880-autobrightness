@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Smooth ambient-light auto-brightness daemon for Alldocube iPlay 70 mini Ultra (U880).
+
+Reads LightLevel (lux) from iio-sensor-proxy (ADSP SSC TMD2755 via libssc) and
+drives KDE PowerDevil's BrightnessControl.setBrightnessSilent over session D-Bus.
+Releases the light sensor when the panel is blanked (bl_power != 0) and pauses
+temporarily if the user adjusts the brightness slider manually.
+"""
+
+import math
+import signal
+import sys
+import time
+from gi.repository import Gio, GLib
+
+BL_POWER_PATH = "/sys/class/backlight/u880-backlight/bl_power"
+SENSOR_BUS = "net.hadess.SensorProxy"
+SENSOR_PATH = "/net/hadess/SensorProxy"
+SENSOR_IFACE = "net.hadess.SensorProxy"
+
+PD_BUS = "org.kde.Solid.PowerManagement"
+PD_PATH = "/org/kde/Solid/PowerManagement/Actions/BrightnessControl"
+PD_IFACE = "org.kde.Solid.PowerManagement.Actions.BrightnessControl"
+
+MANUAL_HOLD_SEC = 120.0
+HYSTERESIS_FRAC = 0.03
+EMA_ALPHA = 0.25
+
+
+def lux_to_fraction(lux: float) -> float:
+    """Map ambient lux to [0.14, 1.00] using a smooth perceptual log curve."""
+    lux = max(0.0, lux)
+    if lux <= 0.5:
+        return 0.14
+    # log10(1)=0 -> 0.14, log10(10)=1 -> 0.30, log10(100)=2 -> 0.55,
+    # log10(500)=2.7 -> 0.80, log10(1500)=3.18 -> 1.00
+    x = math.log10(lux + 1.0) / math.log10(1501.0)
+    frac = 0.14 + 0.86 * (x ** 1.15)
+    return max(0.14, min(1.0, frac))
+
+
+def screen_is_on() -> bool:
+    try:
+        with open(BL_POWER_PATH, "r", encoding="ascii") as f:
+            return f.read().strip() == "0"
+    except OSError:
+        return True
+
+
+class AutoBrightness:
+    def __init__(self, loop: GLib.MainLoop):
+        self.loop = loop
+        self.sys_bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.ses_bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.claimed = False
+        self.max_br = 10000
+        self.cur_br = 2000
+        self.last_set_br = None
+        self.last_set_ts = 0.0
+        self.manual_until = 0.0
+        self.manual_lux = None
+        self.ema_lux = None
+        self.target_br = None
+
+        self._init_powerdevil()
+        self._init_sensor_proxy()
+        GLib.timeout_add_seconds(2, self._poll_screen)
+        GLib.timeout_add(120, self._step_ramp)
+
+    def _init_powerdevil(self):
+        self.pd = Gio.DBusProxy.new_sync(
+            self.ses_bus,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            PD_BUS,
+            PD_PATH,
+            PD_IFACE,
+            None,
+        )
+        try:
+            self.max_br = self.pd.call_sync(
+                "brightnessMax", None, Gio.DBusCallFlags.NONE, 2000, None
+            ).unpack()[0]
+            self.cur_br = self.pd.call_sync(
+                "brightness", None, Gio.DBusCallFlags.NONE, 2000, None
+            ).unpack()[0]
+        except GLib.Error as e:
+            print(f"u880-autobrightness: powerdevil init warning: {e}", file=sys.stderr, flush=True)
+
+        self.ses_bus.signal_subscribe(
+            PD_BUS,
+            PD_IFACE,
+            "brightnessChanged",
+            PD_PATH,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            self._on_brightness_changed,
+        )
+
+    def _init_sensor_proxy(self):
+        self.sensor = Gio.DBusProxy.new_sync(
+            self.sys_bus,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            SENSOR_BUS,
+            SENSOR_PATH,
+            SENSOR_IFACE,
+            None,
+        )
+        self.sys_bus.signal_subscribe(
+            SENSOR_BUS,
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+            SENSOR_PATH,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            self._on_sensor_props,
+        )
+        if screen_is_on():
+            self._claim(True)
+
+    def _claim(self, want: bool):
+        if want == self.claimed:
+            return
+        method = "ClaimLight" if want else "ReleaseLight"
+        try:
+            self.sensor.call_sync(method, None, Gio.DBusCallFlags.NONE, 2000, None)
+            self.claimed = want
+            if want:
+                val = self.sensor.get_cached_property("LightLevel")
+                if val is not None:
+                    self._handle_lux(float(val.unpack()))
+        except GLib.Error as e:
+            print(f"u880-autobrightness: {method} failed: {e}", file=sys.stderr, flush=True)
+
+    def _poll_screen(self) -> bool:
+        self._claim(screen_is_on())
+        return True
+
+    def _on_brightness_changed(self, _conn, _sender, _path, _iface, _sig, params):
+        br = int(params.unpack()[0])
+        self.cur_br = br
+        now = time.monotonic()
+        if self.last_set_br is not None and abs(br - self.last_set_br) <= max(50, int(self.max_br * 0.015)) and (now - self.last_set_ts) < 2.0:
+            return
+        # User changed brightness manually: pause auto-brightness briefly
+        self.manual_until = now + MANUAL_HOLD_SEC
+        self.manual_lux = self.ema_lux
+        self.target_br = None
+
+    def _on_sensor_props(self, _conn, _sender, _path, _iface, _sig, params):
+        iface, changed, _inv = params.unpack()
+        if iface == SENSOR_IFACE and "LightLevel" in changed:
+            self._handle_lux(float(changed["LightLevel"]))
+
+    def _handle_lux(self, lux: float):
+        if not self.claimed:
+            return
+        if self.ema_lux is None:
+            self.ema_lux = lux
+        else:
+            self.ema_lux = EMA_ALPHA * lux + (1.0 - EMA_ALPHA) * self.ema_lux
+
+        now = time.monotonic()
+        if now < self.manual_until:
+            # Break manual hold early only on a large lighting change
+            if self.manual_lux is not None:
+                diff = abs(self.ema_lux - self.manual_lux)
+                ratio = (self.ema_lux + 5.0) / (self.manual_lux + 5.0)
+                if diff < 80.0 and 0.33 < ratio < 3.0:
+                    return
+            else:
+                return
+            self.manual_until = 0.0
+
+        desired = int(round(lux_to_fraction(self.ema_lux) * self.max_br))
+        if abs(desired - self.cur_br) >= int(self.max_br * HYSTERESIS_FRAC):
+            self.target_br = desired
+
+    def _step_ramp(self) -> bool:
+        if self.target_br is None or not self.claimed:
+            return True
+        diff = self.target_br - self.cur_br
+        step = max(80, int(self.max_br * 0.02))
+        if abs(diff) <= step:
+            nxt = self.target_br
+            self.target_br = None
+        else:
+            nxt = self.cur_br + (step if diff > 0 else -step)
+        try:
+            self.last_set_br = nxt
+            self.last_set_ts = time.monotonic()
+            self.pd.call_sync(
+                "setBrightnessSilent",
+                GLib.Variant("(i)", (nxt,)),
+                Gio.DBusCallFlags.NONE,
+                1000,
+                None,
+            )
+            self.cur_br = nxt
+        except GLib.Error as e:
+            print(f"u880-autobrightness: setBrightnessSilent failed: {e}", file=sys.stderr, flush=True)
+            self.target_br = None
+        return True
+
+    def stop(self):
+        self._claim(False)
+        self.loop.quit()
+
+
+def main():
+    loop = GLib.MainLoop()
+    app = AutoBrightness(loop)
+    signal.signal(signal.SIGTERM, lambda *_: app.stop())
+    signal.signal(signal.SIGINT, lambda *_: app.stop())
+    loop.run()
+
+
+if __name__ == "__main__":
+    main()
