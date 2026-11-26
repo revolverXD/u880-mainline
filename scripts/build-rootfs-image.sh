@@ -5,8 +5,8 @@
 #        [TABLET_USER=alarm] [IMG_SIZE=10G] scripts/build-rootfs-image.sh <out.img>
 # TARBALL  verified Arch Linux ARM tarball (README step 8)
 # MODULES  the built kernel modules of the SAME release as the boot image (its `build`/`source` symlinks are skipped)
-# FWDIR    directory laid out like / with the firmware you extracted from your own stock images and the locally built blobs of
-#          tablet-rootfs/BLOBS (README step 7), e.g. FWDIR/usr/lib/firmware/qcom/gen71100_zap.mbn
+# FWDIR    directory laid out like / with the firmware you extracted from your own stock images (README step 7);
+#          the blobs of tablet-rootfs/BLOBS are built on the booted tablet, a second pass, so they are not needed here, e.g. FWDIR/usr/lib/firmware/qcom/gen71100_zap.mbn
 # SSH_PUBKEY  file with your SSH public key: installed as authorized_keys for root and TABLET_USER (the tarball has none; otherwise log in as alarm/alarm)
 # ROOT_LABEL  filesystem label (default u880root; use another one, e.g. u880sdtest, for a second root next to an installed one: the udev read-only rule, fstab and u880-growfs all key on it)
 # The image is sparse (IMG_SIZE, default 10G); the first boot grows it to the whole partition (u880-growfs.service).

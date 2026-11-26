@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pack stage1/initramfs/ (busybox rescue init + firmware the kernel needs before the SD root is mounted)
-# into stage1/initramfs.cpio.gz, the ramdisk that run-live.sh / boot-alarm.sh put into the boot image.
+# Pack stage1/initramfs/ (busybox init v12: mounts the root named by u880root= (ufs|sd|sd,ufs), plus the UFS modules and GPU firmware the kernel needs before it)
+# into stage1/initramfs.cpio.gz, the ramdisk that scripts/make-boot-image.sh puts into the boot image (README step 5).
 set -e
 M=$(cd "$(dirname "$0")/.." && pwd)
 FW="$M/stage1/initramfs/lib/firmware/qcom"

@@ -4,7 +4,7 @@
 #   e.g. scripts/make-boot-image.sh stage1/dtb2-u880.dtb stage1/u880-boot.img
 # KIMAGE defaults to the newest of linux-7.4-rc4/linux-7.3.1 in the repo root; RAMDISK to stage1/initramfs.cpio.gz (scripts/build-initramfs.sh); MKBOOTIMG to AOSP system/tools/mkbootimg next to the repo
 #   (git clone https://android.googlesource.com/platform/system/tools/mkbootimg). ROOT=sd,ufs tries an SD card first and falls back to the internal root (README step 8a); CMDLINE=... replaces the whole command line.
-# DTB: DISP=4 GPU=1 USB3=1 POWER=1 DP=1 ALLOW=scripts/allow-2a.txt nix-shell -p dtc --run "bash scripts/build-stock-disabled.sh" -> stage1/dtb2-disabled.dtb
+# DTB: dts/u880.dts compiled by scripts/build-dtb-from-dts.sh -> stage1/dtb2-u880.dtb (README step 4; build-stock-disabled.sh is the porting tool that made it)
 # Flash (from the running tablet, boot_b stays marked successful; boot_a ran out of tries, FINDINGS F18):
 #   cat <out.img> | rssh.sh 'cat > /root/boot.img'; rssh.sh 'dd if=/dev/sde40 of=/root/u880-backup/boot_b-prev.img bs=4M; blockdev --setrw /dev/sde /dev/sde40 &&
 #     dd if=/root/boot.img of=/dev/sde40 bs=4M conv=fsync; sync; blockdev --setro /dev/sde40 /dev/sde; head -c $(stat -c %s /root/boot.img) /dev/sde40 | sha256sum'
