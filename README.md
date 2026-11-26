@@ -1,6 +1,6 @@
 # Mainline Linux + Plasma Mobile on the Alldocube iPlay 70 mini Ultra (U880)
 
-A mainline Linux 7.3.1 port for one tablet: **Alldocube iPlay 70 mini Ultra, Global model, codename U880**
+A mainline Linux 7.3.1 / 7.4-rc4 port for one tablet: **Alldocube iPlay 70 mini Ultra, Global model, codename U880**
 (Qualcomm Snapdragon 7+ Gen 3, SM7675 "Cliffs", 12 GB RAM, UFS 3.1, 8.8" 1600x2560 144 Hz panel). It runs Arch Linux ARM with
 KDE Plasma Mobile (and the Denial shell), native ARM64 Steam and Proton, with the GPU, display, touch, Wi-Fi, Bluetooth,
 audio, sensors, USB-C (host, DisplayPort, PD), battery and thermal control working.
@@ -16,7 +16,7 @@ It does **not** contain the Linux source tree, vendor firmware or any keys (see 
 
 ## What works
 
-Tested on kernel `7.3.1-u880e`, boot slot B, Plasma Mobile 6.8.
+Tested on kernel `7.4.0-rc4-u880e` (the default since 2026-11-25; every result of the fresh-install test below was measured on it) and on `7.3.1-u880e` (the previous release, kept as the known-good fallback; the benchmark table is 7.3.1), boot slot B, Plasma Mobile 6.8.
 
 | Area | Status |
 |---|---|
@@ -135,6 +135,19 @@ On the PC (outside the container) you also need `dtc`, `fastboot`, `e2fsprogs`, 
 
 ### 3. Build the kernel
 
+**Two kernels are supported; build one of them.** `7.4.0-rc4` (current): `kernel/u880-kernel-delta-7.4.patch` + `kernel/u880-7.4.config`, release `7.4.0-rc4-u880e`. `7.3.1` (previous): `kernel/u880-kernel-delta.patch` + `kernel/u880.config`, release `7.3.1-u880e`. Everywhere below, `<release>` means the one you built; the initramfs UFS modules, the boot image and the root filesystem's `/usr/lib/modules/<release>` must all come from the same build.
+
+```
+# 7.4.0-rc4 (rc snapshots live at git.kernel.org/torvalds/t/; check the hash, it is the tarball the delta was made against)
+curl -LO https://git.kernel.org/torvalds/t/linux-7.4-rc4.tar.gz        # sha256 9f13091e6dd2d3576ad86e0c42ffa76b9993805a3f3a00f06981b242ea48aef9, 274538718 bytes
+tar -xf linux-7.4-rc4.tar.gz && cd linux-7.4-rc4
+patch -p1 < ../kernel/u880-kernel-delta-7.4.patch && cp ../kernel/u880-7.4.config .config
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e olddefconfig && make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e -j$(nproc) Image.gz modules
+# on NixOS without the container: scripts/build-kernel-nix.sh <tree>
+```
+
+The 7.3.1 recipe (the same steps with its own files):
+
 ```
 curl -LO https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.1.tar.xz      # keep it in the repo root, it is git-ignored
 tar -xf linux-7.3.1.tar.xz
@@ -152,7 +165,7 @@ After you change anything under `linux-7.3.1/`, regenerate the delta: `python3 s
 
 ### 4. Device tree
 
-`dts/u880.dts` is the production DTB as source (it is the stock SoC DTB with our nodes: cooling maps, vibrator, audio, DP, display, thermal, ...). Compile it:
+`dts/u880.dts` is the production DTB as source (it is the stock SoC DTB with our nodes: cooling maps, vibrator, audio, DP, display, thermal, ...). Compile it (checked 2026-11-26: the result is **byte-identical** to the DTB of the image that ran all the tests, `cmp` clean, 504107 bytes; the camera clock-controller experiment that used to be enabled in this file is in `dts/camcc-experiment-reverse.patch`, apply it with `patch -R`):
 
 ```
 dtc -q -I dts -O dtb -o stage1/dtb2-u880.dtb dts/u880.dts        # scripts/build-dtb-from-dts.sh does the same
@@ -266,7 +279,7 @@ Boot with the card in. About 6 s of `init`, then Arch Linux ARM: display, USB ne
 2. **This destroys Android's userdata.** Format the UFS `userdata` partition as ext4 with label `u880root` and extract the tarball into it (as root, with xattrs, ACLs, numeric owners).
    The history of how this was done (via an SD card first) is in `NOTES.md`, section 15 "Android removed, Linux root on internal UFS".
    Every UFS partition except `userdata` is made read-only by `/etc/udev/rules.d/99-u880-ufs-readonly.rules`; keep it.
-3. Install the kernel modules into `/usr/lib/modules/7.3.1-u880e/` and run `depmod`.
+3. Install the kernel modules into `/usr/lib/modules/<release>/` (for example `7.4.0-rc4-u880e`) and run `depmod` (`scripts/build-rootfs-image.sh` does both).
 4. Change the default passwords (`alarm`/`alarm`, `root`/`root`) before putting the tablet on a network, and generate your own SSH key (the scripts expect a project key in `alarm/ssh/`, which is not in git).
 5. Push our configs: `U880_HOST=<ip> scripts/tablet-config.sh push` (units, udev rules, sleep hook, UCM, thermal guard, Bluetooth and display services, Denial settings, `~/.bash_profile` session
    switch). `scripts/tablet-config.sh status` shows differences, `pull` captures them back.
@@ -305,7 +318,7 @@ tablet: check yours with `ls -l /dev/disk/by-partlabel/` before writing anything
 
 ### 10. Verify
 
-On the tablet: `uname -r` is `7.3.1-u880e`; `ls /sys/class/drm` shows `card1-DSI-1`; `dmesg | grep "UBWC programmed"` shows `STATIC=0x103e CTRL_2=0x2 PRED=0x1`;
+On the tablet: `uname -r` is `<release>` (`7.4.0-rc4-u880e` or `7.3.1-u880e`); `ls /sys/class/drm` shows `card1-DSI-1`; `dmesg | grep "UBWC programmed"` shows `STATIC=0x103e CTRL_2=0x2 PRED=0x1`;
 `modetest -M msm -p` lists the four refresh modes; thermal zones show the cooling maps (`ls /sys/class/thermal/thermal_zone*/trip_point_*_temp`); `bluetoothctl show` has the factory address;
 `iio-sensor-proxy` sees accelerometer and light; `pactl list short sinks` has `HiFi__Speaker__sink`; `scripts/dpms-fuzz.sh 100 200 4000` finishes without a wedge. Stress and game checks: `scripts/stress-run.sh`, `scripts/game-profile.sh`.
 
@@ -317,7 +330,7 @@ from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and th
 
 ## What is not in this repo
 
-- The Linux source tree (download 7.3.1 from kernel.org; our delta is `kernel/u880-kernel-delta.patch`).
+- The Linux source tree (download it: 7.3.1 from kernel.org with `kernel/u880-kernel-delta.patch`, or 7.4-rc4 with `kernel/u880-kernel-delta-7.4.patch`).
 - Vendor firmware and the stock images (extract from your own tablet), the Chinese `abl.elf` unlock files, the AOSP clang and `mkbootimg`.
 - Any keys or passwords: the tablet's SSH key lives in `alarm/ssh/` (git-ignored). Default passwords of the Arch Linux ARM image must be changed.
 - Build outputs and boot images (`stage1/*.img`, `.ko`, ...). They are rebuilt from the sources above.

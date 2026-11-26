@@ -1,6 +1,6 @@
 # CLAUDE.md: rebuilding and maintaining the U880 mainline port
 
-You are helping someone rebuild or extend a mainline Linux 7.3.1 + Arch Linux ARM + Plasma Mobile system for the **Alldocube iPlay 70 mini Ultra (U880, SM7675 "Cliffs")**.
+You are helping someone rebuild or extend a mainline Linux 7.4-rc4 (or the previous 7.3.1) + Arch Linux ARM + Plasma Mobile system for the **Alldocube iPlay 70 mini Ultra (U880, SM7675 "Cliffs")**.
 Read `README.md` first (what works, repo map, the 10 build steps), then `FINDINGS.md` (verified facts, one per topic), then search `NOTES.md` (chronological log, 2600+ lines) with `grep` for the area you touch.
 Open problems are the GitHub issues of this repository.
 
@@ -24,7 +24,7 @@ Open problems are the GitHub issues of this repository.
 
 ## Rebuild recipes (details in README)
 
-- **Kernel**: pristine `linux-7.3.1.tar.xz` + `kernel/u880-kernel-delta.patch` + `kernel/u880_defconfig`, `LOCALVERSION=-u880e` **always pinned** (since 2026-10-29; a different release makes every module and the initramfs UFS modules refuse to load; the display never probes: FINDINGS F7). Options that change `struct module` (e.g. `KPROBES`) need a NEW release name and a separate `/usr/lib/modules/<release>` directory, or no installed module loads (NOTES 2026-10-29 late). Build `Image.gz modules`.
+- **Kernel** (README step 3 has both recipes): 7.4-rc4 = pristine `linux-7.4-rc4.tar.gz` + `kernel/u880-kernel-delta-7.4.patch` + `kernel/u880-7.4.config` (release `7.4.0-rc4-u880e`, the current one); 7.3.1 = pristine `linux-7.3.1.tar.xz` + `kernel/u880-kernel-delta.patch` + `kernel/u880_defconfig`, `LOCALVERSION=-u880e` **always pinned** (since 2026-10-29; a different release makes every module and the initramfs UFS modules refuse to load; the display never probes: FINDINGS F7). Options that change `struct module` (e.g. `KPROBES`) need a NEW release name and a separate `/usr/lib/modules/<release>` directory, or no installed module loads (NOTES 2026-10-29 late). Build `Image.gz modules`.
   `scripts/clean-rebuild.sh` proves the delta is complete.
 - **After editing anything under `linux-7.3.1/`** regenerate the delta, or the change is not in git: `python3 scripts/snapshot-kernel-delta.py <pristine linux-7.3.1> linux-7.3.1` and commit `kernel/u880-kernel-delta.patch`.
   Built-in code (msm DRM, clk, genpd, pmdomain) needs a new boot image; modules (`dispcc-sm8550.ko`, `pm8xxx-vibrator.ko`, ...) are copied to `/usr/lib/modules/7.3.1-u880e/` + `depmod` and need only a reboot.
@@ -36,7 +36,7 @@ Open problems are the GitHub issues of this repository.
 
 ## Verification checklist after a kernel or DT change
 
-`uname -r` = `7.3.1-u880e`; `/sys/class/drm/card1-DSI-1` exists; `dmesg | grep "UBWC programmed"` = `STATIC=0x103e CTRL_2=0x2 PRED=0x1`; scanout modifier in `/sys/kernel/debug/dri/1/state` is `0x500000000000001` (needs debugfs: production images boot with `debugfs=off` and have no `/dev/mem`, so RAM-boot a `DEV=1 scripts/make-boot-image.sh` image for this check and for the debugfs/regdump scripts) and the picture is crisp (photograph it, see below);
+`uname -r` = `7.4.0-rc4-u880e` (or `7.3.1-u880e` on the old build); `/sys/class/drm/card1-DSI-1` exists; `dmesg | grep "UBWC programmed"` = `STATIC=0x103e CTRL_2=0x2 PRED=0x1`; scanout modifier in `/sys/kernel/debug/dri/1/state` is `0x500000000000001` (needs debugfs: production images boot with `debugfs=off` and have no `/dev/mem`, so RAM-boot a `DEV=1 scripts/make-boot-image.sh` image for this check and for the debugfs/regdump scripts) and the picture is crisp (photograph it, see below);
 four modes in `modetest -M msm -p`; `scripts/dpms-fuzz.sh 100 200 4000` clean; thermal zones have trips and `cdev` (`ls /sys/class/thermal/thermal_zone*/`); `bluetoothctl show` address `00:11:22:33:44:55`-style factory address and `btmgmt info` lists `connectable`; sensors and audio sinks present; no `stuck at`/`frame done timeout`/`gpu fault` bursts in `dmesg`.
 Judge the display with a **camera**, not only screenshots: compositor screenshots can be clean while the panel shows corruption (`scripts/cam.sh`).
 
