@@ -7,6 +7,7 @@ FW="$M/stage1/initramfs/lib/firmware/qcom"
 for f in gen71100_sqe.fw gen71100_gmu.bin gen71100_zap.mbn; do
   [ -s "$FW/$f" ] || [ -n "${ALLOW_NO_GPU_FW:-}" ] || { echo "missing $FW/$f: extract your own GPU firmware (README step 7), or set ALLOW_NO_GPU_FW=1 to build a ramdisk without GPU (no rendering)"; exit 1; }
 done
+for m in ufs-qcom qcom_ice phy-qcom-qmp-ufs; do [ -s "$M/stage1/initramfs/lib/modules-ufs/$m.ko" ] || { echo "missing stage1/initramfs/lib/modules-ufs/$m.ko: copy the three UFS modules of the kernel you built (README step 5), they must match its release"; exit 1; }; done
 cd "$M/stage1/initramfs"
 find . | LC_ALL=C sort | cpio -o -H newc -R 0:0 --quiet | gzip -9 > "$M/stage1/initramfs.cpio.gz"
 ls -la "$M/stage1/initramfs.cpio.gz"

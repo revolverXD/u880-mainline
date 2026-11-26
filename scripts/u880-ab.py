@@ -19,7 +19,7 @@ import os, struct, sys, zlib
 SEC = 4096
 H = "<8sIIIIQQQQ16sQIII"      # signature rev size crc32 reserved my alt first last guid entlba nent esize entcrc
 LUNS = (0, 1, 2, 4)
-LOADER = "../recovery/unlock/prog_firehose_ddr.elf"
+LOADER = os.environ.get("EDL_LOADER", "../recovery/unlock/prog_firehose_ddr.elf")   # the programmer of the unlock folder (README step 1)
 
 
 def parse(head):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Write kernel/u880-kernel-delta.patch = every SOURCE-type file in linux-7.2.9/ that differs from the pristine tarball tree (new files included),
+"""Write kernel/u880-kernel-delta.patch = every SOURCE-type file of the current tree that differs from the pristine tarball tree (new files included),
 and kernel/u880.config = the .config. Build outputs and generated files are skipped.
-usage: [SUFFIX=-7.4] snapshot-kernel-delta.py <pristine linux-X dir> [current dir=linux-7.2.9]
+usage: [SUFFIX=-7.4] snapshot-kernel-delta.py <pristine linux-X dir> [current dir=linux-7.2.9: pass your tree, e.g. linux-7.4-rc4]
 (SUFFIX writes kernel/u880-kernel-delta<SUFFIX>.patch and kernel/u880<SUFFIX>.config instead, so a port to another release does not overwrite the current files)"""
 import os, sys, difflib, shutil
 pri, cur = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2] if len(sys.argv) > 2 else 'linux-7.2.9')
