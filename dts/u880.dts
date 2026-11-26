@@ -12495,18 +12495,19 @@
 		};
 
 		camcc: clock-controller@ade0000 {
-			status = "disabled";
+			status = "okay";
 			compatible = "qcom,cliffs-camcc", "syscon";
 			reg = <0xade0000 0x20000>;
 			reg-name = "cc_base";
 			vdd_mm-supply = <0x14a>;
 			vdd_mx-supply = <0x14d>;
 			vdd_mxc-supply = <0x149>;
-			clocks = <0x16d 0x00 0x16d 0x01 0x16e 0x16f 0x0a>;
-			clock-names = "bi_tcxo", "bi_tcxo_ao", "sleep_clk", "iface";
+			/* mainline order: iface (gcc camera_ahb), bi_tcxo, bi_tcxo_ao, sleep_clk */
+			clocks = <0x16f 0x0a 0x16d 0x00 0x16d 0x01 0x16e>;
 			qcom,cam_crm-crmc = <0x170>;
 			#clock-cells = <0x01>;
 			#reset-cells = <0x01>;
+			#power-domain-cells = <0x01>;
 			phandle = <0x154>;
 		};
 
@@ -16897,33 +16898,26 @@
 		};
 
 		cam_cci0: qcom,cci0@ac15000 {
-			status = "disabled";
+			status = "okay";
 			phandle = <0x4a6>;
-			pinctrl-3 = <0x466 0x467>;
-			pinctrl-2 = <0x464 0x465>;
-			pinctrl-1 = <0x462 0x463>;
-			pinctrl-0 = <0x460 0x461>;
-			pinctrl-names = "m0_active", "m0_suspend", "m1_active", "m1_suspend";
-			pctrl-map-names = "m0", "m1";
-			pctrl-idx-mapping = <0x00 0x01>;
-			src-clock-name = "cci_0_clk_src";
-			clock-cntl-level = "lowsvs";
-			clock-rates = <0x23c3460 0x00>;
-			clocks = <0x154 0x20 0x154 0x1f>;
-			clock-names = "cci_0_clk_src", "cci_0_clk";
-			gdscr-supply = <0x1c5>;
-			regulator-names = "gdscr";
+			compatible = "qcom,sm8650-cci", "qcom,msm8996-cci";
+			reg = <0xac15000 0x1000>;
 			interrupts = <0x00 0x1aa 0x01>;
 			interrupt-names = "CCI0";
-			reg-cam-base = <0x15000>;
-			reg-names = "cci";
-			reg = <0xac15000 0x1000>;
-			compatible = "qcom,cci", "simple-bus";
-			cell-index = <0x00>;
+			power-domains = <&camcc 0x0>;
+			clocks = <&camcc 0x5>, <&camcc 0x11>, <&camcc 0xa>, <&camcc 0xd>, <&camcc 0xc>;
+			clock-names = "camnoc_axi", "cpas_ahb", "cci", "cci_1_clk_src", "cci_1_clk";
+			assigned-clocks = <&camcc 0xa>, <&camcc 0xd>;
+			assigned-clock-rates = <37500000>, <37500000>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <0x460 0x461 0x464 0x465>;
+			pinctrl-1 = <0x462 0x463 0x466 0x467>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 
 			i2c_freq_100Khz_cci0: qcom,i2c_standard_mode {
 				phandle = <0x4a7>;
-				status = "ok";
+				status = "disabled";
 				cci-clk-src = <0x23c3460>;
 				hw-tsp = <0x03>;
 				hw-trdhld = <0x06>;
@@ -16939,7 +16933,7 @@
 
 			i2c_freq_400Khz_cci0: qcom,i2c_fast_mode {
 				phandle = <0x4a8>;
-				status = "ok";
+				status = "disabled";
 				cci-clk-src = <0x23c3460>;
 				hw-tsp = <0x03>;
 				hw-trdhld = <0x06>;
@@ -16955,7 +16949,7 @@
 
 			i2c_freq_custom_cci0: qcom,i2c_custom_mode {
 				phandle = <0x4a9>;
-				status = "ok";
+				status = "disabled";
 				cci-clk-src = <0x23c3460>;
 				hw-tsp = <0x03>;
 				hw-trdhld = <0x03>;
@@ -16971,7 +16965,7 @@
 
 			i2c_freq_1Mhz_cci0: qcom,i2c_fast_plus_mode {
 				phandle = <0x4aa>;
-				status = "ok";
+				status = "disabled";
 				cci-clk-src = <0x23c3460>;
 				hw-tsp = <0x03>;
 				hw-trdhld = <0x03>;
@@ -16983,6 +16977,242 @@
 				hw-tsu-sto = <0x11>;
 				hw-tlow = <0x16>;
 				hw-thigh = <0x10>;
+			};
+
+			i2c-bus@0 {
+				reg = <0>;
+				clock-frequency = <400000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				/* Rear OV13B10 (7-bit 0x36, ID 0x560d42, 4-lane CSIPHY0) */
+				camera@36 {
+					compatible = "ovti,ov13b10";
+					reg = <0x36>;
+					clocks = <&camcc 0x60>;
+					assigned-clocks = <&camcc 0x60>;
+					assigned-clock-rates = <19200000>;
+					reset-gpios = <0x16c 15 1>;
+					pwdn-gpios = <0x16c 6 1>;
+					pinctrl-names = "default";
+					pinctrl-0 = <0x482 0x48e 0x490>;
+					dovdd-supply = <&pm8010m_l5>;
+					avdd-supply = <&pm8010m_l3>;
+					dvdd-supply = <&pm8010m_l1>;
+					power-domains = <&camcc 0x0>;
+
+					port {
+						u880_cam0_ep: endpoint {
+							data-lanes = <1 2 3 4>;
+							link-frequencies = /bits/ 64 <560000000>;
+							remote-endpoint = <&u880_csiphy0_ep>;
+						};
+					};
+				};
+			};
+
+			i2c-bus@1 {
+				reg = <1>;
+				clock-frequency = <400000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				/* Front GC05A2 (7-bit 0x3f, ID 0x05a2) */
+				camera@3f {
+					compatible = "galaxycore,gc05a2";
+					reg = <0x3f>;
+					clocks = <&camcc 0x68>;
+					assigned-clocks = <&camcc 0x68>;
+					assigned-clock-rates = <24000000>;
+					reset-gpios = <0x16c 3 1>;
+					pwdn-gpios = <0x16c 2 1>;
+					pinctrl-names = "default";
+					pinctrl-0 = <0x48a 0x498 0x49a>;
+					dovdd-supply = <&pm8010m_l5>;
+					avdd-supply = <&pm8010m_l4>;
+					dvdd-supply = <&pm8010m_l2>;
+					power-domains = <&camcc 0x0>;
+
+					port {
+						u880_cam1_ep: endpoint {
+							data-lanes = <1 2>;
+							link-frequencies = /bits/ 64 <448000000>;
+							remote-endpoint = <&u880_csiphy4_ep>;
+						};
+					};
+				};
+			};
+		};
+
+		u880_camss: isp@acb6000 {
+			compatible = "qcom,sm7675-camss";
+			status = "okay";
+
+			reg = <0x0acb6000 0x1000>,
+			      <0x0acb8000 0x1000>,
+			      <0x0acba000 0x1000>,
+			      <0x0acbc000 0x1000>,
+			      <0x0accb000 0x1000>,
+			      <0x0acd0000 0x1000>,
+			      <0x0ace4000 0x2000>,
+			      <0x0ace6000 0x2000>,
+			      <0x0ace8000 0x2000>,
+			      <0x0acea000 0x2000>,
+			      <0x0acec000 0x2000>,
+			      <0x0ac62000 0xf000>,
+			      <0x0ac71000 0xf000>,
+			      <0x0ac80000 0xf000>,
+			      <0x0accc000 0x2000>,
+			      <0x0acd1000 0x2000>;
+			reg-names = "csid_wrapper",
+				    "csid0",
+				    "csid1",
+				    "csid2",
+				    "csid_lite0",
+				    "csid_lite1",
+				    "csiphy0",
+				    "csiphy1",
+				    "csiphy2",
+				    "csiphy3",
+				    "csiphy4",
+				    "vfe0",
+				    "vfe1",
+				    "vfe2",
+				    "vfe_lite0",
+				    "vfe_lite1";
+
+			clocks = <&camcc 6>,
+				 <&camcc 17>,
+				 <&camcc 20>,
+				 <&camcc 21>,
+				 <&camcc 22>,
+				 <&camcc 23>,
+				 <&camcc 24>,
+				 <&camcc 50>,
+				 <&camcc 53>,
+				 <&camcc 34>,
+				 <&camcc 54>,
+				 <&camcc 36>,
+				 <&camcc 55>,
+				 <&camcc 38>,
+				 <&camcc 56>,
+				 <&camcc 40>,
+				 <&camcc 57>,
+				 <&camcc 42>,
+				 <&camcc 52>,
+				 <0x16f 11>,
+				 <&camcc 137>,
+				 <&camcc 68>,
+				 <&camcc 70>,
+				 <&camcc 72>,
+				 <&camcc 74>,
+				 <&camcc 76>,
+				 <&camcc 78>,
+				 <&camcc 81>,
+				 <&camcc 80>,
+				 <&camcc 83>,
+				 <&camcc 84>;
+			clock-names = "camnoc_axi",
+				      "cpas_ahb",
+				      "cpas_fast_ahb",
+				      "cpas_vfe0",
+				      "cpas_vfe1",
+				      "cpas_vfe2",
+				      "cpas_vfe_lite",
+				      "csid",
+				      "csiphy0",
+				      "csiphy0_timer",
+				      "csiphy1",
+				      "csiphy1_timer",
+				      "csiphy2",
+				      "csiphy2_timer",
+				      "csiphy3",
+				      "csiphy3_timer",
+				      "csiphy4",
+				      "csiphy4_timer",
+				      "csiphy_rx",
+				      "gcc_axi_hf",
+				      "qdss_debug_xo",
+				      "vfe0",
+				      "vfe0_fast_ahb",
+				      "vfe1",
+				      "vfe1_fast_ahb",
+				      "vfe2",
+				      "vfe2_fast_ahb",
+				      "vfe_lite",
+				      "vfe_lite_ahb",
+				      "vfe_lite_cphy_rx",
+				      "vfe_lite_csid";
+
+			interrupts = <0 601 1>,
+				     <0 603 1>,
+				     <0 431 1>,
+				     <0 605 1>,
+				     <0 376 1>,
+				     <0 477 1>,
+				     <0 478 1>,
+				     <0 479 1>,
+				     <0 448 1>,
+				     <0 122 1>,
+				     <0 602 1>,
+				     <0 604 1>,
+				     <0 688 1>,
+				     <0 606 1>,
+				     <0 377 1>;
+			interrupt-names = "csid0",
+					  "csid1",
+					  "csid2",
+					  "csid_lite0",
+					  "csid_lite1",
+					  "csiphy0",
+					  "csiphy1",
+					  "csiphy2",
+					  "csiphy3",
+					  "csiphy4",
+					  "vfe0",
+					  "vfe1",
+					  "vfe2",
+					  "vfe_lite0",
+					  "vfe_lite1";
+
+			interconnects = <0x1a3 0x02 0x1a4 0x204>,
+					<0x1c0 0x0b 0x189 0x200>;
+			interconnect-names = "ahb", "hf_mnoc";
+
+			iommus = <&apps_smmu 0x800 0x20>;
+
+			power-domains = <&camcc 2>,
+					<&camcc 3>,
+					<&camcc 4>,
+					<&camcc 0>;
+			power-domain-names = "ife0", "ife1", "ife2", "top";
+
+			vdd-csiphy01-0p9-supply = <&pmxr2230_l2>;
+			vdd-csiphy01-1p2-supply = <&pmxr2230_l4>;
+			vdd-csiphy24-0p9-supply = <&pmxr2230_l2>;
+			vdd-csiphy24-1p2-supply = <&pmxr2230_l4>;
+			vdd-csiphy35-0p9-supply = <&pmxr2230_l2>;
+			vdd-csiphy35-1p2-supply = <&pmxr2230_l4>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					u880_csiphy0_ep: endpoint {
+						data-lanes = <0 1 2 3>;
+						remote-endpoint = <&u880_cam0_ep>;
+					};
+				};
+
+				port@4 {
+					reg = <4>;
+					u880_csiphy4_ep: endpoint {
+						data-lanes = <0 1>;
+						remote-endpoint = <&u880_cam1_ep>;
+					};
+				};
 			};
 		};
 
