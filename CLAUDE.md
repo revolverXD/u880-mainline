@@ -56,6 +56,7 @@ Judge the display with a **camera**, not only screenshots: compositor screenshot
 - **Thermal**: the die heats 2.5-5 C/s. The DT cooling maps and `u880-thermal-guard` must both stay; do not load-test without them.
 - **Audio**: do not put a DisplayPort PCM in the same UCM verb as the speakers (the profile is dropped when it fails to open). WirePlumber remembers a saved `pro-audio` profile in `~/.local/state/wireplumber/`.
 - **Android caches BLE GATT tables**: refresh/forget the device in nRF Connect after changing a GATT server. Do not loop a fixed-length audio file with repeated player runs when measuring dropouts (each restart is a gap).
+- **Git does not keep empty directories**: the initramfs needs `dev proc sys newroot tmp`, which `scripts/build-initramfs.sh` creates; a ramdisk packed by hand from a fresh clone cannot boot (found by the third cold-read test, 2026-11-26). Whenever a build uses a directory tree from git, check what an empty directory would break.
 - **Steam shader pre-caching** replays about 1 M pipelines (hours, all cores): turn it off in Steam settings.
 
 ## Style of work in this repo
