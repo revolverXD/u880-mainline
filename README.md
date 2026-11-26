@@ -63,13 +63,13 @@ These are bogo-op and synthetic numbers meant for before/after comparisons on th
 - SoC `qcom,cliffs` (SM7675, soc_id 643); the downstream platform is the `pineapple` (SM8650) family.
 - Boot chain: Qualcomm ABL (Android bootloader), A/B slots, Virtual A/B, boot header v2.
 - The kernel base and many drivers come from the [senemos-uke-kernel-mainline](https://github.com/MCC45TR/senemos-uke-kernel-mainline) series (MIT) for
-  the Xiaomi Pad 7 / POCO Pad X1, which has the same SoC. Our delta on top of vanilla Linux 7.3.1 is `kernel/u880-kernel-delta.patch`.
+  the Xiaomi Pad 7 / POCO Pad X1, which has the same SoC. Our delta on top of vanilla Linux is `kernel/u880-kernel-delta-7.4.patch` (7.4-rc4, current) or `kernel/u880-kernel-delta.patch` (7.3.1).
 
 ## Repository map
 
 | Path | What |
 |---|---|
-| `kernel/` | `u880-kernel-delta.patch` (every source change vs vanilla 7.3.1), `u880_defconfig`, `u880.config` |
+| `kernel/` | `u880-kernel-delta-7.4.patch` + `u880-7.4.config` (every source change vs vanilla 7.4-rc4, current); `u880-kernel-delta.patch` + `u880_defconfig` + `u880.config` (vs vanilla 7.3.1, previous) |
 | `dts/u880.dts` | the production device tree as one source file (decompiled from the working DTB, plus our additions) |
 | `stage1/*.dtso`, `stage1/initramfs/` | DT overlays used while bringing the board up; the rescue/boot initramfs source (busybox, `init`) |
 | `stock-dt/` | parsers for the device trees in the stock firmware (`dtbo.py`, `vb.py`). The decompiled vendor trees (`dtb2` = SoC DT, `o25` = board overlay) are **not published**: regenerate them from your own `vendor_boot`/`dtbo` |
@@ -81,13 +81,15 @@ These are bogo-op and synthetic numbers meant for before/after comparisons on th
 | `tools/` | small helpers: BLE test server, audio dropout analyser, rumble tool, profiles of test runs |
 | `NOTES.md`, `FINDINGS.md` | engineering log; durable facts with status and a reproduce command each |
 
-**Paths:** the scripts were written for the repo living at `/home/USER/External/work/src/mainline` and the Android clang in
-`/home/USER/External/work/src/LineageOS/prebuilts/...`. On another machine either clone to those paths or rewrite them once:
+**Paths:** the scripts were written for the repo living at `/home/USER/External/work/src/mainline`, with `LineageOS/` (AOSP `prebuilts/clang/...` and `system/tools/mkbootimg`) next to it in `/home/USER/External/work/src/`. The newer scripts find their own directory; for the older ones rewrite the prefix once (run it in the repo root, it needs `mainline` to be the directory name or the first line to fix it):
 
 ```
-grep -rIl '/home/USER/External/work/src/mainline' scripts tools tablet-rootfs steam | xargs sed -i "s#/home/USER/External/work/src/mainline#$PWD#g"
-# then point CL= (clang) and the mkbootimg.py path in scripts/*.sh at your own copies
+SRC=$(dirname "$PWD")        # the directory that contains this repo and (for clang and mkbootimg) a LineageOS/ directory
+grep -rIl '/home/USER/External/work/src/mainline' scripts tools tablet-rootfs steam | xargs -r sed -i "s#/home/USER/External/work/src/mainline#$PWD#g"
+grep -rIl '/home/USER/External/work/src' scripts tools tablet-rootfs steam | xargs -r sed -i "s#/home/USER/External/work/src#$SRC#g"
 ```
+
+Put the AOSP pieces where the scripts look: `$SRC/LineageOS/system/tools/mkbootimg` (`git clone https://android.googlesource.com/platform/system/tools/mkbootimg`) and, for the Android clang, `$SRC/LineageOS/prebuilts/clang/host/linux-x86/clang-r574158` (from AOSP `platform/prebuilts/clang/host/linux-x86`; pick a branch or tag that contains that directory). `scripts/build-kernel-7.sh` and `scripts/build-kernel.sh` use further paths of the original machine (`root/guest-kernel/...`): they are for the Debian VM and the Android-era build and are not needed for this install.
 
 ## Safety rules
 
@@ -110,17 +112,16 @@ for the first kernel build. The steps are in the order they were done; each says
 ### 0. Back up and get recovery material
 
 Download the full stock `U880_B14_V3.0L.1_0311` firmware (EDL "flat build": `rawprogram*.xml`, `patch0.xml`, `prog_firehose_ddr.elf`). Read every partition you can
-with `bkerler/edl` (`edl rl`). Keep a copy of the stock `boot_a`, `abl_a`, `abl_b`. Recovery recipe if the system does not boot and fastboot is gone: enter EDL (`adb reboot edl`, or power off, hold Vol+ Vol- Power, release at the brief logo flash and plug in),
+with `bkerler/edl` (the tablet in EDL, programmer `prog_firehose_ddr.elf` from the stock package): for each LUN 0 to 5, `edl --loader=prog_firehose_ddr.elf --memory=ufs --lun=$L printgpt > gpt-lun$L.txt` and `edl --loader=prog_firehose_ddr.elf --memory=ufs --lun=$L rl backup-lun$L`; the partition tables (`gpt-lun*.txt`) are what every later EDL write takes its sectors from (never from notes). Keep a copy of the stock `boot_a`, `abl_a`, `abl_b`. No download URL is given for the stock firmware (not redistributable here); use the reference version `U880_B14_V3.0L.1_0311`, never a build newer than V3.0L.1 (V3.0L.4 and later add ABL anti-tamper that defeats the unlock below). Recovery recipe if the system does not boot and fastboot is gone: enter EDL (`adb reboot edl`, or power off, hold Vol+ Vol- Power, release at the brief logo flash and plug in),
 then flash the full stock firmware with `rawprogram_all.xml` + `patch0.xml` and `prog_firehose_ddr.elf`, memory type UFS (`bkerler/edl` on Linux, QPST/QFIL or `QSaharaServer` + `fh_loader` on Windows).
 That XML leaves `persist`, `modemst*`, `fsg`, `devinfo`, `frp` and all `_b` partitions alone. Afterwards redo the unlock below. **Never tick "Erase all before download".**
-If only the system fails to boot but fastboot works, reflash a known-good boot image to the slot (README step 9).
+If a Linux system that used to boot stops booting, repair `boot_b` over EDL with a known-good image (FINDINGS F41: take the LBA from the GPT, never from notes); the fastboot that the key combination gives is XBL's and cannot flash anything. While Linux still runs, step 9 flashes a new image from the running tablet.
 
 ### 1. Unlock the bootloader (model specific, risky)
 
 The Global ABL refuses `fastboot flashing unlock`. The method used here (from an XDA guide for this model): write a modified Chinese-model `abl.elf` to
-`abl_a` only over EDL (`rawprogram` for LUN 4, start sector 95238, 256 sectors of 4096 B), then run `fastboot flashing unlock` (this wipes the tablet).
-The Chinese `abl.elf` and the unlock `rawprogram` XML are **not** in this repo; follow the XDA thread for your firmware. Verify afterwards that `fastboot` works and
-`androidboot.verifiedbootstate=orange`.
+`abl_a` only over EDL (`rawprogram` for LUN 4; on the reference tablet `abl_a` starts at sector 95238 and is 256 sectors of 4096 B, but **read the start sector of `abl_a` from your own `printgpt` output** and edit the XML to match), then run `fastboot flashing unlock` (this wipes the tablet).
+The Chinese `abl.elf` and the unlock `rawprogram` XML are **not** in this repo, and no URL is recorded here: search XDA for the iPlay 70 mini Ultra / U880 bootloader-unlock thread for your firmware version. Verify afterwards that `fastboot oem device-info` answers with `Device unlocked: true` (if it answers at all, ABL ran; XBL's fastboot does not answer it), and that once Linux runs, `grep -o androidboot.verifiedbootstate=[a-z]* /proc/cmdline` says `orange`.
 
 ### 2. Build environment
 
@@ -130,8 +131,8 @@ The project host is NixOS; everything that needs a normal Linux userland runs in
 distrobox create -Y -n aosp -i docker.io/library/ubuntu:24.04 --additional-packages "git git-lfs gnupg flex bison build-essential zip unzip curl zlib1g-dev libc6-dev-i386 libssl-dev bc lz4 zstd squashfs-tools libncurses6 pngcrush schedtool lzop imagemagick python3 python-is-python3 openjdk-17-jdk ccache rsync cpio xz-utils"
 ```
 
-On the PC (outside the container) you also need `dtc`, `fastboot`, `e2fsprogs`, `cpio`, `python3`. The kernel is built with the **Android prebuilt clang r574158**
-(`prebuilts/clang/host/linux-x86/clang-r574158`) and boot images are packed with AOSP's `mkbootimg.py` (`system/tools/mkbootimg`): fetch both from AOSP. Other clang versions are untested.
+On the PC (outside the container) you also need `dtc`, `fastboot`, `e2fsprogs`, `cpio`, `python3` (on NixOS none of them is on `PATH` by default: `nix-shell -p dtc e2fsprogs cpio python3`). The 7.3.1 kernel was built with the **Android prebuilt clang r574158**
+(`prebuilts/clang/host/linux-x86/clang-r574158`); the 7.4-rc4 kernel builds with it and also with Nix's clang 21.1.8 (`scripts/build-kernel-nix.sh`), so any clang 21 should work, older ones are untested. Boot images are packed with AOSP's `mkbootimg.py` (`system/tools/mkbootimg`): fetch both from AOSP (see the paths note above).
 
 ### 3. Build the kernel
 
@@ -142,8 +143,10 @@ On the PC (outside the container) you also need `dtc`, `fastboot`, `e2fsprogs`, 
 curl -LO https://git.kernel.org/torvalds/t/linux-7.4-rc4.tar.gz        # sha256 9f13091e6dd2d3576ad86e0c42ffa76b9993805a3f3a00f06981b242ea48aef9, 274538718 bytes
 tar -xf linux-7.4-rc4.tar.gz && cd linux-7.4-rc4
 patch -p1 < ../kernel/u880-kernel-delta-7.4.patch && cp ../kernel/u880-7.4.config .config
-make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e olddefconfig && make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e -j$(nproc) Image.gz modules
-# on NixOS without the container: scripts/build-kernel-nix.sh <tree>
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e olddefconfig                      # must leave .config equal to kernel/u880-7.4.config
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e -j$(nproc) Image Image.gz modules
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e INSTALL_MOD_PATH=$PWD/../modules-out INSTALL_MOD_STRIP=1 modules_install
+# on NixOS without the container (Nix clang 21.1.8, tree with .config in place):  MODULES_OUT=$PWD/../modules-out scripts/build-kernel-nix.sh linux-7.4-rc4
 ```
 
 The 7.3.1 recipe (the same steps with its own files):
@@ -160,15 +163,15 @@ make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e INSTALL_MOD_PATH=$PWD/../m
 ```
 
 `LOCALVERSION` **must stay pinned** (`-u880e`): the initramfs and the rootfs carry modules for that exact release and the display driver silently never probes otherwise
-(FINDINGS F7). `scripts/clean-rebuild.sh` does the pristine-tarball rebuild and compares the result with a working tree (used to prove the delta is complete).
-After you change anything under `linux-7.3.1/`, regenerate the delta: `python3 scripts/snapshot-kernel-delta.py <pristine linux-7.3.1 dir> linux-7.3.1`.
+(FINDINGS F7). `KVER=7.4-rc4 scripts/clean-rebuild.sh` (or `KVER=7.3.1`) does the pristine-tarball rebuild and compares the result with a working tree (used to prove the delta is complete).
+After you change anything under the tree, regenerate the delta: `python3 scripts/snapshot-kernel-delta.py <pristine 7.3.1 dir> linux-7.3.1`, or for 7.4: `SUFFIX=-7.4 python3 scripts/snapshot-kernel-delta.py <pristine linux-7.4-rc4 dir> linux-7.4-rc4`.
 
 ### 4. Device tree
 
 `dts/u880.dts` is the production DTB as source (it is the stock SoC DTB with our nodes: cooling maps, vibrator, audio, DP, display, thermal, ...). Compile it (checked 2026-11-26: the result is **byte-identical** to the DTB of the image that ran all the tests, `cmp` clean, 504107 bytes; the camera clock-controller experiment that used to be enabled in this file is in `dts/camcc-experiment-reverse.patch`, apply it with `patch -R`):
 
 ```
-dtc -q -I dts -O dtb -o stage1/dtb2-u880.dtb dts/u880.dts        # scripts/build-dtb-from-dts.sh does the same
+dtc -q -I dts -O dtb -o stage1/dtb2-u880.dtb dts/u880.dts        # same as: scripts/build-dtb-from-dts.sh (default output stage1/dtb2-u880.dtb); NixOS: nix-shell -p dtc --run "bash scripts/build-dtb-from-dts.sh"
 ```
 
 The ABL only accepts a DTB that contains the stock SoC structure (it applies the board overlay `dtbo` itself), which is why we start from the stock DT instead of a
@@ -177,14 +180,17 @@ and re-applying our additions with `scripts/build-stock-disabled.sh` and the ove
 
 ### 5. Initramfs
 
-`stage1/initramfs/` holds a busybox rescue `init` (v10). With `u880root=ufs` on the kernel command line it loads the UFS modules from `lib/modules-ufs/`, mounts the partition named
-`userdata` (ext4, label `u880root`) and `switch_root`s; otherwise it is meant to give a rescue shell on the USB serial gadget (`usb0` 172.16.42.2). **On the 7.3/7.4 kernels this rescue is dead** (tested 2026-11-25): the USB PHY (`phy-qcom-qmp-combo`), `qcom_pmic_glink`, the eUSB2 repeater and the display clock (`dispcc-sm8550`) are modules that only the real root filesystem loads, so a rescue boot shows kernel text and then a black screen and never appears on the PC's USB. It has no `mkfs` or GNU `tar` either. Do not flash a rescue image unless those modules are in the initramfs.
+`stage1/initramfs/` holds the busybox `init` (v12). With `u880root=ufs` on the kernel command line it loads the three UFS modules from `lib/modules-ufs/`, mounts the partition named `archdata` (or, on a stock layout, `userdata`; ext4, label `u880root`) and `switch_root`s;
+with `u880root=sd,ufs` it tries the first partition of the SD card first and falls back to the internal root (README step 8a). With neither it is meant to give a rescue shell on the USB serial gadget (`usb0` 172.16.42.2). **On the 7.3/7.4 kernels this rescue is dead** (tested 2026-11-25): the USB PHY (`phy-qcom-qmp-combo`), `qcom_pmic_glink`, the eUSB2 repeater and the display clock (`dispcc-sm8550`) are modules that only the real root filesystem loads, so a rescue boot shows kernel text and then a black screen and never appears on the PC's USB. It has no `mkfs` or GNU `tar` either. Do not flash a rescue image unless those modules are in the initramfs.
+
+The GPU firmware of step 7 must be in the initramfs too, so **do step 7 (at least the three `gen71100_*` files) before this one**, or build without it (`ALLOW_NO_GPU_FW=1`: boots, but nothing can render):
 
 ```
-mkdir -p stage1/initramfs/lib/modules-ufs
-cp <ufs-qcom.ko qcom_ice.ko phy-qcom-qmp-ufs.ko built above> stage1/initramfs/lib/modules-ufs/
-# put the Adreno firmware extracted from your tablet (see step 7) in stage1/initramfs/lib/firmware/qcom/
-bash scripts/build-initramfs.sh          # -> stage1/initramfs.cpio.gz
+mkdir -p stage1/initramfs/lib/modules-ufs stage1/initramfs/lib/firmware/qcom
+K=linux-7.4-rc4        # the tree of step 3
+cp $K/drivers/ufs/host/ufs-qcom.ko $K/drivers/soc/qcom/qcom_ice.ko $K/drivers/phy/qualcomm/phy-qcom-qmp-ufs.ko stage1/initramfs/lib/modules-ufs/
+cp <gen71100_sqe.fw gen71100_gmu.bin gen71100_zap.mbn from step 7> stage1/initramfs/lib/firmware/qcom/
+bash scripts/build-initramfs.sh          # -> stage1/initramfs.cpio.gz   (ALLOW_NO_GPU_FW=1 bash scripts/build-initramfs.sh: without the GPU firmware)
 ```
 
 The three UFS modules must come from the same build/release as the kernel (a mismatch hangs at boot before the root mount: blue screen, no network).
@@ -192,32 +198,38 @@ The three UFS modules must come from the same build/release as the kernel (a mis
 ### 6. Boot image
 
 ```
-python3 <aosp>/system/tools/mkbootimg/mkbootimg.py --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \
-  --kernel linux-7.3.1/arch/arm64/boot/Image.gz --ramdisk stage1/initramfs.cpio.gz --dtb stage1/dtb2-u880.dtb \
-  --pagesize 0x1000 --base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --second_offset 0 --tags_offset 0x100 --dtb_offset 0x1f00000 \
-  --cmdline 'console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout' \
-  -o stage1/u880-boot.img
+scripts/make-boot-image.sh stage1/dtb2-u880.dtb stage1/u880-boot.img
 ```
 
-`scripts/make-boot-image.sh` wraps this. Test first without writing anything: `fastboot boot stage1/u880-boot.img` (the ABL refuses `fastboot boot` while slot B is active:
-`fastboot set_active a; fastboot reboot bootloader` first, see FINDINGS F18).
+The script packs the **uncompressed** kernel `arch/arm64/boot/Image` (not `Image.gz`; the working image's kernel is the 48 MB `Image`), `stage1/initramfs.cpio.gz` and the DTB with `mkbootimg.py` (header v2, offsets `--base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --tags_offset 0x100 --dtb_offset 0x1f00000`, page size 4096) and the command line that every tested image used
+(`console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout`, plus `debugfs=off` unless `DEV=1`).
+Defaults and overrides: `KIMAGE` (kernel Image; default the newest `linux-7.4-rc4`/`linux-7.3.1` in the repo root), `RAMDISK` (default `stage1/initramfs.cpio.gz`), `MKBOOTIMG` (default `../LineageOS/system/tools/mkbootimg/mkbootimg.py`; `git clone https://android.googlesource.com/platform/system/tools/mkbootimg`), `CMDLINE`. **Do not hand-type the `mkbootimg` command**: a made-up kernel argument once boot-looped the tablet (CLAUDE.md).
+Before flashing, compare the 4096-byte header of your image with the installed one (`unpack_bootimg.py`): only the size fields, the id hash and the ramdisk may differ.
+
+There is no RAM boot on this unit: the fastboot that the key combination gives is XBL's and refuses `boot` and `flash` (FINDINGS F43, F40), so a bad image is repaired over EDL (step 0, FINDINGS F41), not by booting another one. Flash and fall-back handling are in step 9.
 
 ### 7. Firmware you must extract yourself
 
-Vendor firmware is not redistributable and is **not** in this repo. Extract it from your own tablet's stock `vendor`/`odm`/`modem` images (they are ext4/erofs; `debugfs -R "cat ..."` works read-only), never from someone else's copy:
+Vendor firmware is not redistributable and is **not** in this repo. Extract it from your own tablet's stock images (never someone else's copy). The stock `vendor`, `odm` and `modem` images are partitions inside the Android `super` image: unpack it first (`lpunpack super.img`), then read the ext4 ones with `debugfs -R "cat <path>" <img>` or the erofs ones with `fsck.erofs --extract=<dir> <img>` (`debugfs` cannot read erofs). Where the files live in the stock (or LineageOS) vendor tree, and where they go on the root filesystem:
 
-- Adreno 735: `gen71100_sqe.fw`, `gen71100_gmu.bin`, `gen71100_zap.mbn` -> `/lib/firmware/qcom/` on the root filesystem, and also into `stage1/initramfs/lib/firmware/qcom/` (the initramfs build `scripts/build-initramfs.sh` stops with a message if they are missing).
-  SHA-256 of the files of the reference tablet (stock firmware `U880_B14_V3.0L.1_0311`), to check you extracted the right ones:
-  `435c7bac9a328b8a100df930b84b65b4d579e42be44785d0e60e3729291bb864 gen71100_gmu.bin`, `b6df660d109504dbea5a266910b037a33d893a11c6de52f524a5fd112008c401 gen71100_sqe.fw`,
-  `966d2984e1ac7a86f9a25c66fab3fd660423396f1375baf4432db0f1d80f9485 gen71100_zap.mbn` (other firmware versions may differ).
-- ADSP (battery/charging, sensors, audio): the `adsp2*` set -> `/lib/firmware/qcom/u880/`, plus the sensor registry service (`hexagonrpcd`, see `sensors/README.md`).
-- Wi-Fi: `ath11k/WCN6750/hw1.0/regdb.bin` and a `board-2.bin` built from the vendor `bdwlan.elf` with `scripts/make-ath11k-board2.py`; WPSS `qca6750/wpss.*` (the whole `qca6750/` directory, including `wpss.mdt` and the `wpss.bNN` parts, goes to `/lib/firmware/qca6750/`; without it `ath11k` fails with `Direct firmware load for qca6750/wpss.mdt failed with error -2` and there is no `wlan0`; the base tarball also lacks `wireless-regdb`, so install it too).
-- Bluetooth: `qca/msbtfw12.mbn`, `qca/msnv12.bin` (+ `.tlv`).
-- Speaker amps: `aw882xx_acf.bin`.
-- The AudioReach topology is built from `topology/U880.m4` into `/lib/firmware/qcom/u880/U880-tplg.bin`.
+| Files | In the stock vendor tree | Destination on the tablet |
+|---|---|---|
+| Adreno 735: `gen71100_sqe.fw`, `gen71100_gmu.bin`, `gen71100_zap.mbn` | `/vendor/firmware/` | `/lib/firmware/qcom/`, **and** `stage1/initramfs/lib/firmware/qcom/` (step 5) |
+| ADSP (battery/charging, sensors, audio): `adsp2.mdt`, `adsp2.bNN`, `adsp2_dtb.*` (Android's loader picks `adsp2`, not `adsp`) | `/vendor/firmware_mnt/image/` | `/lib/firmware/qcom/u880/` |
+| Wi-Fi: the whole `qca6750/` directory (`wpss.mdt`, `wpss.bNN`, `wpss.qdb`, `regdb.bin`, `bdwlan.*`) | `/vendor/firmware_mnt/image/qca6750/` | `/lib/firmware/qca6750/` |
+| Wi-Fi board file | build it: `scripts/make-ath11k-board2.py <fw>/qca6750/bdwlan.elf board-2.bin "bus=ahb,qmi-chip-id=1,qmi-board-id=255"` | `/lib/firmware/updates/ath11k/WCN6750/hw1.0/board-2.bin`; `regdb.bin` also to `/lib/firmware/ath11k/WCN6750/hw1.0/regdb.bin` |
+| Bluetooth: `msbtfw12.mbn`, `msbtfw12.tlv`, `msnv12.bin` | `/vendor/bt_firmware/image/` | `/lib/firmware/qca/` |
+| Speaker amplifiers: `aw882xx_acf.bin` (2016 bytes) | `/vendor/firmware/` | `/lib/firmware/` |
+| AudioReach topology `U880-tplg.bin` | **already in the repo** (`topology/U880-tplg.bin`, byte-identical to `tablet-rootfs/lib/firmware/qcom/sm8550/U880-tplg.bin`, installed by `PATHS`) | `/lib/firmware/qcom/sm8550/` |
 
-`tablet-rootfs/BLOBS` lists the files and `BLOBS.sha256` pins the hashes of the ones installed on the reference tablet.
-- **Sensors need data that is not in this repo, from your own tablet:** `/usr/share/qcom/u880/{sensors,socinfo,persist-sensors}` (the sensors configuration from the stock `vendor.img`, 1.6 MB) and the writable registry copy `/var/lib/hexagonrpcd/persist-sensors` (owned by `fastrpc`, 1.3 MB, calibration from the stock `persist` partition); see `sensors/README.md`. Put both into the firmware overlay. `hexagonrpcd`, `libhexagonrpc.so.0.5` and `chrecd` are the locally built blobs of `BLOBS`. Two things the image needs for them: `/etc/ld.so.conf.d/usr-local.conf` containing `/usr/local/lib` (Arch does not search it; `hexagonrpcd: error while loading shared libraries: libhexagonrpc.so.0.5`, status 127) and the `fastrpc` user/group existing **before the first boot** (`build-rootfs-image.sh` creates it, uid/gid 961): otherwise `/dev/fastrpc-adsp` stays `root:root 0600` and the unit fails with `status=217/USER` and then `4/NOPERMISSION`.
+Without the `qca6750/` directory `ath11k` fails with `Direct firmware load for qca6750/wpss.mdt failed with error -2` and there is no `wlan0`. The base tarball also lacks `wireless-regdb`, so install it too.
+SHA-256 of the Adreno files of the reference tablet (stock firmware `U880_B14_V3.0L.1_0311`), to check you extracted the right ones:
+`435c7bac9a328b8a100df930b84b65b4d579e42be44785d0e60e3729291bb864 gen71100_gmu.bin`, `b6df660d109504dbea5a266910b037a33d893a11c6de52f524a5fd112008c401 gen71100_sqe.fw`,
+`966d2984e1ac7a86f9a25c66fab3fd660423396f1375baf4432db0f1d80f9485 gen71100_zap.mbn` (other firmware versions may differ). `tablet-rootfs/BLOBS` lists the blobs of the reference tablet's root and `BLOBS.sha256` pins their hashes.
+The topology can only be rebuilt with the upstream `audioreach-topology` sources (`topology/U880.m4` includes `audioreach/*.m4` and `util/*.m4` from `https://github.com/linux-msm/audioreach-topology`, not copied here) and `alsatplg`; the committed binary is what was tested, so you do not need to.
+
+**Sensors are a second pass, not part of the first image.** `hexagonrpcd`, `libhexagonrpc.so.0.5` and `chrecd` are ARM64 programs that were built on the tablet itself (upstream `https://github.com/linux-msm/hexagonrpc` plus `patches/u880/hexagonrpc-0001-u880-writable-registry-large-buffers.patch`; see `sensors/README.md`), so a first install has none of them: build them on the booted tablet with the base-devel/meson tools and install them to `/usr/local` (`/etc/ld.so.conf.d/usr-local.conf` is already in the mirror). The data they serve is device-specific and comes from your own stock images: `/usr/share/qcom/u880/{sensors,socinfo,persist-sensors}` (`sensors/` = `/vendor/etc/sensors` of the stock vendor image, `socinfo/` = a few static files, `persist-sensors` = the calibration under `sensors/` on the stock `persist` partition) and a writable copy at `/var/lib/hexagonrpcd/persist-sensors`, owned by the system user `fastrpc` (uid/gid 961, created by `scripts/build-rootfs-image.sh`).
+Without them everything else works; only auto-rotate and the light sensor are missing. The image build needs `/etc/ld.so.conf.d/usr-local.conf` (`/usr/local/lib`; Arch does not search it, so `hexagonrpcd` fails with `libhexagonrpc.so.0.5: cannot open shared object file`) and the `fastrpc` user before the first boot (otherwise `/dev/fastrpc-adsp` stays `root:root 0600`: `status=217/USER`, then `4/NOPERMISSION`).
 
 ### 7b. Networking while you install: Ethernet over USB through the PC
 

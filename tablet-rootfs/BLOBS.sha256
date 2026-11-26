@@ -7,7 +7,6 @@ f47081438a691fe3cd7b9caab6dce75ba1fe66060c08c55a214b975fa2251812  /lib/firmware/
 61ac58b6de77cd5e538178bd9216f73e7e3af21271004892124b3fbe0b2db6a7  /lib/firmware/aw882xx_acf.bin
 d617af4e3348795eb564915f546e6a96e8042aeb1648433dbe7e11f737ab5800  /lib/firmware/ath11k/WCN6750/hw1.0/regdb.bin
 8c3955899101202912ac30627cf109235e9f868760c3c54d7aac5d711900a25f  /lib/firmware/updates/ath11k/WCN6750/hw1.0/board-2.bin
-9d7c883475d02d2ccc06f10d1f4ffb959cc9d3b2ba3029118e9c588edff0f75e  /usr/lib/modules/7.2.9-u880c/kernel/drivers/clk/qcom/dispcc-sm8550.ko
-36ac648ec3b9b9b3aec2e7f3946165633026cbf0196dc0779da389487818201f  /usr/lib/modules/7.2.9-u880c/kernel/drivers/soc/qcom/pmic_glink_altmode.ko
-e8434cc1648d4a9e92cfaeca044c3e004828c9ff3aa510fd564d4bcae3816941  /usr/lib/modules/7.2.9-u880c/kernel/drivers/usb/typec/mux/wcd939x-usbss.ko
-571f55c7f3d9726641b0d6129ec73727002dc2a643781e1b733b97df02eaca60  /usr/lib/modules/7.2.9-u880c/kernel/drivers/phy/qualcomm/phy-qcom-qmp-combo.ko
+dd05f3b23ab1b27b6c4cb1422df96d078dcc706544b0b29219283813f34b2375  /lib/firmware/qca6750/wpss.mdt
+73d4fb095c945976eff89634917212180b3af1337a268bbb41023fbb24cb081d  /lib/firmware/qca6750/wpss.qdb
+d617af4e3348795eb564915f546e6a96e8042aeb1648433dbe7e11f737ab5800  /lib/firmware/qca6750/regdb.bin
