@@ -204,6 +204,7 @@ Vendor firmware is not redistributable and is **not** in this repo. Extract it f
 - The AudioReach topology is built from `topology/U880.m4` into `/lib/firmware/qcom/u880/U880-tplg.bin`.
 
 `tablet-rootfs/BLOBS` lists the files and `BLOBS.sha256` pins the hashes of the ones installed on the reference tablet.
+- **Sensors need data that is not in this repo, from your own tablet:** `/usr/share/qcom/u880/{sensors,socinfo,persist-sensors}` (the sensors configuration from the stock `vendor.img`, 1.6 MB) and the writable registry copy `/var/lib/hexagonrpcd/persist-sensors` (owned by `fastrpc`, 1.3 MB, calibration from the stock `persist` partition); see `sensors/README.md`. Put both into the firmware overlay. `hexagonrpcd`, `libhexagonrpc.so.0.5` and `chrecd` are the locally built blobs of `BLOBS`. Two things the image needs for them: `/etc/ld.so.conf.d/usr-local.conf` containing `/usr/local/lib` (Arch does not search it; `hexagonrpcd: error while loading shared libraries: libhexagonrpc.so.0.5`, status 127) and the `fastrpc` user/group existing **before the first boot** (`build-rootfs-image.sh` creates it, uid/gid 961): otherwise `/dev/fastrpc-adsp` stays `root:root 0600` and the unit fails with `status=217/USER` and then `4/NOPERMISSION`.
 
 ### 7b. Networking while you install: Ethernet over USB through the PC
 

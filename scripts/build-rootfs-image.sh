@@ -45,6 +45,9 @@ done < "$R/PATHS"
 echo "  $n files"
 # the UCM entry for the sound card is a symlink in the distro's conf.d (a PATHS file copy cannot carry it): without it PipeWire only offers off/pro-audio and there is no speaker sink
 if [ -d "$T/usr/share/alsa/ucm2/Qualcomm/sm8550/U880" ]; then install -d "$T/usr/share/alsa/ucm2/conf.d/sm8550"; ln -sf ../../Qualcomm/sm8550/U880/U880.conf "$T/usr/share/alsa/ucm2/conf.d/sm8550/U880.conf"; fi
+# system user/group for hexagonrpcd (ADSP sensors, FastRPC): it must exist BEFORE the first boot, or udev cannot apply GROUP="fastrpc" to /dev/fastrpc-adsp (root:root 0600) and the service dies with 4/NOPERMISSION
+grep -q '^fastrpc:' "$T/etc/group" || { echo 'fastrpc:x:961:' >> "$T/etc/group"; echo 'fastrpc:!*::' >> "$T/etc/gshadow"; }
+grep -q '^fastrpc:' "$T/etc/passwd" || { echo 'fastrpc:x:961:961::/var/lib/hexagonrpcd:/usr/bin/nologin' >> "$T/etc/passwd"; echo 'fastrpc:!*:20000::::::' >> "$T/etc/shadow"; }
 printf '# root filesystem (ext4, label %s)\nLABEL=%s  /  ext4  rw,noatime  0 1\n' "$LBL" "$LBL" > "$T/etc/fstab"
 [ "$LBL" = u880root ] || grep -rl u880root "$T/etc/udev/rules.d" 2>/dev/null | xargs -r sed -i "s/u880root/$LBL/g"
 cat > "$T/etc/systemd/system/u880-growfs.service" <<'EOF'

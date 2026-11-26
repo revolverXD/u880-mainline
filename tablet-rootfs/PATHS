@@ -99,3 +99,4 @@
 /usr/local/bin/u880-rumble
 /usr/local/bin/steam-arm64-gs
 /usr/share/alsa/ucm2/Qualcomm/sm8550/U880/HDMI.conf
+/etc/ld.so.conf.d/usr-local.conf
