@@ -202,7 +202,7 @@ After you change anything under the tree, regenerate the delta: `python3 scripts
 
 ```
 # (back in the repo root: `cd ..` if you are still inside linux-7.4-rc4)
-dtc -q -I dts -O dtb -o stage1/dtb2-u880.dtb dts/u880.dts        # same as: scripts/build-dtb-from-dts.sh; roundtrip check: dtc -I dtb -O dts stage1/dtb2-u880.dtb | diff - dts/u880.dts (reg_format warnings are harmless); -q hides harmless reg_format warnings of the roundtrip check (default output stage1/dtb2-u880.dtb); NixOS: nix-shell -p dtc --run "bash scripts/build-dtb-from-dts.sh"
+dtc -q -I dts -O dtb -o stage1/dtb2-u880.dtb dts/u880.dts        # same as: scripts/build-dtb-from-dts.sh; roundtrip check (tested 2026-11-26, prints SAME): dtc -I dtb -O dts stage1/dtb2-u880.dtb 2>/dev/null | dtc -q -I dts -O dtb 2>/dev/null | cmp - stage1/dtb2-u880.dtb && echo SAME (decompiling prints harmless reg_format warnings); -q hides harmless reg_format warnings of the roundtrip check (default output stage1/dtb2-u880.dtb); NixOS: nix-shell -p dtc --run "bash scripts/build-dtb-from-dts.sh"
 ```
 
 The ABL only accepts a DTB that contains the stock SoC structure (it applies the board overlay `dtbo` itself), which is why we start from the stock DT instead of a
