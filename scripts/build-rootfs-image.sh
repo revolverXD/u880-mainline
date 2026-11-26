@@ -43,6 +43,8 @@ while read -r p; do
   n=$((n+1))
 done < "$R/PATHS"
 echo "  $n files"
+# the UCM entry for the sound card is a symlink in the distro's conf.d (a PATHS file copy cannot carry it): without it PipeWire only offers off/pro-audio and there is no speaker sink
+if [ -d "$T/usr/share/alsa/ucm2/Qualcomm/sm8550/U880" ]; then install -d "$T/usr/share/alsa/ucm2/conf.d/sm8550"; ln -sf ../../Qualcomm/sm8550/U880/U880.conf "$T/usr/share/alsa/ucm2/conf.d/sm8550/U880.conf"; fi
 printf '# root filesystem (ext4, label %s)\nLABEL=%s  /  ext4  rw,noatime  0 1\n' "$LBL" "$LBL" > "$T/etc/fstab"
 [ "$LBL" = u880root ] || grep -rl u880root "$T/etc/udev/rules.d" 2>/dev/null | xargs -r sed -i "s/u880root/$LBL/g"
 cat > "$T/etc/systemd/system/u880-growfs.service" <<'EOF'
