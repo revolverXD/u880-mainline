@@ -274,6 +274,15 @@
 		pinctrl-names = "default";
 		model = "U880";
 		compatible = "qcom,sm8550-sndcard", "qcom,sm8450-sndcard";
+		audio-routing = "AMIC1", "MIC BIAS1",
+				"AMIC2", "MIC BIAS2",
+				"AMIC3", "MIC BIAS3",
+				"AMIC4", "MIC BIAS3",
+				"AMIC5", "MIC BIAS4",
+				"TX SWR_INPUT0", "ADC1_OUTPUT",
+				"TX SWR_INPUT1", "ADC2_OUTPUT",
+				"TX SWR_INPUT2", "ADC3_OUTPUT",
+				"TX SWR_INPUT3", "ADC4_OUTPUT";
 
 		displayport-rx-dai-link {
 			link-name = "DisplayPort0 Playback";
@@ -307,6 +316,43 @@
 				sound-dai = <0x7f000415 0x10>;
 			};
 		};
+
+		wcd-capture-dai-link {
+			link-name = "WCD Capture";
+
+			platform {
+				sound-dai = <0x7f000416>;
+			};
+
+			codec {
+				sound-dai = <0x7f00060a 0x01 0x7f000608 0x01 0x7f000607 0x00>;
+			};
+
+			cpu {
+				sound-dai = <0x7f000415 0x78>;
+			};
+		};
+	};
+
+	u880_wcd939x: audio-codec {
+		phandle = <0x7f00060a>;
+		compatible = "qcom,wcd9395-codec", "qcom,wcd9390-codec";
+		qcom,micbias1-microvolt = <1800000>;
+		qcom,micbias2-microvolt = <1800000>;
+		qcom,micbias3-microvolt = <1800000>;
+		qcom,micbias4-microvolt = <1800000>;
+		qcom,mbhc-buttons-vthreshold-microvolt = <75000 150000 237000 500000 500000 500000 500000 500000>;
+		qcom,mbhc-headset-vthreshold-microvolt = <1700000>;
+		qcom,mbhc-headphone-vthreshold-microvolt = <50000>;
+		qcom,rx-device = <0x7f000606>;
+		qcom,tx-device = <0x7f000609>;
+		reset-gpios = <0x7f000412 0x0c 0x01>;
+		vdd-buck-supply = <0x1e1>;
+		vdd-rxtx-supply = <0x1e1>;
+		vdd-io-supply = <0x1e1>;
+		vdd-px-supply = <0x1e1>;
+		vdd-mic-bias-supply = <0x356>;
+		#sound-dai-cells = <0x01>;
 	};
 
 	u880-aw-dvdd {
@@ -1484,8 +1530,8 @@
 			gpio-ranges = <0x7f000412 0x00 0x00 0x17>;
 			#gpio-cells = <0x02>;
 			gpio-controller;
-			reg = <0x6e80000 0x20000 0x7250000 0x10000>;
-			compatible = "qcom,sm8550-lpass-lpi-pinctrl";
+			reg = <0x6e80000 0x20000>;
+			compatible = "qcom,sm8650-lpass-lpi-pinctrl";
 
 			pri_mi2s_active: quin-mi2s-active-state {
 				phandle = <0x7f000414>;
@@ -1513,6 +1559,147 @@
 					function = "i2s1_clk";
 					pins = "gpio6";
 				};
+			};
+
+			u880_tx_swr_active: tx-swr-active-state {
+				phandle = <0x7f000601>;
+
+				clk-pins {
+					pins = "gpio0";
+					function = "swr_tx_clk";
+					drive-strength = <0x04>;
+					slew-rate = <0x01>;
+					bias-disable;
+				};
+
+				data-pins {
+					pins = "gpio1", "gpio2", "gpio14";
+					function = "swr_tx_data";
+					drive-strength = <0x04>;
+					slew-rate = <0x01>;
+					bias-bus-hold;
+				};
+			};
+
+			u880_rx_swr_active: rx-swr-active-state {
+				phandle = <0x7f000602>;
+
+				clk-pins {
+					pins = "gpio3";
+					function = "swr_rx_clk";
+					drive-strength = <0x02>;
+					slew-rate = <0x01>;
+					bias-disable;
+				};
+
+				data-pins {
+					pins = "gpio4", "gpio5";
+					function = "swr_rx_data";
+					drive-strength = <0x02>;
+					slew-rate = <0x01>;
+					bias-bus-hold;
+				};
+			};
+		};
+
+		u880_vamacro: codec@6d44000 {
+			phandle = <0x7f000603>;
+			compatible = "qcom,sm8550-lpass-va-macro";
+			reg = <0x6d44000 0x1000>;
+			clocks = <0x7f000413 0x39 0x01 0x7f000413 0x66 0x01 0x7f000413 0x67 0x01>;
+			clock-names = "mclk", "macro", "dcodec";
+			qcom,dmic-sample-rate = <600000>;
+			#clock-cells = <0x00>;
+			clock-output-names = "fsgen";
+			#sound-dai-cells = <0x01>;
+		};
+
+		u880_rxmacro: codec@6ac0000 {
+			phandle = <0x7f000604>;
+			compatible = "qcom,sm8550-lpass-rx-macro";
+			reg = <0x6ac0000 0x1000>;
+			clocks = <0x7f000413 0x40 0x01 0x7f000413 0x66 0x01 0x7f000413 0x67 0x01 0x7f000603>;
+			clock-names = "mclk", "macro", "dcodec", "fsgen";
+			#clock-cells = <0x00>;
+			clock-output-names = "mclk";
+			#sound-dai-cells = <0x01>;
+		};
+
+		u880_swr1: soundwire@6ad0000 {
+			phandle = <0x7f000605>;
+			compatible = "qcom,soundwire-v2.0.0";
+			reg = <0x6ad0000 0x10000>;
+			interrupts = <0x00 0x9b 0x04>;
+			clocks = <0x7f000604>;
+			clock-names = "iface";
+			label = "RX";
+			pinctrl-0 = <0x7f000602>;
+			pinctrl-names = "default";
+			qcom,din-ports = <0x01>;
+			qcom,dout-ports = <0x0b>;
+			qcom,ports-sinterval = /bits/ 16 <0x03 0x1f 0x1f 0x07 0x03 0xff 0xff 0x31 0xff 0xff 0xff 0xff>;
+			qcom,ports-offset1 = /bits/ 8 <0x00 0x00 0x0b 0x09 0x01 0xff 0xff 0x00 0xff 0xff 0xff 0xff>;
+			qcom,ports-offset2 = /bits/ 8 <0x00 0x00 0x0b 0x00 0x00 0xff 0xff 0x00 0xff 0xff 0xff 0xff>;
+			qcom,ports-hstart = /bits/ 8 <0xff 0x03 0xff 0xff 0xff 0xff 0xff 0x00 0xff 0xff 0xff 0xff>;
+			qcom,ports-hstop = /bits/ 8 <0xff 0x06 0xff 0xff 0xff 0xff 0xff 0x0f 0xff 0xff 0xff 0xff>;
+			qcom,ports-word-length = /bits/ 8 <0x01 0x07 0x04 0xff 0xff 0xff 0xff 0x18 0xff 0xff 0xff 0xff>;
+			qcom,ports-block-pack-mode = /bits/ 8 <0xff 0x00 0x01 0xff 0xff 0xff 0xff 0x01 0xff 0xff 0xff 0xff>;
+			qcom,ports-block-group-count = /bits/ 8 <0xff 0xff 0xff 0x01 0x03 0xff 0xff 0x00 0xff 0xff 0xff 0xff>;
+			qcom,ports-lane-control = /bits/ 8 <0x01 0x00 0x00 0x00 0x00 0xff 0xff 0x01 0xff 0xff 0xff 0xff>;
+			#address-cells = <0x02>;
+			#size-cells = <0x00>;
+			#sound-dai-cells = <0x01>;
+
+			u880_wcd_rx: codec@0,4 {
+				phandle = <0x7f000606>;
+				compatible = "sdw20217010e00";
+				reg = <0x00 0x04>;
+				qcom,rx-port-mapping = <0x01 0x02 0x03 0x04 0x05 0x09>;
+			};
+		};
+
+		u880_txmacro: codec@6ae0000 {
+			phandle = <0x7f000607>;
+			compatible = "qcom,sm8550-lpass-tx-macro";
+			reg = <0x6ae0000 0x1000>;
+			clocks = <0x7f000413 0x39 0x01 0x7f000413 0x66 0x01 0x7f000413 0x67 0x01 0x7f000603>;
+			clock-names = "mclk", "macro", "dcodec", "fsgen";
+			#clock-cells = <0x00>;
+			clock-output-names = "mclk";
+			#sound-dai-cells = <0x01>;
+		};
+
+		u880_swr2: soundwire@6d30000 {
+			phandle = <0x7f000608>;
+			compatible = "qcom,soundwire-v2.0.0";
+			reg = <0x6d30000 0x10000>;
+			interrupts = <0x00 0x1f0 0x04 0x00 0x208 0x04>;
+			interrupt-names = "core", "wakeup";
+			clocks = <0x7f000607>;
+			clock-names = "iface";
+			label = "TX";
+			pinctrl-0 = <0x7f000601>;
+			pinctrl-names = "default";
+			qcom,din-ports = <0x04>;
+			qcom,dout-ports = <0x01>;
+			qcom,ports-sinterval-low = /bits/ 8 <0x00 0x01 0x01 0x03 0x03>;
+			qcom,ports-offset1 = /bits/ 8 <0x00 0x00 0x00 0x01 0x01>;
+			qcom,ports-offset2 = /bits/ 8 <0x00 0x00 0x00 0x00 0x00>;
+			qcom,ports-hstart = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+			qcom,ports-hstop = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+			qcom,ports-word-length = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+			qcom,ports-block-pack-mode = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+			qcom,ports-block-group-count = /bits/ 8 <0xff 0xff 0xff 0xff 0xff>;
+			qcom,ports-lane-control = /bits/ 8 <0xff 0x01 0x02 0x00 0x00>;
+			#address-cells = <0x02>;
+			#size-cells = <0x00>;
+			#sound-dai-cells = <0x01>;
+
+			u880_wcd_tx: codec@0,3 {
+				phandle = <0x7f000609>;
+				compatible = "sdw20217010e00";
+				reg = <0x00 0x03>;
+				qcom,tx-port-mapping = <0x02 0x02 0x03 0x04>;
 			};
 		};
 

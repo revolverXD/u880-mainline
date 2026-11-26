@@ -14445,7 +14445,7 @@
 +obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += qcom-proxy-consumer-uke.o
 --- /dev/null
 +++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
-@@ -0,0 +1,2145 @@
+@@ -0,0 +1,2146 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
 +/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
@@ -16450,6 +16450,7 @@
 +	    strcmp(aggr_vreg->resource_name, "ldob3") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob4") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob7") &&
++	    strcmp(aggr_vreg->resource_name, "bobb1") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob17") &&
 +	    strcmp(aggr_vreg->resource_name, "smpb2") &&
 +	    strcmp(aggr_vreg->resource_name, "smpb1") &&
@@ -112224,6 +112225,21 @@
 +		vst1q_u8(&q[d+NSIZE*3], wq3);
 +	}
 +}
+--- a/sound/soc/codecs/wcd939x.c
++++ b/sound/soc/codecs/wcd939x.c
+@@ -3222,10 +3222,10 @@
+ 
+ static int wcd939x_reset(struct wcd939x_priv *wcd939x)
+ {
+-	gpiod_set_value(wcd939x->reset_gpio, 1);
++	gpiod_set_value_cansleep(wcd939x->reset_gpio, 1);
+ 	/* 20us sleep required after pulling the reset gpio to LOW */
+ 	usleep_range(20, 30);
+-	gpiod_set_value(wcd939x->reset_gpio, 0);
++	gpiod_set_value_cansleep(wcd939x->reset_gpio, 0);
+ 	/* 20us sleep required after pulling the reset gpio to HIGH */
+ 	usleep_range(20, 30);
+ 
 --- a/sound/soc/codecs/aw88261.c
 +++ b/sound/soc/codecs/aw88261.c
 @@ -10,6 +10,7 @@
