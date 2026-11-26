@@ -11,7 +11,8 @@ for d in /nix/store/*-openssl-3*/lib; do   # a for loop, not "ls | while | head 
   f=$(readlink -f "$d/libcrypto.so.3" 2>/dev/null) || continue
   [ -e "$f" ] && python3 -I -c "import sys;h=open(sys.argv[1],'rb').read(20);sys.exit(0 if h[4]==2 and h[18]==0x3e else 1)" "$f" && { L=$d; break; }
 done
-[ -n "$L" ] || { echo "no x86_64 openssl lib in /nix/store (nix-shell -p openssl first)"; exit 1; }
+if [ -z "$L" ]; then P=$(nix-build '<nixpkgs>' -A openssl.out --no-out-link 2>/dev/null) && [ -e "$P/lib/libcrypto.so.3" ] && L=$P/lib; fi   # a clean store has none yet: build/fetch it
+[ -n "$L" ] || { echo "no x86_64 openssl lib in /nix/store and nix-build of nixpkgs#openssl failed"; exit 1; }
 M="LLVM=1 HOSTCC=gcc HOSTCXX=g++ HOSTLD=ld ARCH=arm64 LOCALVERSION=-u880e"
 nix-shell -p llvmPackages.clang-unwrapped llvmPackages.lld llvmPackages.llvm gcc gnumake flex bison bc openssl perl elfutils zlib cpio python3 kmod --run "export LD_LIBRARY_PATH=$L; cd $T && make $M -j\$(nproc) $TARGETS"
 if [ -n "${MODULES_OUT:-}" ]; then

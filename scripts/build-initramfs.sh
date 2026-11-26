@@ -9,5 +9,7 @@ for f in gen71100_sqe.fw gen71100_gmu.bin gen71100_zap.mbn; do
 done
 for m in ufs-qcom qcom_ice phy-qcom-qmp-ufs; do [ -s "$M/stage1/initramfs/lib/modules-ufs/$m.ko" ] || { echo "missing stage1/initramfs/lib/modules-ufs/$m.ko: copy the three UFS modules of the kernel you built (README step 5), they must match its release"; exit 1; }; done
 cd "$M/stage1/initramfs"
+# git does not keep empty directories: a fresh clone has no /dev /proc /sys /newroot /tmp, and init cannot mount without them (boot would hang)
+mkdir -p dev proc sys newroot tmp
 find . | LC_ALL=C sort | cpio -o -H newc -R 0:0 --quiet | gzip -9 > "$M/stage1/initramfs.cpio.gz"
 ls -la "$M/stage1/initramfs.cpio.gz"

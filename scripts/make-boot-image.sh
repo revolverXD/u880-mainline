@@ -16,8 +16,8 @@ RD=${RAMDISK:-$M/stage1/initramfs.cpio.gz}; MKB=${MKBOOTIMG:-$M/../LineageOS/sys
 [ -s "$KI" ] || { echo "no kernel Image: build the kernel (README step 3) or set KIMAGE="; exit 2; }
 [ -s "$RD" ] || { echo "no ramdisk $RD: run scripts/build-initramfs.sh (README step 5) or set RAMDISK="; exit 2; }
 [ -s "$MKB" ] || { echo "no mkbootimg.py at $MKB: git clone https://android.googlesource.com/platform/system/tools/mkbootimg and set MKBOOTIMG="; exit 2; }
-CMDLINE=${CMDLINE:-"console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout apparmor=1 security=apparmor"}   # CMDLINE=... overrides (RAM-boot experiments)
-# Production images turn debugfs off (issue #24); DEV=1 keeps it on for display/power bring-up (RAM-boot that image, do not flash it).
+CMDLINE=${CMDLINE:-"console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout apparmor=1 security=apparmor"}   # CMDLINE=... overrides
+# Production images turn debugfs off (issue #24); DEV=1 keeps it on for display/power bring-up (there is no RAM boot, FINDINGS F43: flash it only for the measurement and flash the production image back).
 [ "${DEV:-0}" = 1 ] || CMDLINE="$CMDLINE debugfs=off"
 python3 "$MKB" --header_version 2 --os_version 14.0.0 --os_patch_level 2024-03 \
   --kernel "$KI" --ramdisk "$RD" --dtb "$DTB" \
