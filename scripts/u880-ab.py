@@ -111,7 +111,7 @@ def main(a):
         slot = a[2]; assert slot in ("a", "b"); out = f"{d}/slot-{slot}"; os.makedirs(out, exist_ok=True)
         script = a[a.index("--script") + 1] if "--script" in a else None
         lines = ["#!/usr/bin/env bash", f"# GPT for slot {slot}: write tail then head per LUN, read back, stop on mismatch.",
-                 "cd /home/USER/External/work/src/mainline || exit 1", f"L={LOADER}", f"D={os.path.abspath(out)}", "mkdir -p $D/verify",
+                 f"cd {os.path.dirname(os.path.dirname(os.path.abspath(__file__)))} || exit 1", f"L={LOADER}", f"D={os.path.abspath(out)}", "mkdir -p $D/verify",
                  'grep -qx 05c6 /sys/bus/usb/devices/*/idVendor 2>/dev/null || { echo "NOT IN EDL"; exit 1; }']
         for n in LUNS:
             head = open(f"{d}/lun{n}-head.bin", "rb").read(); tail = open(f"{d}/lun{n}-tail.bin", "rb").read()
