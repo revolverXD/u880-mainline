@@ -54,7 +54,7 @@ ExecStart=/usr/bin/resize2fs /dev/disk/by-label/@LBL@
 WantedBy=multi-user.target
 EOF
 sed -i "s/@LBL@/$LBL/" "$T/etc/systemd/system/u880-growfs.service"
-for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerlog u880-sdp-budget u880-touch-follow-screen u880-usb-ss-retrain hexagonrpcd-adsp-sensorspd u880-growfs; do
+for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerlog u880-sdp-budget u880-touch-follow-screen u880-usb-ss-retrain hexagonrpcd-adsp-sensorspd u880-thermal-guard u880-bt-connectable u880-zram u880-gpu-sample u880-growfs; do
   [ -e "$T/etc/systemd/system/$u.service" ] || [ -e "$T/usr/lib/systemd/system/$u.service" ] || [ -e "$T/usr/local/lib/systemd/system/$u.service" ] || { echo "  unit missing, not enabled: $u"; continue; }
   systemctl --root="$T" enable "$u.service" >/dev/null 2>&1 || echo "  could not enable $u"
 done

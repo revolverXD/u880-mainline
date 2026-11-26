@@ -30,7 +30,7 @@ push)
     mode=$(stat -c %a "$R$p"); owner=root:root; case $p in /home/USER/*) owner=USER:USER;; esac
     cat "$R$p" | rs "cat > $p && chmod $mode $p && chown $owner $p"
   done
-  rs "systemctl daemon-reload; udevadm control --reload; for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerlog u880-sdp-budget u880-touch-follow-screen u880-usb-ss-retrain hexagonrpcd-adsp-sensorspd; do systemctl enable \$u.service 2>&1 | tail -0; done; echo pushed; echo backup=$T" ;;
+  rs "systemctl daemon-reload; udevadm control --reload; for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerlog u880-sdp-budget u880-touch-follow-screen u880-usb-ss-retrain hexagonrpcd-adsp-sensorspd u880-thermal-guard u880-bt-connectable u880-zram u880-gpu-sample; do systemctl enable \$u.service 2>&1 | tail -0; done; echo pushed; echo backup=$T" ;;
 modules)
   B=$M/modules-out/lib/modules/7.2.9-u880c
   rs "mkdir -p /root/orig-modules"

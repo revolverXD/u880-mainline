@@ -91,3 +91,11 @@
 /home/USER/.local/share/flatpak/overrides/net.example.App
 /etc/default/earlyoom
 /etc/fstab
+/etc/systemd/system/u880-thermal-guard.service
+/usr/local/bin/u880-thermal-guard
+/etc/systemd/system/u880-bt-connectable.service
+/etc/modules-load.d/u880-vibrator.conf
+/usr/lib/systemd/system-sleep/u880-suspend-log
+/usr/local/bin/u880-rumble
+/usr/local/bin/steam-arm64-gs
+/usr/share/alsa/ucm2/Qualcomm/sm8550/U880/HDMI.conf
