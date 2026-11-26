@@ -12563,16 +12563,16 @@
 		};
 
 		videocc: clock-controller@aaf0000 {
-			status = "disabled";
-			compatible = "qcom,cliffs-videocc", "syscon";
+			status = "okay";
+			compatible = "qcom,sm8650-videocc";
 			reg = <0xaaf0000 0x10000>;
 			reg-name = "cc_base";
 			vdd_mm-supply = <0x14a>;
 			vdd_mxc-supply = <0x149>;
-			clocks = <0x16d 0x00 0x16d 0x01 0x16e 0x16f 0x89>;
-			clock-names = "bi_tcxo", "bi_tcxo_ao", "sleep_clk", "iface";
+			clocks = <0x16d 0x00>, <0x16f 0x89>;
 			#clock-cells = <0x01>;
 			#reset-cells = <0x01>;
+			#power-domain-cells = <0x01>;
 			phandle = <0x177>;
 		};
 
@@ -18950,6 +18950,54 @@
 			#clock-cells = <0x01>;
 			qcom,codec-ext-clk-src = <0x0b>;
 			compatible = "qcom,audio-ref-clk";
+		};
+
+		u880_iris: video-codec@aa00000 {
+			compatible = "qcom,sm7675-iris";
+			reg = <0x0aa00000 0xf0000>;
+			interrupts = <0x00 0xae 0x04>;
+			power-domains = <&videocc 0>, <&videocc 1>;
+			power-domain-names = "venus", "vcodec0";
+			operating-points-v2 = <&u880_iris_opp_table>;
+			clocks = <0x16f 0x8a>, <&videocc 3>, <&videocc 0>;
+			clock-names = "iface", "core", "vcodec0_core";
+			interconnects = <0x1a3 0x02 0x1a4 0x224>,
+					<0x1c0 0x1c 0x189 0x200>;
+			interconnect-names = "cpu-cfg", "video-mem";
+			memory-region = <0x29e>;
+			resets = <0x16f 0x1a>, <&videocc 7>, <&videocc 5>;
+			reset-names = "bus", "xo", "core";
+			iommus = <&apps_smmu 0x1940 0>, <&apps_smmu 0x1947 0>;
+			dma-coherent;
+			status = "okay";
+
+			u880_iris_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-196000000 {
+					opp-hz = /bits/ 64 <196000000>;
+				};
+
+				opp-300000000 {
+					opp-hz = /bits/ 64 <300000000>;
+				};
+
+				opp-380000000 {
+					opp-hz = /bits/ 64 <380000000>;
+				};
+
+				opp-435000000 {
+					opp-hz = /bits/ 64 <435000000>;
+				};
+
+				opp-480000000 {
+					opp-hz = /bits/ 64 <480000000>;
+				};
+
+				opp-533333334 {
+					opp-hz = /bits/ 64 <533333334>;
+				};
+			};
 		};
 
 		msm_vidc: qcom,vidc@aa00000 {
