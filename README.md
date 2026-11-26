@@ -158,7 +158,7 @@ cd linux-7.3.1
 patch -p1 < ../kernel/u880-kernel-delta.patch                                   # all our changes (about 220 files)
 cp ../kernel/u880_defconfig arch/arm64/configs/
 make LLVM=<clang>/bin/ ARCH=arm64 u880_defconfig                                # must equal kernel/u880.config
-make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e -j$(nproc) Image.gz modules
+make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e -j$(nproc) Image Image.gz modules
 make LLVM=<clang>/bin/ ARCH=arm64 LOCALVERSION=-u880e INSTALL_MOD_PATH=$PWD/../modules-out INSTALL_MOD_STRIP=1 modules_install
 ```
 
