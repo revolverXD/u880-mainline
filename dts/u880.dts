@@ -17000,6 +17000,8 @@
 					avdd-supply = <&pm8010m_l3>;
 					dvdd-supply = <&pm8010m_l1>;
 					power-domains = <&camcc 0x0>;
+					orientation = <1>; /* back */
+					rotation = <270>;
 
 					port {
 						u880_cam0_ep: endpoint {
@@ -17032,6 +17034,8 @@
 					avdd-supply = <&pm8010m_l4>;
 					dvdd-supply = <&pm8010m_l2>;
 					power-domains = <&camcc 0x0>;
+					orientation = <0>; /* front */
+					rotation = <90>;
 
 					port {
 						u880_cam1_ep: endpoint {

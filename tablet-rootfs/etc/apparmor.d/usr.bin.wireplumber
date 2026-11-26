@@ -34,6 +34,21 @@ include <tunables/global>
   /dev/rfkill r,
   /dev/uhid rw,
 
+  # Camera (libcamera Simple + GPU SoftISP via Mesa Freedreno)
+  /dev/media[0-9]* rwk,
+  /dev/video[0-9]* rwk,
+  /dev/v4l-subdev[0-9]* rwk,
+  /dev/dma_heap/ r,
+  /dev/dma_heap/system rwk,
+  /dev/dri/ r,
+  /dev/dri/renderD* rw,
+  /dev/dri/card* rw,
+  /sys/bus/** r,
+  /sys/dev/** r,
+  /sys/firmware/devicetree/** r,
+  /home/*/.cache/mesa_shader_cache*/ rw,
+  /home/*/.cache/mesa_shader_cache*/** rwkl,
+
   /run/udev/** r,
   /run/systemd/users/* r,
   /run/user/*/bus rw,
