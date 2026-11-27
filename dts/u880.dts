@@ -12025,6 +12025,20 @@
 					#pwm-cells = <0x02>;
 					compatible = "qcom,pmxr2230-pwm";
 				};
+
+				u880_flash_led: led-controller@ee00 {
+					compatible = "qcom,pm8350c-flash-led", "qcom,spmi-flash-led";
+					reg = <0xee00>;
+
+					led-0 {
+						function = "flash";
+						color = <0>;
+						led-sources = <1>, <4>;
+						led-max-microamp = <300000>;
+						flash-max-microamp = <1500000>;
+						flash-max-timeout-us = <1280000>;
+					};
+				};
 			};
 		};
 
@@ -17002,6 +17016,7 @@
 					power-domains = <&camcc 0x0>;
 					orientation = <1>; /* back */
 					rotation = <270>;
+					lens-focus = <&u880_rear_af>;
 
 					port {
 						u880_cam0_ep: endpoint {
@@ -17010,6 +17025,13 @@
 							remote-endpoint = <&u880_csiphy0_ep>;
 						};
 					};
+				};
+
+				/* Rear VCM autofocus actuator DW9714 (7-bit 0x0c, L7M 2.8V) */
+				u880_rear_af: lens@c {
+					compatible = "dongwoon,dw9714";
+					reg = <0x0c>;
+					vcc-supply = <&pm8010m_l7>;
 				};
 			};
 
