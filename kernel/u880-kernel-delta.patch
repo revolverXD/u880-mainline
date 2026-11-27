@@ -1,4 +1,4 @@
-231 files in delta; 112768 added lines
+231 files in delta; 112774 added lines
 hb.c
 +++ b/drivers/net/wireless/ath/ath11k/ahb.c
 @@ -32,6 +32,10 @@
@@ -22387,7 +22387,7 @@ hb.c
 +#endif
 --- a/drivers/gpu/drm/msm/adreno/a7xx_catalog.c
 +++ b/drivers/gpu/drm/msm/adreno/a7xx_catalog.c
-@@ -452,6 +452,37 @@
+@@ -452,6 +452,43 @@
  		},
  		.preempt_record_size = 3572 * SZ_1K,
  	}, {
@@ -22400,9 +22400,10 @@ hb.c
 +		},
 +		.gmem = SZ_1M + SZ_512K,
 +		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-+		/* Preemption and IFPC require separate device qualification. */
++		/* IFPC requires separate device qualification. */
 +		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
-+			  ADRENO_QUIRK_HAS_HW_APRIV,
++			  ADRENO_QUIRK_HAS_HW_APRIV |
++			  ADRENO_QUIRK_PREEMPTION,
 +		.funcs = &a7xx_gpu_funcs,
 +		.zapfw = "gen71100_zap.mbn",
 +		.a6xx = &(const struct a6xx_info) {
@@ -22416,7 +22417,12 @@ hb.c
 +			.bcms = (const struct a6xx_bcm[]) {
 +				{ .name = "SH0", .buswidth = 16 },
 +				{ .name = "MC0", .buswidth = 4 },
-+				{ .name = "ACV", .fixed = true, .perfmode = BIT(2) },
++				{
++					.name = "ACV",
++					.fixed = true,
++					.perfmode = BIT(2),
++					.perfmode_bw = 16500000,
++				},
 +				{ /* sentinel */ },
 +			},
 +		},

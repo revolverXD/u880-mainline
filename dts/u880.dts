@@ -14536,6 +14536,7 @@
 			#size-cells = <0x01>;
 			#address-cells = <0x01>;
 			ranges;
+			dma-coherent;
 			qcom,regulator-names = "vdd";
 			vdd-supply = <0x1be>;
 			clocks = <0x176 0x11 0x16f 0x20 0x16f 0x21 0x176 0x02>;
