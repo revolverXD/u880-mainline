@@ -399,10 +399,10 @@ from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and th
 - `scripts/clean-rebuild.sh` rebuilds the kernel from the pristine tarball + delta + defconfig and gets an identical `Image` (apart from the build counter).
 - The boot image was rebuilt with `mkbootimg` from the same inputs and verified bit for bit against the installed one; the thermal and UBWC images were produced and flashed with the commands above.
 - Each feature in the table was tested on the reference tablet (measurements and logs in `NOTES.md`, `tools/profiles/`).
-- Not done: a complete run of steps 0-10 on a clean machine and a second tablet. Expect to adapt paths and to hit gaps in the vendor-firmware extraction step.
+- Steps 0-7 were rebuilt from a fresh clone by thirteen independent read-throughs (2026-11-26/27): kernel, DTB, initramfs, boot image and the firmware overlay matched the documented hashes. The install route 7b-8b was run end to end once on the reference tablet (fresh Arch root on an SD card). **Not done:** the EDL/unlock commands of steps 0-1 were never run from this repository's text, nothing was tried on a second tablet, and a factory-fresh slot b may differ from the reference one (see the warning after step 1). Expect gaps and keep your backups.
 
 ## Credits and licences
 
 Linux (GPL-2.0), the [senemos-uke-kernel-mainline](https://github.com/MCC45TR/senemos-uke-kernel-mainline) series (MIT) and the uke drivers it carries, Qualcomm's AudioReach topology and UCM
 conventions, Arch Linux ARM, KDE Plasma Mobile, Mesa, gamescope, Valve's Steam/Proton for ARM64, bkerler/edl. Our own files in this repo (scripts, notes, DT additions, overlays) are published under the
-GPL-2.0-only (see `LICENSE`). Vendor firmware and stock images are not part of this repository and keep their own licences.
+GPL-2.0-only (see `LICENSE`). Vendor firmware and stock images are not part of this repository and keep their own licences. `stage1/initramfs/bin/busybox`, `busybox-extras` and `lib/ld-musl-aarch64.so.1` are prebuilt static aarch64 binaries of BusyBox 1.37.0 (GPL-2.0-only, source: `https://busybox.net/downloads/busybox-1.37.0.tar.bz2`) and musl libc (MIT, `https://musl.libc.org`); where exactly these two binaries were taken from was not recorded.
