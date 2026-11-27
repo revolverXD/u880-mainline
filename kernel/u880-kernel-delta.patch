@@ -1,4 +1,5 @@
---- a/drivers/net/wireless/ath/ath11k/ahb.c
+231 files in delta; 112768 added lines
+hb.c
 +++ b/drivers/net/wireless/ath/ath11k/ahb.c
 @@ -32,6 +32,10 @@
  	  .data = (void *)ATH11K_HW_IPQ6018_HW10,
@@ -86179,7 +86180,16 @@
  MODULE_DEVICE_TABLE(of, pm8xxx_vib_id_table);
 --- a/drivers/input/touchscreen/novatek-nvt-ts.c
 +++ b/drivers/input/touchscreen/novatek-nvt-ts.c
-@@ -49,15 +49,49 @@
+@@ -32,6 +32,8 @@
+ 
+ #define NVT_TS_MAX_TOUCHES		10
+ #define NVT_TS_MAX_SIZE			4096
++#define NVT_TS_NT365XX_BUF_SIZE		65
++#define NVT_TS_MAX_PRESSURE		1000
+ 
+ #define NVT_TS_TOUCH_INVALID		0xff
+ #define NVT_TS_TOUCH_SLOT_SHIFT		3
+@@ -49,16 +51,52 @@
  
  struct nvt_ts_i2c_chip_data {
  	u8 chip_id;
@@ -86192,11 +86202,13 @@
 +	u32 event_buf_addr;
 +	unsigned int reset_delay_ms;
 +	/*
-+	 * Override the firmware's IRQ type. The NT36523N holds its INT line low until
-+	 * the event buffer is read; with the reported falling edge, an edge that fires
-+	 * before the IRQ is armed leaves the line stuck low forever.
++	 * Override the firmware's IRQ type. Stock nvt_ts_u880.ko uses IRQF_TRIGGER_RISING
++	 * (matching live.dts 0x2001). Using IRQF_TRIGGER_LOW caused a continuous ~1330 Hz
++	 * IRQ storm when idle and an I2C NACK storm during s2idle when the TDDI panel
++	 * powers down.
 +	 */
 +	unsigned long irq_trigger;
++	bool has_pressure_major;
 +};
 +
 +/*
@@ -86225,12 +86237,14 @@
  	struct regulator_bulk_data regulators[2];
  	struct touchscreen_properties prop;
  	int max_touches;
+-	u8 buf[NVT_TS_TOUCH_SIZE * NVT_TS_MAX_TOUCHES];
 +	bool page_ok;	/* event page selected since the last reset; only the IRQ thread and start() touch it */
 +	bool stopped_for_pm;	/* nvt_ts_prepare() stopped the chip; nvt_ts_complete() restarts it */
- 	u8 buf[NVT_TS_TOUCH_SIZE * NVT_TS_MAX_TOUCHES];
++	u8 buf[NVT_TS_NT365XX_BUF_SIZE];
  };
  
-@@ -80,7 +114,27 @@
+ static int nvt_ts_read_data(struct i2c_client *client, u8 reg, u8 *data, int count)
+@@ -80,7 +118,27 @@
  
  	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
  	if (ret != ARRAY_SIZE(msg)) {
@@ -86259,7 +86273,7 @@
  		return (ret < 0) ? ret : -EIO;
  	}
  
-@@ -92,13 +146,25 @@
+@@ -92,13 +150,36 @@
  	struct nvt_ts_data *data = dev_id;
  	struct device *dev = &data->client->dev;
  	int i, error, slot, x, y;
@@ -86267,7 +86281,7 @@
 +	bool active, touching = false;
 +	unsigned int delay;
  	u8 *touch;
-+
+ 
 +	/* The event page is selected once per reset, not per interrupt: the chip keeps it until it is
 +	 * reset, and the extra transfer was about 40% of the I2C traffic. If that select failed (the
 +	 * chip was still booting) or a read failed, it is retried here until it works. */
@@ -86276,8 +86290,10 @@
 +			goto backoff;
 +		data->page_ok = true;
 +	}
- 
++
  	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
++				 data->chip->has_pressure_major ?
++				 NVT_TS_NT365XX_BUF_SIZE :
  				 data->max_touches * NVT_TS_TOUCH_SIZE);
 -	if (error)
 -		return IRQ_HANDLED;
@@ -86285,10 +86301,19 @@
 +		data->page_ok = false;
 +		goto backoff;
 +	}
++
++	if (data->chip->has_pressure_major) {
++		u8 sum = 0;
++
++		for (i = 0; i < NVT_TS_NT365XX_BUF_SIZE - 1; i++)
++			sum += data->buf[i];
++		if ((u8)(sum + data->buf[NVT_TS_NT365XX_BUF_SIZE - 1]) != 0)
++			return IRQ_HANDLED;
++	}
  
  	for (i = 0; i < data->max_touches; i++) {
  		touch = &data->buf[i * NVT_TS_TOUCH_SIZE];
-@@ -107,8 +173,11 @@
+@@ -107,8 +188,11 @@
  			continue;
  
  		slot = touch[0] >> NVT_TS_TOUCH_SLOT_SHIFT;
@@ -86301,7 +86326,7 @@
  			continue;
  		}
  
-@@ -121,10 +190,11 @@
+@@ -121,10 +205,11 @@
  			active = false;
  			break;
  		default:
@@ -86314,7 +86339,21 @@
  		slot--;
  		x = (touch[1] << 4) | (touch[3] >> 4);
  		y = (touch[2] << 4) | (touch[3] & 0x0f);
-@@ -137,6 +207,17 @@
+@@ -132,11 +217,31 @@
+ 		input_mt_slot(data->input, slot);
+ 		input_mt_report_slot_state(data->input, MT_TOOL_FINGER, active);
+ 		touchscreen_report_pos(data->input, &data->prop, x, y, true);
++		if (active && data->chip->has_pressure_major) {
++			int major = touch[4] ?: 1;
++			int pressure = (i < 2) ?
++				(touch[5] | (data->buf[62 + i] << 8)) : touch[5];
++
++			pressure = clamp_t(int, pressure, 1, NVT_TS_MAX_PRESSURE);
++			input_report_abs(data->input, ABS_MT_TOUCH_MAJOR, major);
++			input_report_abs(data->input, ABS_MT_PRESSURE, pressure);
++		}
+ 	}
+ 
  	input_mt_sync_frame(data->input);
  	input_sync(data->input);
  
@@ -86332,7 +86371,7 @@
  	return IRQ_HANDLED;
  }
  
-@@ -151,8 +232,17 @@
+@@ -151,8 +256,17 @@
  		return error;
  	}
  
@@ -86351,7 +86390,7 @@
  
  	return 0;
  }
-@@ -166,31 +256,43 @@
+@@ -166,31 +280,43 @@
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  }
  
@@ -86405,7 +86444,7 @@
  
  static int nvt_ts_probe(struct i2c_client *client)
  {
-@@ -214,6 +316,7 @@
+@@ -214,6 +340,7 @@
  		return -EINVAL;
  
  	data->client = client;
@@ -86413,7 +86452,7 @@
  	i2c_set_clientdata(client, data);
  
  	/*
-@@ -243,9 +346,11 @@
+@@ -243,9 +370,11 @@
  	}
  
  	/* Wait for controller to come out of reset before params read */
@@ -86428,7 +86467,18 @@
  	gpiod_set_value_cansleep(data->reset_gpio, 1); /* Put back in reset */
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  	if (error)
-@@ -294,7 +399,7 @@
+@@ -282,6 +411,10 @@
+ 
+ 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, width - 1, 0, 0);
+ 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, height - 1, 0, 0);
++	if (chip->has_pressure_major) {
++		input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
++		input_set_abs_params(input, ABS_MT_PRESSURE, 0, NVT_TS_MAX_PRESSURE, 0, 0);
++	}
+ 	touchscreen_parse_properties(input, true, &data->prop);
+ 
+ 	error = input_mt_init_slots(input, data->max_touches,
+@@ -294,7 +427,7 @@
  
  	error = devm_request_threaded_irq(dev, client->irq, NULL, nvt_ts_irq,
  					  IRQF_ONESHOT | IRQF_NO_AUTOEN |
@@ -86437,7 +86487,7 @@
  					  client->name, data);
  	if (error) {
  		dev_err(dev, "failed to request irq: %d\n", error);
-@@ -316,11 +421,20 @@
+@@ -316,11 +449,21 @@
  
  static const struct nvt_ts_i2c_chip_data nvt_nt36672a_ts_data = {
  	.chip_id = 0x08,
@@ -86448,7 +86498,8 @@
 +	.chip_id = 0x08,
 +	.event_buf_addr = 0x2fd00,
 +	.reset_delay_ms = 500,
-+	.irq_trigger = IRQF_TRIGGER_LOW,
++	.irq_trigger = IRQF_TRIGGER_RISING,
++	.has_pressure_major = true,
  };
  
  static const struct of_device_id nvt_ts_of_match[] = {
@@ -86458,7 +86509,7 @@
  	{ }
  };
  MODULE_DEVICE_TABLE(of, nvt_ts_of_match);
-@@ -328,6 +442,7 @@
+@@ -328,6 +471,7 @@
  static const struct i2c_device_id nvt_ts_i2c_id[] = {
  	{ .name = "nt11205-ts", .driver_data = (unsigned long)&nvt_nt11205_ts_data },
  	{ .name = "nt36672a-ts", .driver_data = (unsigned long)&nvt_nt36672a_ts_data },
