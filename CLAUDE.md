@@ -1,7 +1,7 @@
 # CLAUDE.md: rebuilding and maintaining the U880 mainline port
 
 You are helping someone rebuild or extend a mainline Linux 7.4-rc4 (or the previous 7.3.1) + Arch Linux ARM + Plasma Mobile system for the **Alldocube iPlay 70 mini Ultra (U880, SM7675 "Cliffs")**.
-Read `README.md` first (what works, repo map, the 10 build steps), then the header comment of the script you are about to run and `tools/profiles/` for logs.
+Read `README.md` first (what works, repo map, the 10 build steps), then the header comment of the script you are about to run.
 Open problems are listed in the tables of `README.md`.
 
 ## Rules that override everything else
@@ -64,7 +64,7 @@ Judge the display with a **camera**, not only screenshots: compositor screenshot
 ## Style of work in this repo
 
 - Small commits, each explaining the why. Say in the commit message what you did, the evidence, and what you did not test; keep a command that re-proves each fact you rely on.
-- Measure before claiming: keep logs under `tools/profiles/` (tracked) or `logs/` (ignored). Say what you did not test.
+- Measure before claiming; keep raw logs out of git (`logs/` is ignored): they carry timestamps, hardware names and addresses. Say what you did not test.
 - There is no RAM boot: prefer reversible changes, test modules before boot images; keep the previous boot image and module files in `/root/u880-backup/` on the tablet.
 
 ## Fresh install on a new tablet (what an agent must know)

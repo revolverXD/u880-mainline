@@ -44,7 +44,7 @@ The maintainer keeps a private engineering log; this README is meant to stand on
 
 ## Performance (measured on the reference tablet)
 
-Kernel 7.3.1-u880e, Mesa 26.3.1, on battery, cooler fitted, `scripts/bench.sh` (full output and raw logs in `tools/profiles/20261125-bench-7.3.1-baseline/`):
+Kernel 7.3.1-u880e, Mesa 26.3.1, on battery, cooler fitted, `scripts/bench.sh`:
 
 | Test | Result |
 |---|---|
@@ -410,7 +410,7 @@ from your stock `qcom,mdss-dsi-*` nodes (`scripts/decode-panel-cmds.py`), and th
 
 - `scripts/clean-rebuild.sh` rebuilds the kernel from the pristine tarball + delta + defconfig and gets an identical `Image` (apart from the build counter).
 - The boot image was rebuilt with `mkbootimg` from the same inputs and verified bit for bit against the installed one; the thermal and UBWC images were produced and flashed with the commands above.
-- Each feature in the table was tested on the reference tablet (measurements in `tools/profiles/`).
+- Each feature in the table was tested on the reference tablet (measurements are not published here).
 - Steps 0-7 were rebuilt from a fresh clone by thirteen independent read-throughs (2026-11-26/27): kernel, DTB, initramfs, boot image and the firmware overlay matched the documented hashes. The install route 7b-8b was run end to end once on the reference tablet (fresh Arch root on an SD card). **Not done:** the EDL/unlock commands of steps 0-1 were never run from this repository's text, nothing was tried on a second tablet, and a factory-fresh slot b may differ from the reference one (see the warning after step 1). Expect gaps and keep your backups.
 
 ## Credits and licences
