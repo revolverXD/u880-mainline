@@ -79,7 +79,7 @@ These are bogo-op and synthetic numbers meant for before/after comparisons on th
 | `topology/`, `ucm/` | AudioReach topology source and ALSA UCM profiles (speakers `HiFi`, DisplayPort `HDMI`) |
 | `tablet-rootfs/` | mirror of every file on the tablet's root filesystem that we changed (units, udev rules, configs, scripts); pushed with `scripts/tablet-config.sh` |
 | `power/`, `usb/`, `sensors/` | extra tablet config grouped by area, with their own notes |
-| `steam/` | native ARM64 Steam, gamescope and Proton recipe and launchers (`README-arm64.md`) |
+| `steam/` | **`INSTALL.md`: install native ARM64 Steam, the desktop and gamescope launchers, extra Proton builds (DroidDeck, GE-Proton ARM64)**; `README-arm64.md` = how it was first assembled |
 | `scripts/` | build, flash, test and measurement scripts (each starts with a comment explaining it) |
 | `tools/` | small helpers: BLE test server, audio dropout analyser, rumble tool, profiles of test runs |
 | `NOTES.md`, `FINDINGS.md` | engineering log; durable facts with status and a reproduce command each |
@@ -390,6 +390,10 @@ tablet: check yours with `ls -l /dev/disk/by-partlabel/` before writing anything
 On the tablet: `uname -r` is `<release>` (`7.4.0-rc4-u880e` or `7.3.1-u880e`); `ls /sys/class/drm` shows `card1-DSI-1`; `dmesg | grep "UBWC programmed"` shows `STATIC=0x103e CTRL_2=0x2 PRED=0x1`;
 `modetest -M msm -p` lists the four refresh modes; thermal zones show the cooling maps (`ls /sys/class/thermal/thermal_zone*/trip_point_*_temp`); `bluetoothctl show` has the factory address;
 `iio-sensor-proxy` sees accelerometer and light; `cat /proc/asound/pcm` lists `MultiMedia3 Capture` and `alsaucm -c U880 set _verb HiFi set _enadev Mic && arecord -D hw:0,2 -f S16_LE -r 48000 -c 2 -d 2 /tmp/mic.wav` records (F52); `cam -l` shows `gc05a2` and `ov13b10`, `cam -c 1 --capture=5` runs at about 27 fps with the screen on (F53); `ls /dev/fastrpc-cdsp /dev/video*` and `cat /sys/class/misc/hw_random/rng_available` (has `qcom_hwrng`); `pactl list short sinks` has `HiFi__Speaker__sink`; `scripts/dpms-fuzz.sh 100 200 4000` finishes without a wedge. Stress and game checks: `scripts/stress-run.sh`, `scripts/game-profile.sh`.
+
+### 11. Games: Steam ARM64, launchers, more Proton builds
+
+After step 10 follow **`steam/INSTALL.md`**: host packages, assembling Valve's native ARM64 Steam client from its update manifest (`steam/fetch-arm64.sh`, `steam/unpack-arm64.py`, the libpng fix), the launchers (`steam-arm64`, and `steam-arm64-gs` / `steam-arm64-gs-1280` inside gamescope, with their desktop entries), installing extra Proton builds (DroidDeck-Proton and GE-Proton for ARM64, `steam/fetch-proton.sh`) and gamemode. It was written from the working reference tablet and not re-run from an empty home directory.
 
 ## Porting to another tablet
 

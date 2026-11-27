@@ -1,0 +1,6 @@
+#!/bin/sh
+# Native ARM64 Steam inside gamescope at 1280x800 (output and game resolution; the compositor scales it up). Extra arguments go to steam.
+[ "$(stat -c %u "$XDG_RUNTIME_DIR" 2>/dev/null)" = "$(id -u)" ] || export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+exec gamescope -f -W 1280 -H 800 -w 1280 -h 800 -- /usr/local/bin/steam-arm64 -no-cef-sandbox -noverifyfiles "$@"

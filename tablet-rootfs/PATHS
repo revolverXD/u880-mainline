@@ -106,3 +106,5 @@
 /usr/local/bin/u880-autobrightness
 /etc/systemd/user/u880-autobrightness.service
 /etc/gamemode.ini
+/usr/local/bin/steam-arm64-gs-1280
+/home/USER/.local/share/applications/steam-arm64-gs-1280.desktop

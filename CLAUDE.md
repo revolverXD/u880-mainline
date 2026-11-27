@@ -75,3 +75,4 @@ Judge the display with a **camera**, not only screenshots: compositor screenshot
 - The tablet has no RTC: set the date from the PC before `pacman` (`date -s @$(date +%s)`). Use a separate `known_hosts` for a re-installed system.
 - After `pacman -Syu` replaces `systemd`, ssh sessions break until reboot: reboot only when `pgrep pacman` is empty and the post-transaction hooks are done, never in the middle (stale `db.lck`).
 - Cards: write them on the PC. A card that fails SDR104 tuning (`tuning execution failed: -110`) needs `sdhci-caps-mask <0x3 0x0>` in the DTB (applies to every card). Do not kill a `dd` to a stuck card: it sits in state D until the card or the host goes away.
+- Games: `steam/INSTALL.md` (native ARM64 Steam, launchers, extra Proton builds); Easy Anti-Cheat titles did not start on Proton Experimental (ARM64) and a gamescope WSI layer message is open (that file, section 3 and 4).
