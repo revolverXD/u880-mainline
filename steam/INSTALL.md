@@ -6,8 +6,8 @@ The older route (x86 Steam under FEX) is in `steam/README.md`; the notes of how 
 
 Everything below runs **as your normal user on the tablet** (not root) unless it says `root`. `$HOME` is that user's home. Games and Proton builds are big (2 GB per Proton build, 1 GB for the client): put them on a card or on the internal disk with room; examples use `$HOME/sd` for a card.
 Send the files of this directory to the tablet first, for example `scp steam/{fetch-arm64.sh,unpack-arm64.py,arm64-packages.txt,fetch-proton.sh} <user>@<tablet>:`.
-The scripts in this directory were written with the owner's home directory in them (`/home/USER/` in the private repo, `/home/USER/` in the public copy). Replace it once, on the tablet, in the files you copied:
-`sed -i -E "s#/home/(USER|USER)/#$HOME/#g" fetch-arm64.sh fetch-proton.sh`.
+The scripts in this directory contain the owner's home directory (a `/home/<name>/` path). Replace it once, on the tablet, in the files you copied:
+`sed -i -E "s#/home/[^/]+/#$HOME/#g" fetch-arm64.sh fetch-proton.sh`.
 
 ## 1. Host packages
 
