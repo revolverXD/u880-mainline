@@ -12,7 +12,7 @@ It does **not** contain the Linux source tree, vendor firmware or any keys (see 
 > **Read this first.** This is a hobby port done on one unit. Unlocking the bootloader of this model needs a modified ABL written over
 > Qualcomm EDL, and some actions on this model have bricked it (see [Safety rules](#safety-rules)). A step-by-step run from an empty
 > machine has **not** been done end to end; the pieces below were each verified (see [How much of this is verified](#how-much-of-this-is-verified)).
-> Do it on a tablet you can afford to lose.
+> Do it on a tablet you can afford to lose. **Read the [Disclaimer](#disclaimer) before you touch anything.**
 
 ## What works
 
@@ -21,8 +21,8 @@ Tested on kernel `7.4.0-rc4-u880e` (the default since 2026-11-25; every result o
 | Area | Status |
 |---|---|
 | CPU, cpufreq, cpuidle, thermal (DT cooling maps + userspace guard) | works |
-| GPU Adreno 735 (msm DRM, Mesa freedreno/turnip, GL 4.6, Vulkan 1.4; `adreno_smmu` `dma-coherent`, preemption, `ACV perfmode_bw`, F62) | works (non-fatal page-fault messages in games, issue #2) |
-| Display: native DPU + dual DSI, DSC, UBWC, 144/120/90/60 Hz, DPMS, backlight, auto-brightness | works (the MDSS power-domain wedge is fixed, issue #1; touch reports are best at 144 Hz) |
+| GPU Adreno 735 (msm DRM, Mesa freedreno/turnip, GL 4.6, Vulkan 1.4; `adreno_smmu` `dma-coherent`, preemption, `ACV perfmode_bw`, F62) | works (non-fatal page-fault messages in games) |
+| Display: native DPU + dual DSI, DSC, UBWC, 144/120/90/60 Hz, DPMS, backlight, auto-brightness | works (the MDSS power-domain wedge is fixed; touch reports are best at 144 Hz) |
 | Touch (Novatek NT36523N, 10 points) | works (rising-edge IRQ and pressure/major axes since 2026-11-27: idle interrupts 1330/s -> 14/s, F61); the numbers that follow predate that change: the IC publishes only ~31-47 frames/s and about 1 in 5 light taps is lost (IC firmware, FINDINGS/NOTES 2026-11-24) |
 | Wi-Fi 6 (ath11k WCN6750) | works |
 | Bluetooth 5.4 (A2DP incl. LDAC, HID, BLE central and peripheral, factory address) | works; LE Audio untested |
@@ -31,7 +31,7 @@ Tested on kernel `7.4.0-rc4-u880e` (the default since 2026-11-25; every result o
 | Sensors: accelerometer, ambient light, gyroscope, compass via ADSP | works |
 | USB-C: host, USB 3 SuperSpeed, DisplayPort alt mode, PD charging, gadget for ssh | works |
 | Battery gauge and charging (via ADSP, PMIC GLINK) | works |
-| Suspend: s2idle (power key), deep suspend | works (about 0.5-0.7 W asleep; SoC deep states not reached, issue #13) |
+| Suspend: s2idle (power key), deep suspend | works (about 0.5-0.7 W asleep; SoC deep states not reached) |
 | Vibration motor | works (no haptics service yet) |
 | Steam ARM64 + Proton Experimental ARM64 (games run) | works |
 | Cameras: front GC05A2 5 MP, rear OV13B10 13 MP (CAMSS + libcamera software ISP on the GPU, PipeWire/Plasma Camera, rear flash LED and autofocus) | works (27-30 fps); **never start a camera with the screen off**: it wedges the RPMh `apps_rsc` until a forced reboot (F53); libcamera tuning and a landscape viewfinder quirk open |
@@ -40,7 +40,7 @@ Tested on kernel `7.4.0-rc4-u880e` (the default since 2026-11-25; every result o
 | DDR/LLCC bandwidth scaling (icc-bwmon) | works (F58) |
 | Fingerprint, NFC, SIM, GNSS | not present or not stated on this model |
 
-Open work is tracked in the GitHub issues; the full engineering log is `NOTES.md`, the durable verified facts are `FINDINGS.md`.
+The full engineering log is `NOTES.md`, the durable verified facts are `FINDINGS.md`.
 
 ## Performance (measured on the reference tablet)
 
@@ -95,6 +95,16 @@ grep -rIl '/home/USER/External/work/src' scripts tools tablet-rootfs steam | xar
 In `tablet-rootfs/` and `steam/` the word `USER` is a different placeholder: the tablet's user name, not a host path (`TABLET_USER=<name> scripts/tablet-config.sh push` and `scripts/build-rootfs-image.sh` replace it in the paths, the owners and the file contents). Scripts that call `edl` (`scripts/u880-ab.py`) look for the unlock folder's programmer at `../recovery/unlock/prog_firehose_ddr.elf` relative to the **current directory** (run it from the repo root, so `$SRC/recovery/unlock/`), or take `EDL_LOADER=<path>`; `scripts/stock-camera-check.sh` is an Android-era script whose header still mentions a `fastboot boot` that no longer works (F43).
 
 Put the AOSP pieces where the scripts look: `$SRC/LineageOS/system/tools/mkbootimg` (`git clone https://android.googlesource.com/platform/system/tools/mkbootimg`) and, for the Android clang, `$SRC/LineageOS/prebuilts/clang/host/linux-x86/clang-r574158` (from AOSP `platform/prebuilts/clang/host/linux-x86`, tag `android-16.0.0_r4`, which contains it (the tree used here has that repository at commit `9916fb51ccb914d62d35ad9a7b9b21d2ef046928`, "Snap for 14079904"; both checked 2026-11-26 with `git ls-tree`): `git clone --depth=1 -b android-16.0.0_r4 --filter=blob:none --sparse https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 $SRC/LineageOS/prebuilts/clang/host/linux-x86 && git -C $SRC/LineageOS/prebuilts/clang/host/linux-x86 sparse-checkout set clang-r574158` (3.4 GB; sparse-checkout syntax not run here). Or build with the Nix clang of recipe B if you have no clang 21 (any 21.x works: Nix's 21.1.8 built this kernel several times; the script uses the unpinned `llvmPackages` of your nixpkgs channel, so the version may differ)). `scripts/build-kernel-7.sh` and `scripts/build-kernel.sh` use further paths of the original machine (`root/guest-kernel/...`): they are for the Debian VM and the Android-era build and are not needed for this install.
+
+## Disclaimer
+
+**Everything in this repository is provided "as is", without warranty of any kind, and you use it entirely at your own risk.**
+
+Following these instructions unlocks the bootloader, writes partitions over Qualcomm EDL and fastboot, replaces the operating system and can erase all data on the tablet. Your tablet's warranty will most likely be void, and the manufacturer or seller may refuse any repair or support afterwards. Things can go wrong: the device can be bricked (some actions on this model already bricked a unit during development), lose all its data, boot-loop, overheat, wear its battery or storage, or damage connected accessories and SD cards. A step can fail or damage something on your unit even though it worked on the reference tablet.
+
+**The authors and contributors take no responsibility for any damage to your device or accessories, loss of data, loss of warranty or any other consequence of using this software or following this guide.** Nobody will be liable if your tablet stops working; if you are not sure what a step does, do not run it. Back up everything first (step 0), do your own research, and use a tablet you can afford to lose. By going on you accept that **whatever happens to your device is your own responsibility and your own decision.**
+
+This is an unofficial hobby project. It is not affiliated with, endorsed by or supported by Alldocube, Qualcomm, Google, Arch Linux ARM, KDE, Valve or anyone else named here; all trademarks belong to their owners. The licence in `LICENSE` (GPL-2.0-only) also disclaims any warranty.
 
 ## Safety rules
 
