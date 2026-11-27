@@ -105,3 +105,4 @@
 /etc/udev/rules.d/90-u880-flash-led.rules
 /usr/local/bin/u880-autobrightness
 /etc/systemd/user/u880-autobrightness.service
+/etc/gamemode.ini
