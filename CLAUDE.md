@@ -7,7 +7,7 @@ Open problems are the GitHub issues of this repository.
 ## Rules that override everything else
 
 1. **Ask the user before any action that wipes the tablet or writes a partition** (`dd` to `boot_a`/`boot_b`, formatting `userdata`, anything over EDL). Show the exact command, the target device and the backup you will take first.
-2. **Never** use QFIL/EDL "Erase all before download", never write `abl`, `xbl`, `vendor_boot`, `dtbo` or `vbmeta` from Linux, never flash stock images one at a time in fastboot (the only exception is the `vbmeta`/`vbmeta_system` flashes of README step 1.6), never let the tablet take a stock OTA (firmware 3.0L.4+ adds ABL anti-tamper; the XDA thread reports an L.4 unlock with another ABL package, README step 0, untested here). Recovery is only the full-stock EDL XMLs.
+2. **Never** use QFIL/EDL "Erase all before download", never write `abl`, `xbl`, `vendor_boot`, `dtbo` or `vbmeta` from Linux, never flash stock images one at a time in fastboot (the only exception is the `vbmeta`/`vbmeta_system` and `vbmeta_b`/`vbmeta_system_b` flashes of README step 1.6), never let the tablet take a stock OTA (firmware 3.0L.4+ adds ABL anti-tamper; the XDA thread reports an L.4 unlock with another ABL package, README step 0, untested here). Recovery is only the full-stock EDL XMLs.
 3. Never commit, upload or print private keys, signing keys or passwords. The tablet SSH key is `alarm/ssh/id_ed25519` (git-ignored). Default image passwords `alarm`/`root` must be changed on a new install.
 4. Vendor firmware, stock images, `abl.elf` unlock files and the Linux source tree are **not** in git (`.gitignore` is a whitelist). Do not add them.
 5. Report outcomes truthfully: if a test fails or you skipped a step, say so with the output.
