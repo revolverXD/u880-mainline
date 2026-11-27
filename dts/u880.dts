@@ -13118,7 +13118,7 @@
 		};
 
 		qcom,smp2p-cdsp {
-			status = "disabled";
+			status = "ok";
 			compatible = "qcom,smp2p";
 			qcom,smem = <0x5e 0x1b0>;
 			interrupt-parent = <0x17c>;
@@ -13467,7 +13467,8 @@
 		};
 
 		cdsp_pas: remoteproc-cdsp@32300000 {
-			status = "disabled";
+			status = "ok";
+			firmware-name = "qcom/u880/cdsp.mdt", "qcom/u880/cdsp_dtb.mdt";
 			compatible = "qcom,cliffs-cdsp-pas";
 			reg = <0x32300000 0x10000>;
 			cx-supply = <0x148>;
@@ -13477,14 +13478,13 @@
 			nsp-supply = <0x196>;
 			nsp-uV-uA = <0x180 0x186a0>;
 			reg-names = "cx", "mx", "nsp";
-			memory-region = <0x197 0x198>;
+			memory-region = <0x197 0x198 0x199>;
 			global-sync-mem-reg = <0x199>;
 			clocks = <0x16d 0x00>;
 			clock-names = "xo";
 			qcom,signal-aop;
 			qcom,qmp = <0x24>;
-			interconnects = <0x19a 0x29 0x189 0x200 0x18a 0x26 0x189 0x200>;
-			interconnect-names = "rproc_ddr", "crypto_ddr";
+			interconnects = <0x19a 0x29 0x189 0x200>;
 			interrupts-extended = <0x01 0x00 0x242 0x01 0x19b 0x00 0x00 0x19b 0x02 0x00 0x19b 0x01 0x00 0x19b 0x03 0x00>;
 			interrupt-names = "wdog", "fatal", "handover", "ready", "stop-ack";
 			qcom,smem-states = <0x19c 0x00>;
@@ -13521,9 +13521,69 @@
 				};
 
 				qcom,msm_fastrpc_rpmsg {
-					compatible = "qcom,msm-fastrpc-rpmsg";
+					compatible = "qcom,fastrpc";
 					qcom,glink-channels = "fastrpcglink-apps-dsp";
 					qcom,intents = <0x64 0x40>;
+					label = "cdsp";
+					qcom,non-secure-domain;
+					#address-cells = <0x01>;
+					#size-cells = <0x00>;
+
+					compute-cb@1 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x01>;
+						iommus = <0x12a 0xc01 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@2 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x02>;
+						iommus = <0x12a 0xc02 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@3 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x03>;
+						iommus = <0x12a 0xc03 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@4 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x04>;
+						iommus = <0x12a 0xc04 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@5 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x05>;
+						iommus = <0x12a 0xc05 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@6 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x06>;
+						iommus = <0x12a 0xc06 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@7 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x07>;
+						iommus = <0x12a 0xc07 0x00>;
+						dma-coherent;
+					};
+
+					compute-cb@8 {
+						compatible = "qcom,fastrpc-compute-cb";
+						reg = <0x08>;
+						iommus = <0x12a 0xc08 0x00>;
+						dma-coherent;
+					};
 				};
 			};
 		};
@@ -13989,7 +14049,7 @@
 		};
 
 		nsp_noc: interconnect@320C0000 {
-			status = "disabled";
+			status = "ok";
 			compatible = "qcom,cliffs-nsp_noc";
 			reg = <0x320c0000 0xe080>;
 			#interconnect-cells = <0x01>;

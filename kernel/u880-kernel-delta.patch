@@ -1,20 +1,21 @@
 --- a/drivers/net/wireless/ath/ath11k/ahb.c
 +++ b/drivers/net/wireless/ath/ath11k/ahb.c
-@@ -34,6 +34,10 @@
- 	{ .compatible = "qcom,wcn6750-wifi",
- 	  .data = (void *)ATH11K_HW_WCN6750_HW10,
+@@ -32,6 +32,10 @@
+ 	  .data = (void *)ATH11K_HW_IPQ6018_HW10,
  	},
-+	/* U880: stock (downstream icnss2) node from the ABL-applied board overlay. */
-+	{ .compatible = "qcom,wcn6750",
+ 	{ .compatible = "qcom,wcn6750-wifi",
 +	  .data = (void *)ATH11K_HW_WCN6750_HW10,
 +	},
- 	{ .compatible = "qcom,ipq5018-wifi",
- 	  .data = (void *)ATH11K_HW_IPQ5018_HW10,
++	/* U880: stock (downstream icnss2) node from the ABL-applied board overlay. */
++	{ .compatible = "qcom,wcn6750",
+ 	  .data = (void *)ATH11K_HW_WCN6750_HW10,
  	},
+ 	{ .compatible = "qcom,ipq5018-wifi",
 @@ -406,14 +410,68 @@
  	ath11k_ce_cleanup_pipes(ab);
  }
  
+-static int ath11k_ahb_power_up(struct ath11k_base *ab)
 +static int ath11k_ahb_uke_regulators(struct ath11k_base *ab)
 +{
 +	static const char * const names[] = { "vdd-cx-mx", "vdd-1.8-xo", "vdd-1.3-rfa" };
@@ -44,10 +45,10 @@
 +}
 +
 +static void ath11k_ahb_uke_regulators_off(struct ath11k_base *ab)
-+{
-+	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
-+	int ret;
-+
+ {
+ 	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
+ 	int ret;
+ 
 +	while (ab_ahb->num_uke_regs_enabled) {
 +		ret = regulator_disable(ab_ahb->uke_regs[ab_ahb->num_uke_regs_enabled - 1].consumer);
 +		if (ret) {
@@ -58,11 +59,11 @@
 +	}
 +}
 +
- static int ath11k_ahb_power_up(struct ath11k_base *ab)
- {
- 	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
- 	int ret;
- 
++static int ath11k_ahb_power_up(struct ath11k_base *ab)
++{
++	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
++	int ret;
++
 +	/* OEM ICNSS enables CX/MX, XO, then RFA; bulk enable runs in parallel. */
 +	while (ab_ahb->uke_supplies && ab_ahb->num_uke_regs_enabled < 3) {
 +		ret = regulator_enable(ab_ahb->uke_regs[ab_ahb->num_uke_regs_enabled].consumer);
@@ -179,10 +180,11 @@
  static int qcom_battmgr_request_property(struct qcom_battmgr *battmgr, int opcode,
  					 int property, u32 value)
  {
-@@ -373,6 +398,20 @@
+@@ -372,6 +397,20 @@
+ 		.property = cpu_to_le32(property),
  		.value = cpu_to_le32(value),
  	};
- 
++
 +	if (battmgr->variant == QCOM_BATTMGR_UKE) {
 +		if (opcode == BATTMGR_BAT_PROPERTY_SET)
 +			return -EOPNOTSUPP;
@@ -196,10 +198,9 @@
 +			request.property = cpu_to_le32(property);
 +		}
 +	}
-+
+ 
  	return qcom_battmgr_request(battmgr, &request, sizeof(request));
  }
- 
 @@ -989,6 +1028,9 @@
  		return -EINVAL;
  
@@ -210,10 +211,12 @@
  
  	mutex_lock(&battmgr->lock);
  	ret = qcom_battmgr_request_property(battmgr, BATTMGR_USB_PROPERTY_GET, prop, 0);
-@@ -1044,6 +1086,62 @@
- 	return 0;
- }
+@@ -1042,6 +1084,62 @@
+ 	}
  
+ 	return 0;
++}
++
 +static int qcom_battmgr_usb_set_property(struct power_supply *psy,
 +				       enum power_supply_property psp,
 +				       const union power_supply_propval *val)
@@ -268,11 +271,9 @@
 +
 +	return battmgr->variant == QCOM_BATTMGR_UKE &&
 +	       psp == POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT;
-+}
-+
+ }
+ 
  static const enum power_supply_property sc8280xp_usb_props[] = {
- 	POWER_SUPPLY_PROP_ONLINE,
- };
 @@ -1082,6 +1180,8 @@
  	.properties = sm8350_usb_props,
  	.num_properties = ARRAY_SIZE(sm8350_usb_props),
@@ -780,19 +781,21 @@
  	irq = platform_get_irq(pdev, 0);
  	if (irq < 0)
  		return irq;
-+	cpucp->irq = irq;
- 
+-
 -	ret = devm_request_irq(dev, irq, qcom_cpucp_mbox_irq_fn,
 -			       IRQF_TRIGGER_HIGH | IRQF_NO_SUSPEND, "apss_cpucp_mbox", cpucp);
++	cpucp->irq = irq;
++
 +	ret = devm_request_irq(dev, irq,
 +			       data->uke_legacy ? qcom_cpucp_uke_irq_fn : qcom_cpucp_mbox_irq_fn,
 +			       IRQF_TRIGGER_HIGH | IRQF_NO_SUSPEND |
 +			       (data->uke_legacy ? IRQF_NO_AUTOEN : 0), "apss_cpucp_mbox", cpucp);
  	if (ret < 0)
 -		return ret;
-+		return dev_err_probe(dev, ret, "Failed to register irq: %d\n", irq);
- 
+-
 -	writeq(APSS_CPUCP_RX_MBOX_CMD_MASK, cpucp->rx_base + APSS_CPUCP_RX_MBOX_MAP);
++		return dev_err_probe(dev, ret, "Failed to register irq: %d\n", irq);
++
 +	if (!data->uke_legacy)
 +		writeq(APSS_CPUCP_RX_MBOX_CMD_MASK, cpucp->rx_base + APSS_CPUCP_RX_MBOX_MAP);
  
@@ -3708,19 +3711,18 @@
 +
 --- a/drivers/video/backlight/ktz8866.c
 +++ b/drivers/video/backlight/ktz8866.c
-@@ -10,9 +10,12 @@
+@@ -10,8 +10,11 @@
  #include <linux/gpio/consumer.h>
  #include <linux/i2c.h>
  #include <linux/module.h>
 +#include <linux/mutex.h>
  #include <linux/of.h>
  #include <linux/regmap.h>
- 
-+#include "ktz8866-uke-levels.h"
 +
++#include "ktz8866-uke-levels.h"
+ 
  #define DEFAULT_BRIGHTNESS 1500
  #define MAX_BRIGHTNESS 2047
- #define REG_MAX 0x15
 @@ -48,6 +51,11 @@
  	struct regmap *regmap;
  	bool led_on;
@@ -3983,11 +3985,12 @@
  	/* Set brightness */
 -	ktz8866_write(ktz, BL_BRT_LSB, brightness & 0x7);
 -	ktz8866_write(ktz, BL_BRT_MSB, (brightness >> 3) & 0xFF);
+-
+-	return 0;
 +	ret = ktz8866_write(ktz, BL_BRT_LSB, brightness & 0x7);
 +	if (ret)
 +		return ret;
- 
--	return 0;
++
 +	return ktz8866_write(ktz, BL_BRT_MSB, (brightness >> 3) & 0xFF);
  }
  
@@ -4075,11 +4078,12 @@
 -
 -	i2c_set_clientdata(client, backlight_dev);
 -	backlight_update_status(backlight_dev);
+-
+-	return 0;
 +	ret = ktz8866_init(ktz);
 +	if (ret)
 +		return dev_err_probe(&client->dev, ret, "backlight initialization failed\n");
- 
--	return 0;
++
 +	ktz->backlight = backlight_dev;
 +	return backlight_update_status(backlight_dev);
  }
@@ -4465,26 +4469,26 @@
  static void __init clk_unprepare_unused_subtree(struct clk_core *core)
  {
  	struct clk_core *child;
-@@ -1522,6 +1606,9 @@
+@@ -1521,6 +1605,9 @@
+ 
  	hlist_for_each_entry(child, &core->children, child_node)
  		clk_unprepare_unused_subtree(child);
- 
++
 +	if (core->flags & CLK_HOLD_STATE)
 +		return;
-+
+ 
  	if (core->prepare_count)
  		return;
+@@ -1547,6 +1634,9 @@
  
-@@ -1548,6 +1635,9 @@
  	hlist_for_each_entry(child, &core->children, child_node)
  		clk_disable_unused_subtree(child);
- 
++
 +	if (core->flags & CLK_HOLD_STATE)
 +		return;
-+
+ 
  	if (core->flags & CLK_OPS_PARENT_ENABLE)
  		clk_core_prepare_enable(core->parent);
- 
 @@ -2431,6 +2521,15 @@
  			fail_clk = core;
  	}
@@ -4501,16 +4505,16 @@
  	hlist_for_each_entry(child, &core->children, child_node) {
  		/* Skip children who will be reparented to another clock */
  		if (child->new_parent && child->new_parent != core)
-@@ -2525,6 +2624,9 @@
+@@ -2524,6 +2623,9 @@
+ 
  	if (core->flags & CLK_RECALC_NEW_RATES)
  		(void)clk_calc_new_rates(core, core->new_rate);
- 
++
 +	if (core->ops->post_rate_change)
 +		core->ops->post_rate_change(core->hw, old_rate, core->rate);
-+
+ 
  	/*
  	 * Use safe iteration, as change_rate can actually swap parents
- 	 * for certain clock types.
 @@ -3639,6 +3741,7 @@
  	ENTRY(CLK_IS_CRITICAL),
  	ENTRY(CLK_OPS_PARENT_ENABLE),
@@ -6995,10 +6999,11 @@
 +MODULE_LICENSE("GPL v2");
 --- a/drivers/clk/qcom/Kconfig
 +++ b/drivers/clk/qcom/Kconfig
-@@ -7,6 +7,14 @@
+@@ -6,6 +6,14 @@
+ config QCOM_GDSC
  	bool
  	select PM_GENERIC_DOMAINS if PM
- 
++
 +config QCOM_GDSC_REGULATOR_UKE
 +	tristate "Uke GDSC regulator"
 +	depends on REGULATOR
@@ -7006,10 +7011,9 @@
 +	help
 +	  Regulator-framework provider for the Uke USB controller GDSC.
 +	  This is the narrow upstream adaptation of Xiaomi's qcom,gdsc driver.
-+
+ 
  menuconfig COMMON_CLK_QCOM
  	tristate "Support for Qualcomm's clock controllers"
- 	depends on OF
 @@ -1827,6 +1835,21 @@
  	  Support for the global clock controller on SM8750 devices.
  	  Say Y if you want to use peripheral devices such as UART,
@@ -7108,7 +7112,7 @@
  	{ }
  };
  MODULE_DEVICE_TABLE(of, disp_cc_sm8550_match_table);
- 
++
 +#include "uke-dispcc-votes.c"
 +
 +/*
@@ -7180,7 +7184,7 @@
 +	}
 +	return ret;
 +}
-+
+ 
  static int disp_cc_sm8550_probe(struct platform_device *pdev)
  {
  	struct regmap *regmap;
@@ -7211,12 +7215,15 @@
  		disp_cc_mdss_dptx1_usb_router_link_intf_clk.clkr.hw.init->parent_hws[0] =
  			&disp_cc_mdss_dptx1_link_div_clk_src.clkr.hw;
  	} else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sar2130p-dispcc")) {
-@@ -1804,16 +1901,35 @@
+@@ -1804,15 +1901,34 @@
  		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sar2130p;
  	}
  
 -	clk_lucid_ole_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll0_config);
 -	clk_lucid_ole_pll_configure(&disp_cc_pll1, regmap, &disp_cc_pll1_config);
+-
+-	/* Enable clock gating for MDP clocks */
+-	regmap_update_bits(regmap, DISP_CC_MISC_CMD, 0x10, 0x10);
 +	/*
 +	 * U880 (Cliffs, DPU 10.1): the bootloader splash is scanning out from these PLLs when we probe. Reprogramming them (or the MISC command
 +	 * register) blanks the panel (white screen), so leave the hardware state as the firmware left it.
@@ -7224,9 +7231,7 @@
 +	if (!of_device_is_compatible(pdev->dev.of_node, "alldocube,u880-dispcc")) {
 +		clk_lucid_ole_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll0_config);
 +		clk_lucid_ole_pll_configure(&disp_cc_pll1, regmap, &disp_cc_pll1_config);
- 
--	/* Enable clock gating for MDP clocks */
--	regmap_update_bits(regmap, DISP_CC_MISC_CMD, 0x10, 0x10);
++
 +		/* Enable clock gating for MDP clocks */
 +		regmap_update_bits(regmap, DISP_CC_MISC_CMD, 0x10, 0x10);
 +	}
@@ -7234,7 +7239,7 @@
  	ret = qcom_cc_really_probe(&pdev->dev, &disp_cc_sm8550_desc, regmap);
  	if (ret)
  		goto err_put_rpm;
- 
++
 +	if (of_device_is_compatible(pdev->dev.of_node, "alldocube,u880-dispcc") && mdss_gdsc.pd.power_on) {
 +		u880_dispcc_dev = &pdev->dev;
 +		u880_mdss_gdsc_on = mdss_gdsc.pd.power_on;
@@ -7247,10 +7252,9 @@
 +			u880_mdss_gdsc_held = true;
 +		}
 +	}
-+
+ 
  	pm_runtime_put(&pdev->dev);
  
- 	return 0;
 @@ -1828,6 +1944,7 @@
  	.probe = disp_cc_sm8550_probe,
  	.driver = {
@@ -11004,7 +11008,7 @@
  	regulator_bulk_disable(ARRAY_SIZE(gc05a2_supply_name),
  			       gc05a2->supplies);
  
-@@ -1247,11 +1250,16 @@
+@@ -1247,10 +1250,15 @@
  		return dev_err_probe(dev, ret,
  				     "failed to get regulators\n");
  
@@ -11013,15 +11017,14 @@
  	if (IS_ERR(gc05a2->reset_gpio))
  		return dev_err_probe(dev, PTR_ERR(gc05a2->reset_gpio),
  				     "failed to get gpio\n");
- 
++
 +	gc05a2->pwdn_gpio = devm_gpiod_get_optional(dev, "pwdn", GPIOD_OUT_HIGH);
 +	if (IS_ERR(gc05a2->pwdn_gpio))
 +		return dev_err_probe(dev, PTR_ERR(gc05a2->pwdn_gpio),
 +				     "failed to get pwdn gpio\n");
-+
+ 
  	v4l2_i2c_subdev_init(&gc05a2->sd, client, &gc05a2_subdev_ops);
  	gc05a2->sd.internal_ops = &gc05a2_internal_ops;
- 	gc05a2->cur_mode = &gc05a2_modes[0];
 --- a/drivers/media/i2c/ov13b10.c
 +++ b/drivers/media/i2c/ov13b10.c
 @@ -717,6 +717,7 @@
@@ -11048,7 +11051,7 @@
  	gpiod_set_value_cansleep(ov13b10->reset, 0);
  	/* 5ms to wait ready after XSHUTDN assert */
  	usleep_range(5000, 5500);
-@@ -1481,11 +1484,17 @@
+@@ -1481,10 +1484,16 @@
  	int ret;
  
  	ov13b->reset = devm_gpiod_get_optional(ov13b->dev, "reset",
@@ -11057,16 +11060,15 @@
  	if (IS_ERR(ov13b->reset))
  		return dev_err_probe(ov13b->dev, PTR_ERR(ov13b->reset),
  				     "failed to get reset gpio\n");
- 
++
 +	ov13b->pwdn = devm_gpiod_get_optional(ov13b->dev, "pwdn",
 +					      GPIOD_OUT_HIGH);
 +	if (IS_ERR(ov13b->pwdn))
 +		return dev_err_probe(ov13b->dev, PTR_ERR(ov13b->pwdn),
 +				     "failed to get pwdn gpio\n");
-+
+ 
  	ov13b->img_clk = devm_v4l2_sensor_clk_get(ov13b->dev, NULL);
  	if (IS_ERR(ov13b->img_clk))
- 		return dev_err_probe(ov13b->dev, PTR_ERR(ov13b->img_clk),
 @@ -1706,11 +1715,18 @@
  MODULE_DEVICE_TABLE(acpi, ov13b10_acpi_ids);
  #endif
@@ -11117,6 +11119,113 @@
  	{ .compatible = "qcom,sm8550-camss", .data = &sm8550_resources },
  	{ .compatible = "qcom,sm8650-camss", .data = &sm8650_resources },
  	{ .compatible = "qcom,x1e80100-camss", .data = &x1e80100_resources },
+--- a/drivers/media/platform/qcom/iris/iris_platform_common.h
++++ b/drivers/media/platform/qcom/iris/iris_platform_common.h
+@@ -68,6 +68,7 @@
+ extern const struct iris_platform_data sc7280_data;
+ extern const struct iris_platform_data sm8250_data;
+ extern const struct iris_platform_data sm8550_data;
++extern const struct iris_platform_data sm7675_data;
+ extern const struct iris_platform_data sm8650_data;
+ extern const struct iris_platform_data sm8750_data;
+ extern const struct iris_platform_data x1p42100_data;
+--- a/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
++++ b/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
+@@ -26,6 +26,12 @@
+ 	.fwname = "qcom/vpu/vpu30_p4_s6.mbn",
+ };
+ 
++static const struct iris_firmware_desc iris_vpu30_p2_gen2_desc = {
++	.firmware_data = &iris_hfi_gen2_data,
++	.get_vpu_buffer_size = iris_vpu33_buf_size,
++	.fwname = "qcom/vpu/vpu30_2v.mbn",
++};
++
+ static const struct iris_firmware_desc iris_vpu30_p4_gen2_desc = {
+ 	.firmware_data = &iris_hfi_gen2_data,
+ 	.get_vpu_buffer_size = iris_vpu_buf_size,
+@@ -104,6 +110,40 @@
+ 	.pmdomain_tbl_size = ARRAY_SIZE(iris_pmdomain_table_vpu3x),
+ 	.opp_pd_tbl = iris_opp_pd_table_vpu3x,
+ 	.opp_pd_tbl_size = ARRAY_SIZE(iris_opp_pd_table_vpu3x),
++	.clk_tbl = sm8550_clk_table,
++	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
++	.opp_clk_tbl = iris_opp_clk_table_vpu3x,
++	/* Upper bound of DMA address range */
++	.dma_mask = 0xe0000000 - 1,
++	.inst_iris_fmts = iris_fmts_vpu3x_dec,
++	.inst_iris_fmts_size = ARRAY_SIZE(iris_fmts_vpu3x_dec),
++	.inst_caps = &platform_inst_cap_qcs8300,
++	.slice_caps = &iris_vpu2_vpu3x_slice_caps,
++	.tz_cp_config_data = tz_cp_config_vpu3,
++	.tz_cp_config_data_size = ARRAY_SIZE(tz_cp_config_vpu3),
++	.num_vpp_pipe = 2,
++	.wd_intr_mask = WRAPPER_INTR_STATUS_A2HWD_BMSK,
++	.icc_ib_multiplier = 1,
++	.max_session_count = 16,
++	.max_core_mbpf = ((4096 * 2176) / 256) * 4,
++	.max_core_mbps = (((3840 * 2176) / 256) * 120),
++};
++
++const struct iris_platform_data sm7675_data = {
++	.firmware_desc_gen2 = &iris_vpu30_p2_gen2_desc,
++	.vpu_ops = &iris_vpu33_ops,
++	.icc_tbl = iris_icc_info_vpu3x,
++	.icc_tbl_size = ARRAY_SIZE(iris_icc_info_vpu3x),
++	.clk_rst_tbl = sm8650_clk_reset_table,
++	.clk_rst_tbl_size = ARRAY_SIZE(sm8650_clk_reset_table),
++	.controller_rst_tbl = sm8650_controller_reset_table,
++	.controller_rst_tbl_size = ARRAY_SIZE(sm8650_controller_reset_table),
++	.bw_tbl_dec = iris_bw_table_dec_vpu3x,
++	.bw_tbl_dec_size = ARRAY_SIZE(iris_bw_table_dec_vpu3x),
++	.pmdomain_tbl = iris_pmdomain_table_vpu3x,
++	.pmdomain_tbl_size = ARRAY_SIZE(iris_pmdomain_table_vpu3x),
++	.opp_pd_tbl = NULL,
++	.opp_pd_tbl_size = 0,
+ 	.clk_tbl = sm8550_clk_table,
+ 	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
+ 	.opp_clk_tbl = iris_opp_clk_table_vpu3x,
+--- a/drivers/media/platform/qcom/iris/iris_probe.c
++++ b/drivers/media/platform/qcom/iris/iris_probe.c
+@@ -64,16 +64,18 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	ret =  devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
+-	/* backwards compatibility for incomplete ABI SM8250 */
+-	if (ret == -ENODEV &&
+-	    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
+-		iris_opp_pd_data.num_pd_names--;
+-		ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
+-						 &core->opp_pmdomain_tbl);
++	if (core->iris_platform_data->opp_pd_tbl_size) {
++		ret =  devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
++		/* backwards compatibility for incomplete ABI SM8250 */
++		if (ret == -ENODEV &&
++		    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
++			iris_opp_pd_data.num_pd_names--;
++			ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
++							 &core->opp_pmdomain_tbl);
++		}
++		if (ret < 0)
++			return ret;
+ 	}
+-	if (ret < 0)
+-		return ret;
+ 
+ 	ret = devm_pm_opp_set_config(core->dev, &iris_opp_clk_data);
+ 	if (ret)
+@@ -435,6 +437,10 @@
+ 		.data = &sc7280_data,
+ 	},
+ 	{
++		.compatible = "qcom,sm7675-iris",
++		.data = &sm7675_data,
++	},
++	{
+ 		.compatible = "qcom,sm8250-venus",
+ 		.data = &sm8250_data,
+ 	},
 --- a/drivers/interconnect/qcom/icc-rpmh.c
 +++ b/drivers/interconnect/qcom/icc-rpmh.c
 @@ -373,11 +373,18 @@
@@ -11341,7 +11450,7 @@
  	depends on INTERCONNECT_QCOM_RPMH_POSSIBLE
 --- /dev/null
 +++ b/drivers/interconnect/qcom/qnoc-cliffs-usb.c
-@@ -0,0 +1,716 @@
+@@ -0,0 +1,772 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -11364,6 +11473,7 @@
 +#define MASTER_QUP_1	7
 +#define MASTER_A1NOC_SNOC	8
 +#define MASTER_A2NOC_SNOC	9
++#define MASTER_CDSP_GEM_NOC	12
 +#define MASTER_GEM_NOC_CNOC	15
 +#define MASTER_GFX3D	17
 +#define MASTER_LPASS_GEM_NOC	18
@@ -11374,6 +11484,7 @@
 +#define MASTER_QUP_CORE_0	36
 +#define MASTER_QUP_CORE_1	37
 +#define MASTER_LPASS_PROC	40
++#define MASTER_CDSP_PROC	41
 +#define MASTER_UFS_MEM	48
 +#define MASTER_USB3_0	49
 +#define SLAVE_EBI1	512
@@ -11389,6 +11500,7 @@
 +#define SLAVE_LPASS_GEM_NOC	556
 +#define SLAVE_LPIAON_NOC_LPASS_AG_NOC	557
 +#define SLAVE_LPICX_NOC_LPIAON_NOC	558
++#define SLAVE_CDSP_MEM_NOC	560
 +#define SLAVE_CNOC_CFG	565
 +#define SLAVE_QUP_CORE_0	572
 +#define SLAVE_QUP_CORE_1	573
@@ -11433,6 +11545,9 @@
 +static struct qcom_icc_node qnm_lpiaon_noc;
 +static struct qcom_icc_node qns_lpass_ag_noc_gemnoc;
 +static struct qcom_icc_node qnm_lpass_gemnoc;
++static struct qcom_icc_node qnm_nsp;
++static struct qcom_icc_node qns_nsp_gemnoc;
++static struct qcom_icc_node qnm_nsp_gemnoc;
 +
 +#include "cliffs-display-icc.h"
 +
@@ -11932,6 +12047,7 @@
 +static struct qcom_icc_node * const gem_noc_nodes[] = {
 +	[MASTER_MNOC_HF_MEM_NOC] = &qnm_mnoc_hf,
 +	[MASTER_APPSS_PROC] = &chm_apps,
++	[MASTER_CDSP_GEM_NOC] = &qnm_nsp_gemnoc,
 +	[MASTER_GFX3D] = &qnm_gpu,
 +	[MASTER_LPASS_GEM_NOC] = &qnm_lpass_gemnoc,
 +	[MASTER_SNOC_SF_MEM_NOC] = &qnm_snoc_sf,
@@ -12028,8 +12144,57 @@
 +	.num_bcms = ARRAY_SIZE(system_noc_bcms),
 +};
 +
++static struct qcom_icc_node qnm_nsp = {
++	.name = "qnm_nsp",
++	.channels = 2,
++	.buswidth = 32,
++	.num_links = 1,
++	.link_nodes = { &qns_nsp_gemnoc },
++};
++
++static struct qcom_icc_node qns_nsp_gemnoc = {
++	.name = "qns_nsp_gemnoc",
++	.channels = 2,
++	.buswidth = 32,
++	.num_links = 1,
++	.link_nodes = { &qnm_nsp_gemnoc },
++};
++
++static struct qcom_icc_node qnm_nsp_gemnoc = {
++	.name = "qnm_nsp_gemnoc",
++	.channels = 2,
++	.buswidth = 32,
++	.num_links = 1,
++	.link_nodes = { &qns_llcc },
++};
++
++static struct qcom_icc_bcm bcm_co0 = {
++	.name = "CO0",
++	.enable_mask = BIT(0),
++	.num_nodes = 2,
++	.nodes = { &qnm_nsp, &qns_nsp_gemnoc },
++};
++
++static struct qcom_icc_node * const nsp_noc_nodes[] = {
++	[MASTER_CDSP_PROC] = &qnm_nsp,
++	[SLAVE_CDSP_MEM_NOC] = &qns_nsp_gemnoc,
++};
++
++static struct qcom_icc_bcm * const nsp_noc_bcms[] = {
++	&bcm_co0,
++};
++
++static const struct qcom_icc_desc cliffs_nsp_noc = {
++	.config = &cliffs_icc_regmap_config,
++	.nodes = nsp_noc_nodes,
++	.num_nodes = ARRAY_SIZE(nsp_noc_nodes),
++	.bcms = nsp_noc_bcms,
++	.num_bcms = ARRAY_SIZE(nsp_noc_bcms),
++};
++
 +static const struct of_device_id cliffs_usb_of_match[] = {
 +	{ .compatible = "qcom,cliffs-mmss_noc", .data = &cliffs_mmss_noc },
++	{ .compatible = "qcom,cliffs-nsp_noc", .data = &cliffs_nsp_noc },
 +	{ .compatible = "qcom,cliffs-aggre1_noc", .data = &cliffs_aggre1_noc },
 +	{ .compatible = "qcom,cliffs-aggre2_noc", .data = &cliffs_aggre2_noc },
 +	{ .compatible = "qcom,cliffs-clk_virt", .data = &cliffs_clk_virt },
@@ -12436,7 +12601,7 @@
  
 --- a/drivers/usb/dwc3/dwc3-qcom.c
 +++ b/drivers/usb/dwc3/dwc3-qcom.c
-@@ -16,12 +16,16 @@
+@@ -16,11 +16,15 @@
  #include <linux/phy/phy.h>
  #include <linux/usb/of.h>
  #include <linux/reset.h>
@@ -12446,13 +12611,12 @@
  #include <linux/usb.h>
  #include "core.h"
  #include "glue.h"
- 
++
 +/* same bit as PHY_HOST_MODE in phy-msm-snps-eusb2-uke.c (the usb_phy flags word is driver defined) */
 +#define U880_PHY_HOST_MODE BIT(0)
-+
+ 
  /* USB QSCRATCH Hardware registers */
  #define QSCRATCH_HS_PHY_CTRL			0x10
- #define UTMI_OTG_VBUS_VALID			BIT(20)
 @@ -69,6 +73,8 @@
  };
  
@@ -12573,17 +12737,17 @@
  	}
  
  	ret = clk_bulk_prepare_enable(qcom->num_clocks, qcom->clks);
-@@ -658,6 +723,10 @@
- 		ret = -EINVAL;
- 		goto clk_disable;
- 	}
-+	if (resource_size(r) < SDM845_QSCRATCH_BASE_OFFSET + SDM845_QSCRATCH_SIZE) {
+@@ -655,6 +720,10 @@
+ 
+ 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!r) {
 +		ret = -EINVAL;
 +		goto clk_disable;
 +	}
- 	res = *r;
- 	res.end = res.start + SDM845_QSCRATCH_BASE_OFFSET;
- 
++	if (resource_size(r) < SDM845_QSCRATCH_BASE_OFFSET + SDM845_QSCRATCH_SIZE) {
+ 		ret = -EINVAL;
+ 		goto clk_disable;
+ 	}
 @@ -840,6 +909,7 @@
  
  static const struct of_device_id dwc3_qcom_of_match[] = {
@@ -12668,7 +12832,7 @@
  #include <linux/delay.h>
  #include <linux/slab.h>
  #include <linux/spinlock.h>
-@@ -20,6 +22,8 @@
+@@ -20,12 +22,33 @@
  #include <linux/dma-mapping.h>
  
  #include <linux/usb/ch9.h>
@@ -12677,10 +12841,10 @@
  #include <linux/usb/gadget.h>
  
  #include "debug.h"
-@@ -27,6 +31,25 @@
+ #include "core.h"
  #include "gadget.h"
  #include "io.h"
- 
++
 +static atomic_t diag_events = ATOMIC_INIT(0);
 +
 +static int dwc3_diag_events_get(char *buffer, const struct kernel_param *kp)
@@ -12699,10 +12863,9 @@
 +{
 +	atomic_or(event, &diag_events);
 +}
-+
+ 
  #define DWC3_ALIGN_FRAME(d, n)	(((d)->frame_number + ((d)->interval * (n))) \
  					& ~((d)->interval - 1))
- 
 @@ -3198,7 +3221,9 @@
  	struct dwc3		*dwc = gadget_to_dwc(g);
  	unsigned long		flags;
@@ -12748,24 +12911,24 @@
  static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
  {
  	int			reg;
-@@ -4208,6 +4249,8 @@
+@@ -4207,6 +4248,8 @@
+ 	dwc->connected = false;
  
  	dwc3_disconnect_gadget(dwc);
- 
-+	dwc3_uke_phy_notify(dwc, false);
 +
++	dwc3_uke_phy_notify(dwc, false);
+ 
  	dwc->gadget->speed = USB_SPEED_UNKNOWN;
  	dwc->setup_packet_pending = false;
- 	dwc->gadget->wakeup_armed = false;
-@@ -4228,6 +4271,8 @@
+@@ -4227,6 +4270,8 @@
+ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
  {
  	u32			reg;
- 
-+	dwc3_gadget_diag_event(DWC3_DIAG_RESET);
 +
++	dwc3_gadget_diag_event(DWC3_DIAG_RESET);
+ 
  	dwc->suspended = false;
  
- 	/* The controller is recovered. */
 @@ -4314,6 +4359,8 @@
  	u8			lanes = 1;
  	u8			speed;
@@ -12775,21 +12938,22 @@
  	if (!dwc->softconnect)
  		return;
  
-@@ -4384,6 +4431,8 @@
+@@ -4383,6 +4430,8 @@
+ 		dwc->gadget->speed = USB_SPEED_FULL;
  		break;
  	}
- 
-+	dwc3_uke_phy_notify(dwc, true);
 +
++	dwc3_uke_phy_notify(dwc, true);
+ 
  	dwc->eps[1]->endpoint.maxpacket = dwc->gadget->ep0->maxpacket;
  
- 	/* Enable USB2 LPM Capability */
 --- a/drivers/usb/dwc3/ep0.c
 +++ b/drivers/usb/dwc3/ep0.c
-@@ -27,6 +27,15 @@
+@@ -26,6 +26,15 @@
+ #include "debug.h"
  #include "gadget.h"
  #include "io.h"
- 
++
 +static void dwc3_ep0_set_state(struct dwc3 *dwc, enum usb_device_state state)
 +{
 +	if (state == USB_STATE_ADDRESS)
@@ -12798,10 +12962,9 @@
 +		dwc3_gadget_diag_event(DWC3_DIAG_CONFIGURED);
 +	usb_gadget_set_state(dwc->gadget, state);
 +}
-+
+ 
  static void __dwc3_ep0_do_control_status(struct dwc3 *dwc, struct dwc3_ep *dep);
  static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
- 		struct dwc3_ep *dep, struct dwc3_request *req);
 @@ -134,7 +143,7 @@
  
  		direction = !dwc->ep0_expect_in;
@@ -12841,7 +13004,7 @@
  					USB_STATE_ADDRESS);
  		break;
  	default:
-@@ -839,11 +848,18 @@
+@@ -839,10 +848,17 @@
  	int ret = -EINVAL;
  	u32 len;
  
@@ -12851,15 +13014,14 @@
  		goto out;
  
  	trace_dwc3_ctrl_req(dwc, ctrl);
- 
++
 +	if (ctrl->bRequestType == (USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE) &&
 +	    ctrl->bRequest == USB_REQ_GET_DESCRIPTOR &&
 +	    (le16_to_cpu(ctrl->wValue) >> 8) == USB_DT_DEVICE)
 +		dwc3_gadget_diag_event(DWC3_DIAG_DEVICE_DESC);
-+
+ 
  	len = le16_to_cpu(ctrl->wLength);
  	if (!len) {
- 		dwc->three_stage_setup = false;
 @@ -1196,7 +1212,7 @@
  			 */
  			if (!list_empty(&dep->pending_list)) {
@@ -14606,19 +14768,19 @@
  #include <linux/tty.h>
  #include <linux/tty_flip.h>
  
-@@ -192,6 +193,12 @@
+@@ -191,6 +192,12 @@
+ static int gs_bind(struct usb_composite_dev *cdev)
  {
  	int			status;
- 
++
 +	/* A battery-backed Uke can also draw its enumerated USB2 sink budget. */
 +	if (of_machine_is_compatible("xiaomi,uke")) {
 +		serial_config_driver.MaxPower =
 +			min_t(unsigned int, CONFIG_USB_GADGET_VBUS_DRAW, 500);
 +	}
-+
+ 
  	/* Allocate string descriptor numbers ... note that string
  	 * contents can be overridden by the composite_dev glue.
- 	 */
 --- a/drivers/regulator/Makefile
 +++ b/drivers/regulator/Makefile
 @@ -222,3 +222,6 @@
@@ -14630,7 +14792,7 @@
 +obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += qcom-proxy-consumer-uke.o
 --- /dev/null
 +++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
-@@ -0,0 +1,2146 @@
+@@ -0,0 +1,2147 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
 +/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
@@ -16631,6 +16793,7 @@
 +	    strcmp(aggr_vreg->resource_name, "lcx.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "lmx.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "mxc.lvl") &&
++	    strcmp(aggr_vreg->resource_name, "nsp.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob2") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob3") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob4") &&
@@ -17223,23 +17386,25 @@
  	const unsigned int *proxy_pd_performance_states;
  	unsigned int num_proxy_pd_performance_states;
  
-@@ -102,6 +104,8 @@
+@@ -102,6 +104,9 @@
  	const unsigned int *proxy_pd_performance_states;
  
  	int proxy_pd_count;
 +	unsigned int proxy_regulator_level;
-+	struct regulator_bulk_data proxy_regs[2];
++	int proxy_reg_count;
++	struct regulator_bulk_data proxy_regs[3];
  
  	const char *dtb_firmware_name;
  	int pas_id;
-@@ -183,12 +187,40 @@
+@@ -183,11 +188,39 @@
  	pas->mem_region = NULL;
  }
  
 -static int qcom_pas_pds_enable(struct qcom_pas *pas, struct device **pds,
 -			       size_t pd_count)
+-{
 +static void qcom_pas_proxy_unvote(struct qcom_pas *pas, int count)
- {
++{
 +	while (count--) {
 +		int ret = regulator_set_voltage(pas->proxy_regs[count].consumer,
 +						0, INT_MAX);
@@ -17256,9 +17421,9 @@
 +	int pd_count = pas->proxy_pd_count;
  	int ret;
  	int i;
- 
++
 +	if (pas->proxy_regulator_level) {
-+		for (i = 0; i < ARRAY_SIZE(pas->proxy_regs); i++) {
++		for (i = 0; i < pas->proxy_reg_count; i++) {
 +			ret = regulator_set_voltage(pas->proxy_regs[i].consumer,
 +						pas->proxy_regulator_level, INT_MAX);
 +			if (ret) {
@@ -17266,60 +17431,78 @@
 +				return ret;
 +			}
 +		}
-+		ret = regulator_bulk_enable(ARRAY_SIZE(pas->proxy_regs), pas->proxy_regs);
++		ret = regulator_bulk_enable(pas->proxy_reg_count, pas->proxy_regs);
 +		if (ret)
-+			qcom_pas_proxy_unvote(pas, ARRAY_SIZE(pas->proxy_regs));
++			qcom_pas_proxy_unvote(pas, pas->proxy_reg_count);
 +		return ret;
 +	}
-+
+ 
  	for (i = 0; i < pd_count; i++) {
  		unsigned int state = INT_MAX;
- 
-@@ -215,11 +247,23 @@
+@@ -215,10 +248,22 @@
  	return ret;
  };
  
 -static void qcom_pas_pds_disable(struct qcom_pas *pas, struct device **pds,
 -				 size_t pd_count)
+-{
 +static void qcom_pas_proxy_disable(struct qcom_pas *pas)
- {
++{
 +	struct device **pds = pas->proxy_pds;
 +	int pd_count = pas->proxy_pd_count;
  	int i;
- 
++
 +	if (pas->proxy_regulator_level) {
-+		int ret = regulator_bulk_disable(ARRAY_SIZE(pas->proxy_regs), pas->proxy_regs);
++		int ret = regulator_bulk_disable(pas->proxy_reg_count, pas->proxy_regs);
 +
 +		if (ret) {
 +			dev_err(pas->dev, "failed to disable proxy regulators: %d\n", ret);
 +			return;
 +		}
-+		qcom_pas_proxy_unvote(pas, ARRAY_SIZE(pas->proxy_regs));
++		qcom_pas_proxy_unvote(pas, pas->proxy_reg_count);
 +		return;
 +	}
-+
+ 
  	for (i = 0; i < pd_count; i++) {
  		dev_pm_genpd_set_performance_state(pds[i], 0);
- 		pm_runtime_put(pds[i]);
-@@ -314,7 +358,7 @@
- 	if (ret)
- 		return ret;
+@@ -310,17 +355,17 @@
+ 	struct qcom_pas *pas = rproc->priv;
+ 	int ret;
  
--	ret = qcom_pas_pds_enable(pas, pas->proxy_pds, pas->proxy_pd_count);
 +	ret = qcom_pas_proxy_enable(pas);
- 	if (ret < 0)
- 		goto disable_irqs;
++	if (ret < 0)
++		return ret;
++
+ 	ret = qcom_q6v5_prepare(&pas->q6v5);
+ 	if (ret)
+-		return ret;
+-
+-	ret = qcom_pas_pds_enable(pas, pas->proxy_pds, pas->proxy_pd_count);
+-	if (ret < 0)
+-		goto disable_irqs;
++		goto disable_proxy_pds;
  
-@@ -406,7 +450,7 @@
+ 	ret = clk_prepare_enable(pas->xo);
+ 	if (ret)
+-		goto disable_proxy_pds;
++		goto disable_irqs;
+ 
+ 	ret = clk_prepare_enable(pas->aggre2_clk);
+ 	if (ret)
+@@ -405,10 +450,10 @@
+ 	clk_disable_unprepare(pas->aggre2_clk);
  disable_xo_clk:
  	clk_disable_unprepare(pas->xo);
- disable_proxy_pds:
+-disable_proxy_pds:
 -	qcom_pas_pds_disable(pas, pas->proxy_pds, pas->proxy_pd_count);
-+	qcom_pas_proxy_disable(pas);
  disable_irqs:
  	qcom_q6v5_unprepare(&pas->q6v5);
++disable_proxy_pds:
++	qcom_pas_proxy_disable(pas);
  
-@@ -426,7 +470,7 @@
+ 	/* firmware is used to pass reference from qcom_pas_start(), drop it now */
+ 	pas->firmware = NULL;
+@@ -426,7 +471,7 @@
  		regulator_disable(pas->cx_supply);
  	clk_disable_unprepare(pas->aggre2_clk);
  	clk_disable_unprepare(pas->xo);
@@ -17328,25 +17511,30 @@
  }
  
  static int qcom_pas_stop(struct rproc *rproc)
-@@ -660,6 +704,17 @@
+@@ -660,6 +705,22 @@
  
  static int qcom_pas_init_regulator(struct qcom_pas *pas)
  {
 +	if (pas->proxy_regulator_level) {
-+		/* Cliffs votes ARC levels through the OEM CX/MX regulator graph. */
++		/* Cliffs votes ARC levels through the OEM CX/MX(/NSP) regulator graph. */
 +		if (!of_property_present(pas->dev->of_node, "cx-supply") ||
 +		    !of_property_present(pas->dev->of_node, "mx-supply"))
 +			return dev_err_probe(pas->dev, -EINVAL, "Cliffs PAS requires CX and MX supplies\n");
 +		pas->proxy_regs[0].supply = "cx";
 +		pas->proxy_regs[1].supply = "mx";
-+		return devm_regulator_bulk_get(pas->dev, ARRAY_SIZE(pas->proxy_regs),
++		pas->proxy_reg_count = 2;
++		if (of_property_present(pas->dev->of_node, "nsp-supply")) {
++			pas->proxy_regs[2].supply = "nsp";
++			pas->proxy_reg_count = 3;
++		}
++		return devm_regulator_bulk_get(pas->dev, pas->proxy_reg_count,
 +					       pas->proxy_regs);
 +	}
 +
  	pas->cx_supply = devm_regulator_get_optional(pas->dev, "cx");
  	if (IS_ERR(pas->cx_supply)) {
  		if (PTR_ERR(pas->cx_supply) == -ENODEV)
-@@ -946,11 +1001,18 @@
+@@ -946,11 +1007,18 @@
  
  	rproc->has_iommu = of_property_present(pdev->dev.of_node, "iommus");
  	rproc->auto_boot = desc->auto_boot;
@@ -17365,7 +17553,7 @@
  	pas->minidump_id = desc->minidump_id;
  	pas->pas_id = desc->pas_id;
  	pas->lite_pas_id = desc->lite_pas_id;
-@@ -1008,6 +1070,11 @@
+@@ -1008,6 +1076,11 @@
  	if (ret)
  		goto detach_proxy_pds;
  
@@ -17377,7 +17565,7 @@
  	qcom_add_glink_subdev(rproc, &pas->glink_subdev, desc->ssr_name);
  	qcom_add_smd_subdev(rproc, &pas->smd_subdev);
  	qcom_add_pdm_subdev(rproc, &pas->pdm_subdev);
-@@ -1051,6 +1118,7 @@
+@@ -1051,6 +1124,7 @@
  	qcom_remove_pdm_subdev(rproc, &pas->pdm_subdev);
  	qcom_remove_smd_subdev(rproc, &pas->smd_subdev);
  	qcom_remove_glink_subdev(rproc, &pas->glink_subdev);
@@ -17385,10 +17573,15 @@
  	qcom_q6v5_deinit(&pas->q6v5);
  detach_proxy_pds:
  	qcom_pas_pds_detach(pas, pas->proxy_pds, pas->proxy_pd_count);
-@@ -1761,6 +1829,35 @@
+@@ -1761,75 +1835,23 @@
  	.region_assign_vmid = QCOM_SCM_VMID_MSS_MSA,
  };
  
+-static const struct qcom_pas_data sc7280_wpss_resource = {
+-	.crash_reason_smem = 626,
+-	.firmware_name = "wpss.mdt",
+-	.pas_id = 6,
+-	.minidump_id = 4,
 +static const struct qcom_pas_data cliffs_adsp_resource = {
 +	.crash_reason_smem = 423,
 +	.firmware_name = "adsp.mdt",
@@ -17396,7 +17589,70 @@
 +	.pas_id = 1,
 +	.dtb_pas_id = 0x24,
 +	.minidump_id = 5,
-+	.auto_boot = false,
+ 	.auto_boot = false,
+-	.proxy_pd_names = (char*[]){
+-		"cx",
+-		"mx",
+-		NULL
+-	},
+-	.load_state = "wpss",
+-	.ssr_name = "wpss",
+-	.sysmon_name = "wpss",
+-	.ssctl_id = 0x19,
+-};
+-
+-static const struct qcom_pas_data shikra_cdsp_resource = {
+-	.crash_reason_smem = 601,
+-	.firmware_name = "cdsp.mbn",
+-	.pas_id = 18,
+-	.minidump_id = 7,
+-	.auto_boot = true,
+-	.proxy_pd_names = (char *[]){
+-		"cx",
+-		NULL
+-	},
+-	.load_state = "cdsp",
+-	.ssr_name = "cdsp",
+-	.sysmon_name = "cdsp",
+-	.ssctl_id = 0x17,
+-	.smem_host_id = 5,
+-	.tmd_instance_id = 0x43,
+-	.tmd_name = cdsp_tmd_name,
+-	.num_tmd = ARRAY_SIZE(cdsp_tmd_name),
+-};
+-
+-static const struct qcom_pas_data shikra_lpaicp_resource = {
+-	.crash_reason_smem = 682,
+-	.firmware_name = "lpaicp.mbn",
+-	.dtb_firmware_name = "lpaicp_dtb.mbn",
+-	.pas_id = 0x56,
+-	.dtb_pas_id = 0x57,
+-	.minidump_id = 0,
+-	.auto_boot = true,
+-	.ssr_name = "lpaicp",
+-	.sysmon_name = "lpaicp",
+-};
+-
+-static const struct qcom_pas_data shikra_mpss_resource = {
+-	.crash_reason_smem = 421,
+-	.firmware_name = "qdsp6sw.mbn",
+-	.pas_id = 4,
+-	.minidump_id = 3,
+-	.auto_boot = false,
+-	.proxy_pd_names = (char *[]){
+-		"cx",
+-		NULL
+-	},
+-	.load_state = "modem",
+-	.ssr_name = "mpss",
+-	.sysmon_name = "modem",
+-	.ssctl_id = 0x12,
+-	.tmd_instance_id = 0x0,
+-	.tmd_name = modem_tmd_name,
+-	.num_tmd = ARRAY_SIZE(modem_tmd_name),
+-};
+-
+-static const struct qcom_pas_data sm8650_cdsp_resource = {
 +	.proxy_regulator_level = RPMH_REGULATOR_LEVEL_TURBO,
 +	.load_state = "adsp",
 +	.ssr_name = "lpass",
@@ -17405,6 +17661,28 @@
 +	.smem_host_id = 2,
 +};
 +
++static const struct qcom_pas_data cliffs_cdsp_resource = {
+ 	.crash_reason_smem = 601,
+ 	.firmware_name = "cdsp.mdt",
+ 	.dtb_firmware_name = "cdsp_dtb.mdt",
+@@ -1837,12 +1859,7 @@
+ 	.dtb_pas_id = 0x25,
+ 	.minidump_id = 7,
+ 	.auto_boot = true,
+-	.proxy_pd_names = (char*[]){
+-		"cx",
+-		"mxc",
+-		"nsp",
+-		NULL
+-	},
++	.proxy_regulator_level = RPMH_REGULATOR_LEVEL_TURBO,
+ 	.load_state = "cdsp",
+ 	.ssr_name = "cdsp",
+ 	.sysmon_name = "cdsp",
+@@ -1854,6 +1871,112 @@
+ 	.region_assign_vmid = QCOM_SCM_VMID_CDSP,
+ };
+ 
 +static const struct qcom_pas_data cliffs_wpss_resource = {
 +	.crash_reason_smem = 626,
 +	.firmware_name = "qca6750/wpss.mdt",
@@ -17418,14 +17696,108 @@
 +	.ssctl_id = 0x19,
 +};
 +
- static const struct qcom_pas_data sc7280_wpss_resource = {
- 	.crash_reason_smem = 626,
- 	.firmware_name = "wpss.mdt",
-@@ -1990,6 +2087,8 @@
++static const struct qcom_pas_data sc7280_wpss_resource = {
++	.crash_reason_smem = 626,
++	.firmware_name = "wpss.mdt",
++	.pas_id = 6,
++	.minidump_id = 4,
++	.auto_boot = false,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mx",
++		NULL
++	},
++	.load_state = "wpss",
++	.ssr_name = "wpss",
++	.sysmon_name = "wpss",
++	.ssctl_id = 0x19,
++};
++
++static const struct qcom_pas_data shikra_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mbn",
++	.pas_id = 18,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char *[]){
++		"cx",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++	.smem_host_id = 5,
++	.tmd_instance_id = 0x43,
++	.tmd_name = cdsp_tmd_name,
++	.num_tmd = ARRAY_SIZE(cdsp_tmd_name),
++};
++
++static const struct qcom_pas_data shikra_lpaicp_resource = {
++	.crash_reason_smem = 682,
++	.firmware_name = "lpaicp.mbn",
++	.dtb_firmware_name = "lpaicp_dtb.mbn",
++	.pas_id = 0x56,
++	.dtb_pas_id = 0x57,
++	.minidump_id = 0,
++	.auto_boot = true,
++	.ssr_name = "lpaicp",
++	.sysmon_name = "lpaicp",
++};
++
++static const struct qcom_pas_data shikra_mpss_resource = {
++	.crash_reason_smem = 421,
++	.firmware_name = "qdsp6sw.mbn",
++	.pas_id = 4,
++	.minidump_id = 3,
++	.auto_boot = false,
++	.proxy_pd_names = (char *[]){
++		"cx",
++		NULL
++	},
++	.load_state = "modem",
++	.ssr_name = "mpss",
++	.sysmon_name = "modem",
++	.ssctl_id = 0x12,
++	.tmd_instance_id = 0x0,
++	.tmd_name = modem_tmd_name,
++	.num_tmd = ARRAY_SIZE(modem_tmd_name),
++};
++
++static const struct qcom_pas_data sm8650_cdsp_resource = {
++	.crash_reason_smem = 601,
++	.firmware_name = "cdsp.mdt",
++	.dtb_firmware_name = "cdsp_dtb.mdt",
++	.pas_id = 18,
++	.dtb_pas_id = 0x25,
++	.minidump_id = 7,
++	.auto_boot = true,
++	.proxy_pd_names = (char*[]){
++		"cx",
++		"mxc",
++		"nsp",
++		NULL
++	},
++	.load_state = "cdsp",
++	.ssr_name = "cdsp",
++	.sysmon_name = "cdsp",
++	.ssctl_id = 0x17,
++	.smem_host_id = 5,
++	.region_assign_idx = 2,
++	.region_assign_count = 1,
++	.region_assign_shared = true,
++	.region_assign_vmid = QCOM_SCM_VMID_CDSP,
++};
++
+ static const struct qcom_pas_data sm8650_mpss_resource = {
+ 	.crash_reason_smem = 421,
+ 	.firmware_name = "modem.mdt",
+@@ -1990,6 +2113,9 @@
  };
  
  static const struct of_device_id qcom_pas_of_match[] = {
 +	{ .compatible = "qcom,cliffs-adsp-pas", .data = &cliffs_adsp_resource },
++	{ .compatible = "qcom,cliffs-cdsp-pas", .data = &cliffs_cdsp_resource },
 +	{ .compatible = "qcom,cliffs-wpss-pas", .data = &cliffs_wpss_resource },
  	{ .compatible = "qcom,eliza-adsp-pas", .data = &sm8550_adsp_resource },
  	{ .compatible = "qcom,eliza-cdsp-pas", .data = &eliza_cdsp_resource },
@@ -17456,10 +17828,12 @@
  
  	struct mutex phy_mutex;
  	int init_count;
-@@ -3296,6 +3306,289 @@
+@@ -3294,6 +3304,289 @@
+ 	.num_resets		= ARRAY_SIZE(msm8996_usb3phy_reset_l),
+ 	.vreg_list		= qmp_phy_vreg_l,
  	.num_vregs		= ARRAY_SIZE(qmp_phy_vreg_l),
- };
- 
++};
++
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/* Uke USB tables: MiCode DT 94c84aeb9e517dbde546fc732033c184094c8e57.
 + * Offsets checked against MiCode kernel 5712080a4b0c0b1a879e6d145c601c649ddaddfd.
@@ -17741,11 +18115,9 @@
 +	.num_resets		= ARRAY_SIZE(msm8996_usb3phy_reset_l),
 +	.vreg_list		= uke_qmp_vregs,
 +	.num_vregs		= ARRAY_SIZE(uke_qmp_vregs),
-+};
-+
- static const struct qmp_phy_cfg sm8650_usb3dpphy_cfg = {
- 	.offsets		= &qmp_combo_offsets_v3,
+ };
  
+ static const struct qmp_phy_cfg sm8650_usb3dpphy_cfg = {
 @@ -4055,6 +4348,19 @@
  	const struct phy_configure_opts_dp *dp_opts = &opts->dp;
  	struct qmp_combo *qmp = phy_get_drvdata(phy);
@@ -17953,7 +18325,7 @@
  }
  
  static int qmp_combo_dp_power_off(struct phy *phy)
-@@ -5067,12 +5450,51 @@
+@@ -5067,11 +5450,50 @@
  }
  
  #if IS_ENABLED(CONFIG_TYPEC)
@@ -17998,13 +18370,12 @@
  {
  	struct qmp_combo *qmp = typec_switch_get_drvdata(sw);
  	const struct qmp_phy_cfg *cfg = qmp->cfg;
- 
++
 +	if (qmp->uke_gdsc && READ_ONCE(qmp->uke_route_error))
 +		return READ_ONCE(qmp->uke_route_error);
-+
+ 
  	if (qmp->qmpphy_mode == QMPPHY_MODE_USB4) {
  		/* QMPPHY has no orientation handling in USB4 mode, don't cache the setting */
- 		qmp->orientation = TYPEC_ORIENTATION_NONE;
 @@ -5083,7 +5505,11 @@
  		return 0;
  
@@ -18228,10 +18599,12 @@
  static const struct qmp_phy_init_tbl sm8650_ufsphy_serdes[] = {
  	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SYSCLK_EN_SEL, 0xd9),
  	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CMN_CONFIG_1, 0x16),
-@@ -1773,6 +1855,40 @@
+@@ -1771,6 +1853,40 @@
+ 	.vreg_list		= sm8550_ufsphy_vreg_l,
+ 	.num_vregs		= ARRAY_SIZE(sm8550_ufsphy_vreg_l),
  	.regs			= ufsphy_v6_regs_layout,
- };
- 
++};
++
 +static const struct regulator_bulk_data sm7675_ufsphy_vreg_l[] = {
 +	{ .supply = "vdda-phy", .init_load_uA = 213030 },
 +	{ .supply = "vdda-pll", .init_load_uA = 18340 },
@@ -18264,11 +18637,9 @@
 +	.vreg_list = sm7675_ufsphy_vreg_l,
 +	.num_vregs = ARRAY_SIZE(sm7675_ufsphy_vreg_l),
 +	.regs = ufsphy_v6_regs_layout,
-+};
-+
- static const struct qmp_phy_cfg sm8650_ufsphy_cfg = {
- 	.lanes			= 2,
+ };
  
+ static const struct qmp_phy_cfg sm8650_ufsphy_cfg = {
 @@ -2433,6 +2549,13 @@
  		.compatible = "qcom,sm8650-qmp-ufs-phy",
  		.data = &sm8650_ufsphy_cfg,
@@ -18334,11 +18705,12 @@
  	drm_atomic_for_each_plane_damage(&iter, &damage) {
  		struct iosys_map dst = sysfb->fb_addr;
  		struct drm_rect dst_clip = plane_state->dst;
+-
+-		if (!drm_rect_intersect(&dst_clip, &damage))
 +		struct drm_rect src_clip = damage;
 +		int dx = plane_state->dst.x1 - (plane_state->src.x1 >> 16);
 +		int dy = plane_state->dst.y1 - (plane_state->src.y1 >> 16);
- 
--		if (!drm_rect_intersect(&dst_clip, &damage))
++
 +		drm_rect_translate(&src_clip, dx, dy);
 +		if (!drm_rect_intersect(&dst_clip, &src_clip))
  			continue;
@@ -18448,16 +18820,16 @@
  
  	/*
  	 * Hardware settings
-@@ -654,6 +703,9 @@
- 	ret = simpledrm_device_attach_genpd(sdev);
+@@ -652,6 +701,9 @@
  	if (ret)
  		return ERR_PTR(ret);
-+	ret = simpledrm_device_init_icc(sdev);
+ 	ret = simpledrm_device_attach_genpd(sdev);
 +	if (ret)
 +		return ERR_PTR(ret);
++	ret = simpledrm_device_init_icc(sdev);
+ 	if (ret)
+ 		return ERR_PTR(ret);
  
- 	if (pd) {
- 		width = simplefb_get_width_pd(dev, pd);
 @@ -698,6 +750,9 @@
  			ret = simplefb_get_panel_height_mm_of(dev, panel_node);
  			if (ret > 0)
@@ -21060,20 +21432,20 @@
 +}
 --- a/drivers/gpu/drm/msm/msm_mdss.c
 +++ b/drivers/gpu/drm/msm/msm_mdss.c
-@@ -44,8 +44,13 @@
+@@ -44,7 +44,12 @@
  	struct icc_path *mdp_path[2];
  	u32 num_mdp_paths;
  	struct icc_path *reg_bus_path;
+-};
 +	bool uke_handoff_complete;
- };
- 
++};
++
 +static void msm_mdss_setup_ubwc(struct msm_mdss *msm_mdss);
 +
 +#include "uke-mdss-handoff.c"
-+
+ 
  static int msm_mdss_parse_data_bus_icc_path(struct device *dev,
  					    struct msm_mdss *msm_mdss)
- {
 @@ -243,21 +248,50 @@
  	 (((minor) & 0xfff) << 16) |	\
  	 ((step) & 0xffff))
@@ -21150,8 +21522,7 @@
 +	     !msm_mdss->uke_handoff_complete) || msm_mdss->is_mdp5 || !msm_mdss->mdss_data) {
 +		dev_info(msm_mdss->dev, "u880: msm_mdss_enable without UBWC setup (handoff_complete=%d data=%d)\n", msm_mdss->uke_handoff_complete, !!msm_mdss->mdss_data);
  		return 0;
-+	}
- 
+-
 -	hw_rev = readl_relaxed(msm_mdss->mmio + REG_MDSS_HW_VERSION);
 -
 -	if (hw_rev >= MDSS_HW_VER(6, 0, 0))
@@ -21161,6 +21532,8 @@
 -	else if (hw_rev >= MDSS_HW_VER(4, 0, 0))
 -		msm_mdss_4x_setup_ubwc(msm_mdss);
 -	/* else UBWC 1.0 or none, no params to program */
++	}
++
 +	msm_mdss_setup_ubwc(msm_mdss);
  
  	return ret;
@@ -21209,10 +21582,11 @@
  	{ .compatible = "qcom,glymur-mdss", .data = &data_57k },
 --- a/drivers/gpu/drm/msm/msm_drv.c
 +++ b/drivers/gpu/drm/msm/msm_drv.c
-@@ -66,6 +66,15 @@
+@@ -65,6 +65,15 @@
+ MODULE_PARM_DESC(separate_gpu_kms,
  		 "Use separate DRM device for the GPU (-1=auto (default), 0=single DRM device, 1=separate DRM devices)");
  module_param(separate_gpu_kms, int, 0400);
- 
++
 +unsigned int u880_dbg = 0xfff;
 +MODULE_PARM_DESC(u880_dbg, "U880 native display bring-up switches (see msm_drv.h)");
 +module_param(u880_dbg, uint, 0644);
@@ -21221,10 +21595,9 @@
 +unsigned int u880_dbg2;
 +MODULE_PARM_DESC(u880_dbg2, "U880 native display bring-up switches, second word (see msm_drv.h)");
 +module_param(u880_dbg2, uint, 0644);
-+
+ 
  #ifdef CONFIG_TRANSPARENT_HUGEPAGE
  static bool transparent_hugepage = true;
- module_param(transparent_hugepage, bool, 0400);
 --- a/drivers/gpu/drm/msm/msm_drv.h
 +++ b/drivers/gpu/drm/msm/msm_drv.h
 @@ -540,4 +540,32 @@
@@ -21302,7 +21675,7 @@
  	if (IS_ERR(pdpu))
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys.h
-@@ -319,10 +319,16 @@
+@@ -319,9 +319,15 @@
  
  bool dpu_encoder_needs_periph_flush(struct dpu_encoder_phys *phys_enc);
  
@@ -21312,13 +21685,12 @@
  void dpu_encoder_helper_split_config(
  		struct dpu_encoder_phys *phys_enc,
  		enum dpu_intf interface);
- 
++
 +void dpu_encoder_helper_split_flush_cleanup(struct dpu_encoder_phys *phys_enc,
 +		int wait_ret);
-+
+ 
  void dpu_encoder_helper_report_irq_timeout(struct dpu_encoder_phys *phys_enc,
  		enum dpu_intr_idx intr_idx);
- 
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
 @@ -10,6 +10,7 @@
@@ -21396,10 +21768,12 @@
  
  	if (phys_enc->split_role == ENC_ROLE_MASTER) {
  		DPU_DEBUG_ENC(dpu_enc, "enable %d\n", cfg.en);
-@@ -615,6 +662,43 @@
+@@ -613,6 +660,43 @@
+ 		if (hw_mdptop->ops.setup_split_pipe)
+ 			hw_mdptop->ops.setup_split_pipe(hw_mdptop, &cfg);
  	}
- }
- 
++}
++
 +/* Clear only after a completed master stop and fresh inactive status on both links. */
 +void dpu_encoder_helper_split_flush_cleanup(struct dpu_encoder_phys *phys_enc,
 +		int wait_ret)
@@ -21435,12 +21809,10 @@
 +retain:
 +	DPU_ERROR("Uke split flush retained: stop incomplete or status active/unknown (%d)\n",
 +		  wait_ret);
-+}
-+
+ }
+ 
  /**
-  * dpu_encoder_use_dsc_merge - returns true if the encoder uses DSC merge topology.
-  * @drm_enc:    Pointer to previously created drm encoder structure
-@@ -1785,12 +1869,30 @@
+@@ -1785,11 +1869,29 @@
  	struct dpu_hw_ctl *ctl;
  	uint32_t i, pending_flush;
  	unsigned long lock_flags;
@@ -21450,7 +21822,7 @@
  
  	/* update pending counts and trigger kickoff ctl flush atomically */
  	spin_lock_irqsave(&dpu_enc->enc_spinlock, lock_flags);
- 
++
 +	/*
 +	 * Uke shares one modern CTL between both video interfaces. Keep both
 +	 * interface/DSC masks and pending counters, but submit that shared mask
@@ -21467,10 +21839,9 @@
 +		 dpu_enc->cur_master->enable_state == DPU_ENC_ENABLED) &&
 +		(dpu_enc->cur_slave->enable_state == DPU_ENC_ENABLING ||
 +		 dpu_enc->cur_slave->enable_state == DPU_ENC_ENABLED);
-+
+ 
  	/* don't perform flush/start operations for slave encoders */
  	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
- 		struct dpu_encoder_phys *phys = dpu_enc->phys_encs[i];
 @@ -1808,6 +1910,13 @@
  		if (phys->split_role != ENC_ROLE_SLAVE)
  			set_bit(i, dpu_enc->frame_busy_mask);
@@ -21685,17 +22056,17 @@
  	data |= (num_active_slice_per_enc & 0x3) << 7;
  
  	DPU_REG_WRITE(hw, DSC_CMN_MAIN_CNF, data);
-@@ -124,6 +189,10 @@
+@@ -123,6 +188,10 @@
+ 		data |= BIT(9);
  
  	data |= (_dsc_calc_output_buf_max_addr(hw_dsc, num_active_slice_per_enc) << 18);
- 
++
 +	if ((hw_dsc->caps->features & BIT(DPU_DSC_FULL_ICH_PREC)) &&
 +	    dsc->bits_per_component > 8)
 +		data |= BIT(12);
-+
+ 
  	DPU_REG_WRITE(hw, sblk->enc.base + ENC_DF_CTRL, data);
  
- 	data = (dsc->dsc_version_minor & 0xf) << 28;
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.h
 @@ -143,10 +143,12 @@
@@ -21747,15 +22118,15 @@
  #include "dpu_encoder_phys.h"
  #include "dpu_hw_interrupts.h"
  #include "dpu_hw_merge3d.h"
-@@ -15,6 +16,8 @@
+@@ -14,6 +15,8 @@
+ 
  #include <drm/display/drm_dsc_helper.h>
  #include <drm/drm_managed.h>
- 
-+extern unsigned int u880_dbg2;
 +
++extern unsigned int u880_dbg2;
+ 
  #define DPU_DEBUG_VIDENC(e, fmt, ...) DPU_DEBUG("enc%d intf%d " fmt, \
  		(e) && (e)->parent ? \
- 		(e)->parent->base.id : -1, \
 @@ -178,6 +181,7 @@
  		const struct dpu_hw_intf_timing_params *timing)
  {
@@ -22062,13 +22433,13 @@
 -	struct msm_drm_private *priv = platform_get_drvdata(pdev);
 -
 -	if (priv->kms_init)
--		component_del(&pdev->dev, &a3xx_ops);
--	else
 +	if (of_device_is_compatible(pdev->dev.of_node, "amd,imageon") ||
 +	    (msm_separate_gpu_kms_components() && adreno_has_gpu(pdev->dev.of_node)))
- 		msm_gpu_remove(pdev, &a3xx_ops);
++		msm_gpu_remove(pdev, &a3xx_ops);
 +	else
-+		component_del(&pdev->dev, &a3xx_ops);
+ 		component_del(&pdev->dev, &a3xx_ops);
+-	else
+-		msm_gpu_remove(pdev, &a3xx_ops);
  }
  
  static void adreno_shutdown(struct platform_device *pdev)
@@ -85234,7 +85605,7 @@
  
  	if (!(msg->flags & MIPI_DSI_MSG_USE_LPM))
  		dsi_set_tx_power_mode(1, msm_host);
-@@ -2356,13 +2494,26 @@
+@@ -2356,11 +2494,24 @@
  		ret = dsi_long_read_resp(buf, msg);
  		break;
  	default:
@@ -85245,8 +85616,8 @@
  	}
  
  	return ret;
- }
- 
++}
++
 +/* U880 switch 0x40000: vendor hardware command broadcast (CMD_DMA_CTRL bit 31 BROADCAST_EN, bit 30 BROADCAST_MASTER) */
 +void msm_dsi_host_u880_broadcast(struct mipi_dsi_host *host, bool en, bool master)
 +{
@@ -85257,15 +85628,14 @@
 +		v |= BIT(31) | (master ? BIT(30) : 0);
 +	dsi_write(msm_host, REG_DSI_CMD_DMA_CTRL, v);
 +	wmb();
-+}
-+
+ }
+ 
  void msm_dsi_host_cmd_xfer_commit(struct mipi_dsi_host *host, u32 dma_base,
- 				  u32 len)
- {
-@@ -2440,6 +2591,82 @@
+@@ -2439,6 +2590,82 @@
+ int msm_dsi_host_enable(struct mipi_dsi_host *host)
  {
  	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
- 
++
 +	if (msm_host->cphy_mode && msm_host->id < 2) {
 +		u880_hosts[msm_host->id] = msm_host;
 +		{
@@ -85341,10 +85711,9 @@
 +			wmb();
 +		}
 +	}
-+
+ 
  	dsi_op_mode_config(msm_host,
  		!!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO), true);
- 
 @@ -2705,6 +2932,19 @@
  				DSI_TEST_PATTERN_GEN_CMD_STREAM0_TRIGGER_SW_TRIGGER);
  }
@@ -85397,10 +85766,11 @@
  {
  	int id = dsi_mgr_bridge_get_id(bridge);
  	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
-@@ -285,18 +290,6 @@
+@@ -284,18 +289,6 @@
+ 	struct mipi_dsi_host *host = msm_dsi->host;
  	bool is_bonded_dsi = IS_BONDED_DSI();
  	int ret;
- 
+-
 -	DBG("id=%d", id);
 -
 -	/* Do nothing with the host if it is slave-DSI in case of bonded DSI */
@@ -85412,10 +85782,9 @@
 -		dev_err(&msm_dsi->pdev->dev, "Power on failed: %d\n", ret);
 -		return;
 -	}
--
+ 
  	ret = msm_dsi_host_enable(host);
  	if (ret) {
- 		pr_err("%s: enable host %d failed, %d\n", __func__, id, ret);
 @@ -311,12 +304,80 @@
  		}
  	}
@@ -85507,10 +85876,11 @@
  	int id = dsi_mgr_bridge_get_id(bridge);
  	struct msm_dsi *msm_dsi = dsi_mgr_get_dsi(id);
  	struct msm_dsi *msm_dsi1 = dsi_mgr_get_dsi(DSI_1);
-@@ -352,6 +414,16 @@
+@@ -351,6 +413,16 @@
+ 	 */
  	if (is_bonded_dsi && !IS_MASTER_DSI_LINK(id))
  		goto disable_phy;
- 
++
 +	if (dsi_bridge->o82_panel) {
 +		if (dsi_bridge->powered) {
 +			dsi_mgr_bridge_disable(bridge);
@@ -85520,10 +85890,9 @@
 +		}
 +		return;
 +	}
-+
+ 
  	ret = msm_dsi_host_disable(host);
  	if (ret)
- 		pr_err("%s: host %d disable failed, %d\n", __func__, id, ret);
 @@ -452,11 +524,32 @@
  	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
  	.attach = dsi_mgr_bridge_attach,
@@ -85654,10 +86023,12 @@
  
  	dsi_pll_calc_dec_frac(pll_7nm, &config);
  
-@@ -516,6 +520,35 @@
+@@ -514,6 +518,35 @@
+ 	if (rc) {
+ 		pr_err("PLL(%d) lock failed\n", pll_7nm->phy->id);
  		goto error;
- 	}
- 
++	}
++
 +	/*
 +	 * U880: the VCO band calibration is nondeterministic. 0x5e (what Android ends up with) gives a working link 1,
 +	 * 0x55 makes the panel fall back to its internal picture on every boot-lottery loss. Cycle the PLL until it
@@ -85685,11 +86056,9 @@
 +		}
 +		pr_info("PLL(%d) band cal 0x%02x after %d restart(s)\n", pll_7nm->phy->id,
 +			readl(pll_7nm->phy->pll_base + 0x1b8), tries);
-+	}
-+
- 	pll_7nm->phy->pll_on = true;
+ 	}
  
- 	/*
+ 	pll_7nm->phy->pll_on = true;
 @@ -1187,6 +1220,59 @@
  	/* DSI lane settings */
  	dsi_phy_hw_v4_0_lane_settings(phy);
@@ -85769,10 +86138,12 @@
  };
  
  static const struct pm8xxx_regs pm8058_regs = {
-@@ -64,6 +65,21 @@
+@@ -62,6 +63,21 @@
+ 	.drv2_shift = 8,
+ 	.drv_en_manual_mask = 0,
  	.drv_in_step = false,
- };
- 
++};
++
 +/* pm7550ba vibrator LDO: pmi632 register layout, capped at the stock 3.0 V */
 +static struct pm8xxx_regs pm7550ba_ldo_regs = {
 +	.enable_offset = 0x46,
@@ -85786,11 +86157,9 @@
 +	.drv_en_manual_mask = 0,
 +	.drv_in_step = false,
 +	.max_mV = 3000,
-+};
-+
+ };
+ 
  /**
-  * struct pm8xxx_vib - structure to hold vibrator data
-  * @vib_input_dev: input device supporting force feedback
 @@ -118,7 +134,7 @@
  	vib->reg_vib_drv = val;
  
@@ -85814,6 +86183,7 @@
  
  struct nvt_ts_i2c_chip_data {
  	u8 chip_id;
+-};
 +	/*
 +	 * Newer NT365xx firmware keeps the event/parameter map at this SRAM address
 +	 * instead of the default page; it must be selected (command 0xff) after
@@ -85827,8 +86197,8 @@
 +	 * before the IRQ is armed leaves the line stuck low forever.
 +	 */
 +	unsigned long irq_trigger;
- };
- 
++};
++
 +/*
 + * The NT36523N raises one interrupt per scan frame (about 440 per second, independent of the display refresh
 + * and not changeable from the host), which keeps the SoC from idling even with no finger down (apps_rsc about
@@ -85846,7 +86216,7 @@
 +static unsigned int active_delay_us;
 +module_param(active_delay_us, uint, 0644);
 +MODULE_PARM_DESC(active_delay_us, "Pause after a frame with a touch, microseconds (0 = every frame)");
-+
+ 
  struct nvt_ts_data {
  	struct i2c_client *client;
 +	const struct nvt_ts_i2c_chip_data *chip;
@@ -85897,7 +86267,7 @@
 +	bool active, touching = false;
 +	unsigned int delay;
  	u8 *touch;
- 
++
 +	/* The event page is selected once per reset, not per interrupt: the chip keeps it until it is
 +	 * reset, and the extra transfer was about 40% of the I2C traffic. If that select failed (the
 +	 * chip was still booting) or a read failed, it is retried here until it works. */
@@ -85906,7 +86276,7 @@
 +			goto backoff;
 +		data->page_ok = true;
 +	}
-+
+ 
  	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
  				 data->max_touches * NVT_TS_TOUCH_SIZE);
 -	if (error)
@@ -85966,18 +86336,18 @@
  		return error;
  	}
  
--	enable_irq(data->client->irq);
 +	/* Same order as probe(): release reset, let the controller boot, only then unmask the IRQ.
 +	 * INT is asserted while the chip boots, so enabling it first gives a level-interrupt storm
 +	 * of failed I2C reads (seen on the U880 every time the display turns off and back on). */
- 	gpiod_set_value_cansleep(data->reset_gpio, 0);
++	gpiod_set_value_cansleep(data->reset_gpio, 0);
 +	msleep(data->chip->reset_delay_ms ?: 100);
 +
 +	/* The reset cleared the page register: select the event page now; if the chip is not ready yet the
 +	 * IRQ thread retries (page_ok). */
 +	data->page_ok = !nvt_ts_set_page(data);
 +
-+	enable_irq(data->client->irq);
+ 	enable_irq(data->client->irq);
+-	gpiod_set_value_cansleep(data->reset_gpio, 0);
  
  	return 0;
  }
@@ -86018,14 +86388,16 @@
 -		nvt_ts_start(data->input);
 -
 -	return 0;
+-}
+-
+-static DEFINE_SIMPLE_DEV_PM_OPS(nvt_ts_pm_ops, nvt_ts_suspend, nvt_ts_resume);
 +	if (data->stopped_for_pm) {
 +		data->stopped_for_pm = false;
 +		if (input_device_enabled(data->input))
 +			nvt_ts_start(data->input);
 +	}
- }
- 
--static DEFINE_SIMPLE_DEV_PM_OPS(nvt_ts_pm_ops, nvt_ts_suspend, nvt_ts_resume);
++}
++
 +static const struct dev_pm_ops nvt_ts_pm_ops = {
 +	.prepare = nvt_ts_prepare,
 +	.complete = nvt_ts_complete,
@@ -86065,18 +86437,20 @@
  					  client->name, data);
  	if (error) {
  		dev_err(dev, "failed to request irq: %d\n", error);
-@@ -318,9 +423,18 @@
- 	.chip_id = 0x08,
- };
+@@ -316,11 +421,20 @@
  
+ static const struct nvt_ts_i2c_chip_data nvt_nt36672a_ts_data = {
+ 	.chip_id = 0x08,
++};
++
 +/* NT36523N on I2C, e.g. Alldocube iPlay 70 mini Ultra (event map found at 0x2fd00) */
 +static const struct nvt_ts_i2c_chip_data nvt_nt36523n_ts_data = {
 +	.chip_id = 0x08,
 +	.event_buf_addr = 0x2fd00,
 +	.reset_delay_ms = 500,
 +	.irq_trigger = IRQF_TRIGGER_LOW,
-+};
-+
+ };
+ 
  static const struct of_device_id nvt_ts_of_match[] = {
  	{ .compatible = "novatek,nt11205-ts", .data = &nvt_nt11205_ts_data },
  	{ .compatible = "novatek,nt36672a-ts", .data = &nvt_nt36672a_ts_data },
@@ -86364,12 +86738,10 @@
  	{ .compatible = "qcom,pmic-glink", .data = &pmic_glink_adsp_data },
 --- a/drivers/soc/qcom/qcom_pd_mapper.c
 +++ b/drivers/soc/qcom/qcom_pd_mapper.c
-@@ -615,6 +615,16 @@
- 	NULL,
+@@ -607,6 +607,16 @@
  };
  
-+/* Exact domains from Uke's OEM service registries. */
-+static const struct qcom_pdm_domain_data *uke_domains[] = {
+ static const struct qcom_pdm_domain_data *x1e80100_domains[] = {
 +	&adsp_audio_pd,
 +	&adsp_root_pd,
 +	&adsp_charger_pd,
@@ -86378,9 +86750,11 @@
 +	NULL,
 +};
 +
- static const struct of_device_id qcom_pdm_domains[] __maybe_unused = {
- 	{ .compatible = "qcom,apq8016", .data = NULL, },
- 	{ .compatible = "qcom,apq8064", .data = NULL, },
++/* Exact domains from Uke's OEM service registries. */
++static const struct qcom_pdm_domain_data *uke_domains[] = {
+ 	&adsp_audio_pd,
+ 	&adsp_root_pd,
+ 	&adsp_charger_pd,
 @@ -665,6 +675,9 @@
  	{ .compatible = "qcom,sm8750", .data = sm8550_domains, },
  	{ .compatible = "qcom,x1e80100", .data = x1e80100_domains, },
@@ -89381,10 +89755,11 @@
 +EXPORT_SYMBOL(rpmh_drv_stop);
 --- a/drivers/hid/hid-microsoft.c
 +++ b/drivers/hid/hid-microsoft.c
-@@ -72,6 +72,29 @@
+@@ -71,6 +71,29 @@
+ 		hid_info(hdev, "fixing up Microsoft Wireless Receiver Model 1028 report descriptor\n");
  		rdesc[557] = 0x35;
  		rdesc[559] = 0x45;
- 	}
++	}
 +
 +	/*
 +	 * Bluetooth gamepad (1708, 045e:02fd) over Bluetooth Classic: the SDP record
@@ -89407,10 +89782,9 @@
 +			*rsize += sizeof(tail);
 +			return fixed;
 +		}
-+	}
+ 	}
  	return rdesc;
  }
- 
 --- /dev/null
 +++ b/drivers/tty/vt/ucs_width_table.h
 @@ -0,0 +1,490 @@
@@ -93863,16 +94237,16 @@
  
 --- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
 +++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
-@@ -14,6 +14,9 @@
+@@ -13,6 +13,9 @@
+ 
  #include "arm-smmu.h"
  #include "arm-smmu-qcom.h"
- 
++
 +/* MMU-500 ACR cache lock, also used by arm-smmu-impl.c. */
 +#define ARM_MMU500_ACR_CACHE_LOCK	BIT(26)
-+
+ 
  #define QCOM_DUMMY_VAL	-1
  
- /*
 @@ -33,6 +36,9 @@
  #define GFX_ACTLR_PRR          (1 << 5)
  
@@ -93883,7 +94257,7 @@
  	{ .compatible = "qcom,adreno",
  			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
  	{ .compatible = "qcom,adreno-gmu",
-@@ -740,6 +746,149 @@
+@@ -740,6 +746,150 @@
   * Do not add any more qcom,SOC-smmu-500 entries to this list, unless they need
   * special handling and can not be covered by the qcom,smmu-500 entry.
   */
@@ -93980,10 +94354,11 @@
 +			      FIELD_GET(ARM_SMMU_SMR_ID, sid) == 0x1061) &&
 +			     of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
 +
-+		/* U880: ADSP FastRPC compute context banks (stock adsprpc-smd cb10-cb14), used by the sensors PD. */
++		/* U880: ADSP + CDSP FastRPC compute context banks (ADSP 0x1003..0x1087, CDSP 0xc01..0xc08). */
 +		u32 id = FIELD_GET(ARM_SMMU_SMR_ID, sid);
 +		bool fastrpc = ((id >= 0x1003 && id <= 0x1007) || (id >= 0x1043 && id <= 0x1047) ||
-+				id == 0x1067 || id == 0x1087) &&
++				id == 0x1067 || id == 0x1087 ||
++				(id >= 0xc01 && id <= 0xc08)) &&
 +			       of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
 +
 +		/* U880: Camera CAMSS/IFE stream (0x800 mask 0x20). */
@@ -94033,7 +94408,7 @@
  static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
  	{ .compatible = "qcom,msm8996-smmu-v2", .data = &msm8996_smmu_data },
  	{ .compatible = "qcom,msm8998-smmu-v2", .data = &qcom_smmu_v2_data },
-@@ -766,6 +915,8 @@
+@@ -766,6 +916,8 @@
  	{ .compatible = "qcom,sm8350-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,sm8450-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu_500_impl0_data },
@@ -112515,10 +112890,12 @@
  MODULE_DEVICE_TABLE(of, aw88261_of_table);
 --- a/sound/soc/qcom/common.c
 +++ b/sound/soc/qcom/common.c
-@@ -314,6 +314,16 @@
+@@ -312,6 +312,16 @@
+ 			/* DPCM */
+ 			link->ignore_suspend = 1;
  			link->nonatomic = 1;
- 		}
- 
++		}
++
 +		/*
 +		 * MI2S backends: "format" gives the wire format. dai_fmt is the codec's view, so CBC_CFC = codec consumes
 +		 * the clocks the CPU (LPAIF) provides, which is what the AudioReach I2S module needs (internal WS source).
@@ -112527,11 +112904,9 @@
 +			link->dai_fmt = snd_soc_daifmt_parse_format(np, NULL);
 +			link->dai_fmt |= of_property_read_bool(np, "codec-clock-provider") ?
 +					 SND_SOC_DAIFMT_CBP_CFP : SND_SOC_DAIFMT_CBC_CFC;
-+		}
-+
+ 		}
+ 
  		link->stream_name = link->name;
- 		link++;
- 	}
 --- a/sound/soc/qcom/sc8280xp.c
 +++ b/sound/soc/qcom/sc8280xp.c
 @@ -2,6 +2,7 @@
@@ -112687,31 +113062,31 @@
            - qcom,sm8150-qmp-ufs-phy
            - qcom,sm8250-qmp-ufs-phy
            - qcom,sm8350-qmp-ufs-phy
-@@ -91,6 +92,8 @@
+@@ -90,6 +91,8 @@
+   vdda-phy-supply: true
  
    vdda-pll-supply: true
- 
-+  vdda-qref-supply: true
 +
++  vdda-qref-supply: true
+ 
    "#clock-cells":
      const: 1
+@@ -109,6 +112,15 @@
+   - "#phy-cells"
  
-@@ -113,6 +116,15 @@
-       properties:
-         compatible:
-           contains:
+ allOf:
++  - if:
++      properties:
++        compatible:
++          contains:
 +            const: qcom,sm7675-qmp-ufs-phy
 +    then:
 +      required:
 +        - vdda-qref-supply
 +
-+  - if:
-+      properties:
-+        compatible:
-+          contains:
-             enum:
-               - qcom,glymur-qmp-ufs-phy
-               - qcom,hawi-qmp-ufs-phy
+   - if:
+       properties:
+         compatible:
 @@ -128,6 +140,7 @@
                - qcom,sm6125-qmp-ufs-phy
                - qcom,sm6350-qmp-ufs-phy
@@ -113494,17 +113869,17 @@
 +#endif
 --- a/include/soc/qcom/rpmh.h
 +++ b/include/soc/qcom/rpmh.h
-@@ -6,6 +6,10 @@
+@@ -5,6 +5,10 @@
+ 
  #ifndef __SOC_QCOM_RPMH_H__
  #define __SOC_QCOM_RPMH_H__
- 
++
 +#if IS_ENABLED(CONFIG_QCOM_RPMH_UKE)
 +#include <soc/qcom/rpmh-uke.h>
 +#else
-+
+ 
  #include <soc/qcom/tcs.h>
  #include <linux/platform_device.h>
- 
 @@ -49,4 +53,5 @@
  
  #endif /* CONFIG_QCOM_RPMH */
@@ -116121,110 +116496,3 @@
 +{ 0xC0360006, -EIO, "STATUS_IPSEC_INTEGRITY_CHECK_FAILED" },
 +{ 0xC0360007, -EIO, "STATUS_IPSEC_CLEAR_TEXT_DROP" },
 +{ 0xC05D0000, -EIO, "STATUS_SMB_NO_PREAUTH_INTEGRITY_HASH_OVERLAP" },
---- a/drivers/media/platform/qcom/iris/iris_platform_common.h
-+++ b/drivers/media/platform/qcom/iris/iris_platform_common.h
-@@ -68,6 +68,7 @@
- extern const struct iris_platform_data sc7280_data;
- extern const struct iris_platform_data sm8250_data;
- extern const struct iris_platform_data sm8550_data;
-+extern const struct iris_platform_data sm7675_data;
- extern const struct iris_platform_data sm8650_data;
- extern const struct iris_platform_data sm8750_data;
- extern const struct iris_platform_data x1p42100_data;
---- a/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
-+++ b/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
-@@ -26,6 +26,12 @@
- 	.fwname = "qcom/vpu/vpu30_p4_s6.mbn",
- };
- 
-+static const struct iris_firmware_desc iris_vpu30_p2_gen2_desc = {
-+	.firmware_data = &iris_hfi_gen2_data,
-+	.get_vpu_buffer_size = iris_vpu33_buf_size,
-+	.fwname = "qcom/vpu/vpu30_2v.mbn",
-+};
-+
- static const struct iris_firmware_desc iris_vpu30_p4_gen2_desc = {
- 	.firmware_data = &iris_hfi_gen2_data,
- 	.get_vpu_buffer_size = iris_vpu_buf_size,
-@@ -107,6 +113,40 @@
- 	.clk_tbl = sm8550_clk_table,
- 	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
- 	.opp_clk_tbl = iris_opp_clk_table_vpu3x,
-+	/* Upper bound of DMA address range */
-+	.dma_mask = 0xe0000000 - 1,
-+	.inst_iris_fmts = iris_fmts_vpu3x_dec,
-+	.inst_iris_fmts_size = ARRAY_SIZE(iris_fmts_vpu3x_dec),
-+	.inst_caps = &platform_inst_cap_qcs8300,
-+	.slice_caps = &iris_vpu2_vpu3x_slice_caps,
-+	.tz_cp_config_data = tz_cp_config_vpu3,
-+	.tz_cp_config_data_size = ARRAY_SIZE(tz_cp_config_vpu3),
-+	.num_vpp_pipe = 2,
-+	.wd_intr_mask = WRAPPER_INTR_STATUS_A2HWD_BMSK,
-+	.icc_ib_multiplier = 1,
-+	.max_session_count = 16,
-+	.max_core_mbpf = ((4096 * 2176) / 256) * 4,
-+	.max_core_mbps = (((3840 * 2176) / 256) * 120),
-+};
-+
-+const struct iris_platform_data sm7675_data = {
-+	.firmware_desc_gen2 = &iris_vpu30_p2_gen2_desc,
-+	.vpu_ops = &iris_vpu33_ops,
-+	.icc_tbl = iris_icc_info_vpu3x,
-+	.icc_tbl_size = ARRAY_SIZE(iris_icc_info_vpu3x),
-+	.clk_rst_tbl = sm8650_clk_reset_table,
-+	.clk_rst_tbl_size = ARRAY_SIZE(sm8650_clk_reset_table),
-+	.controller_rst_tbl = sm8650_controller_reset_table,
-+	.controller_rst_tbl_size = ARRAY_SIZE(sm8650_controller_reset_table),
-+	.bw_tbl_dec = iris_bw_table_dec_vpu3x,
-+	.bw_tbl_dec_size = ARRAY_SIZE(iris_bw_table_dec_vpu3x),
-+	.pmdomain_tbl = iris_pmdomain_table_vpu3x,
-+	.pmdomain_tbl_size = ARRAY_SIZE(iris_pmdomain_table_vpu3x),
-+	.opp_pd_tbl = NULL,
-+	.opp_pd_tbl_size = 0,
-+	.clk_tbl = sm8550_clk_table,
-+	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
-+	.opp_clk_tbl = iris_opp_clk_table_vpu3x,
- 	/* Upper bound of DMA address range */
- 	.dma_mask = 0xe0000000 - 1,
- 	.inst_iris_fmts = iris_fmts_vpu3x_dec,
---- a/drivers/media/platform/qcom/iris/iris_probe.c
-+++ b/drivers/media/platform/qcom/iris/iris_probe.c
-@@ -64,16 +64,18 @@
- 	if (ret < 0)
- 		return ret;
- 
--	ret =  devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
--	/* backwards compatibility for incomplete ABI SM8250 */
--	if (ret == -ENODEV &&
--	    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
--		iris_opp_pd_data.num_pd_names--;
--		ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
--						 &core->opp_pmdomain_tbl);
-+	if (core->iris_platform_data->opp_pd_tbl_size) {
-+		ret =  devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
-+		/* backwards compatibility for incomplete ABI SM8250 */
-+		if (ret == -ENODEV &&
-+		    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
-+			iris_opp_pd_data.num_pd_names--;
-+			ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
-+							 &core->opp_pmdomain_tbl);
-+		}
-+		if (ret < 0)
-+			return ret;
- 	}
--	if (ret < 0)
--		return ret;
- 
- 	ret = devm_pm_opp_set_config(core->dev, &iris_opp_clk_data);
- 	if (ret)
-@@ -435,6 +437,10 @@
- 		.data = &sc7280_data,
- 	},
- 	{
-+		.compatible = "qcom,sm7675-iris",
-+		.data = &sm7675_data,
-+	},
-+	{
- 		.compatible = "qcom,sm8250-venus",
- 		.data = &sm8250_data,
- 	},
