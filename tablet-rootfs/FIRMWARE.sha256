@@ -1,4 +1,4 @@
-# sha256 of every stock-derived firmware file, checked 2026-11-26 against U880_B14_V3.0L.1_0311.zip (README step 7) and against the working tablet.
+# sha256 of every stock-derived firmware file, checked 2026-11-26 against U880_B14_V3.0L.1_0311.zip (README step 7) and against the working tablet. Added 2026-11-27: vpu30_2v.mbn (Iris video, from vendor.img /firmware) and the 21 CDSP files cdsp*/cdspr.jsn (from modem.img /image; cdsp.b14 does not exist), checked against the package only.
 # Check a firmware overlay (FWDIR): cd $FWDIR && sha256sum -c <repo>/tablet-rootfs/FIRMWARE.sha256 --ignore-missing
 # board-2.bin is built (scripts/make-ath11k-board2.py), not copied; regdb.bin is installed twice (qca6750/ and ath11k/WCN6750/hw1.0/, same file).
 b6df660d109504dbea5a266910b037a33d893a11c6de52f524a5fd112008c401  usr/lib/firmware/qcom/gen71100_sqe.fw
@@ -136,3 +136,25 @@ fe8d46b356ee236510d781c62f3530454267c0d12ea59ca88b4bed984d2ba347  usr/lib/firmwa
 4b2ada50852d86176e7915de8d05cb1e88dd265fd399bf905892219834ea15ea  usr/lib/firmware/qcom/u880/adsp2_dtb.b02
 1fc7de7788fae1dae9aa9be1e77d17892507ec215d051041fbcfaa3b021e7f87  usr/lib/firmware/qcom/u880/adsp2_dtb.mdt
 1e3b867c67fb08a44dfe589da2c6ab97b7d74a6e769c3afd77f84cc022b9c98b  usr/lib/firmware/qcom/u880/adsp2.mdt
+32becf18933ebfec60c7eff36170d27c89980fe1680a09742436266b7ed64411  usr/lib/firmware/qcom/vpu/vpu30_2v.mbn
+907d0e0f635deb913473d1afbb7feb6dddb336bdbadd00184fd131c6b5826cf2  usr/lib/firmware/qcom/u880/cdsp.b00
+9be17ec22ee562eee6ab2890494ec2cbabcb900db05e119a557de99b4d17eece  usr/lib/firmware/qcom/u880/cdsp.b01
+b06297d61d1a161aeb868292432837fb0a0aadf04de890eef2949aef8755b651  usr/lib/firmware/qcom/u880/cdsp.b02
+2a0c13bb67d25778ca6b59352fbc331c08f83e103abd7fe65cc7026e20b9029d  usr/lib/firmware/qcom/u880/cdsp.b03
+55f3080eb303a674a34023ab892635eff2e99724aea8c9429291385e9481dc40  usr/lib/firmware/qcom/u880/cdsp.b04
+1b99853cc3cb78cb44fbdd9b89847383e209274084d987822f31a606cb208541  usr/lib/firmware/qcom/u880/cdsp.b05
+f0647c0ab8a646ce22facfa958f34cef6e39a8243a8eb1233b0f106b6a06e5bc  usr/lib/firmware/qcom/u880/cdsp.b06
+a0d3fb5e98bf87e3fdff305e40698f1d283edbe42232ba89a6de88002a478c2f  usr/lib/firmware/qcom/u880/cdsp.b07
+6d9aa426510b3dbae5668a21d45b0830a24da2d408c91221448affdb4fed5fcf  usr/lib/firmware/qcom/u880/cdsp.b08
+66f44ebce1c386d0260b037564900fbc61a2bdc309494d8569b5ac80c3904776  usr/lib/firmware/qcom/u880/cdsp.b09
+349f8b6eaf21ef92dd1b8c33838127f9564f639e29d88bc5df54510d88f2e556  usr/lib/firmware/qcom/u880/cdsp.b10
+d011788356853bcd8760ad1fe6b5360e13692e0406469173740aee64ca451bb3  usr/lib/firmware/qcom/u880/cdsp.b11
+0d72fe3756620e42bbe0b438c0e5ad69956d123eca96baa62f207638f44a8ccf  usr/lib/firmware/qcom/u880/cdsp.b12
+fd589169ead97720bce4275d9f24203ac6f5b5cd5c8fbfb073abeefae9473f3b  usr/lib/firmware/qcom/u880/cdsp.b13
+ad3814d987465b29a4f5a16376743f997523be933dced1085735308448b09c11  usr/lib/firmware/qcom/u880/cdsp.b15
+e4396dcd9bb9bc847f8429f8c1be9dfc706bead48262400cc35b8ab89a452288  usr/lib/firmware/qcom/u880/cdsp_dtb.b00
+33e44907f85205cf77d9e445394feb00c65f4d446cbd90a8f4991e56c608e629  usr/lib/firmware/qcom/u880/cdsp_dtb.b01
+b2b59c09a5f389ef0cf114f409ded848175bfdba4a5d69f9b54b8365228e398a  usr/lib/firmware/qcom/u880/cdsp_dtb.b02
+94d6b3aabe0b51a7babce5ec297b6cc373226bf4238147262f4f4522ddf0e7d5  usr/lib/firmware/qcom/u880/cdsp_dtb.mdt
+f5c9559883b94c54131a3b660b678ee06eb75c0fd48a38be539cbda570b6fa78  usr/lib/firmware/qcom/u880/cdsp.mdt
+6d01cd7dce745204d5de20efe57e2511149ca2a5b48ee562fbedefda573ca465  usr/lib/firmware/qcom/u880/cdspr.jsn

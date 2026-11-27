@@ -100,3 +100,8 @@
 /usr/local/bin/steam-arm64-gs
 /usr/share/alsa/ucm2/Qualcomm/sm8550/U880/HDMI.conf
 /etc/ld.so.conf.d/usr-local.conf
+/etc/modules-load.d/u880-camera.conf
+/etc/udev/rules.d/90-u880-dma-heap.rules
+/etc/udev/rules.d/90-u880-flash-led.rules
+/usr/local/bin/u880-autobrightness
+/etc/systemd/user/u880-autobrightness.service

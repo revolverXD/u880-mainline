@@ -65,6 +65,8 @@ for u in u880-bt-addr u880-boot-success u880-icc-sync u880-mem-sleep u880-powerl
   [ -e "$T/etc/systemd/system/$u.service" ] || [ -e "$T/usr/lib/systemd/system/$u.service" ] || [ -e "$T/usr/local/lib/systemd/system/$u.service" ] || { echo "  unit missing, not enabled: $u"; continue; }
   systemctl --root="$T" enable "$u.service" >/dev/null 2>&1 || echo "  could not enable $u"
 done
+# ambient-light auto-brightness is a USER unit (WantedBy=plasma-workspace.target): --global enables it for every user
+[ -e "$T/etc/systemd/user/u880-autobrightness.service" ] && { systemctl --root="$T" --global enable u880-autobrightness.service >/dev/null 2>&1 || echo "  could not enable u880-autobrightness"; }
 if [ -n "${SSH_PUBKEY:-}" ]; then
   [ -f "$SSH_PUBKEY" ] || { echo "no such file: $SSH_PUBKEY"; exit 4; }
   install -d -m 700 "$T/root/.ssh" && install -m 600 "$SSH_PUBKEY" "$T/root/.ssh/authorized_keys"

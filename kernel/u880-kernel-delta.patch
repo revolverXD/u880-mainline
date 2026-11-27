@@ -1,5 +1,4 @@
-231 files in delta; 112774 added lines
-hb.c
+--- a/drivers/net/wireless/ath/ath11k/ahb.c
 +++ b/drivers/net/wireless/ath/ath11k/ahb.c
 @@ -32,6 +32,10 @@
  	  .data = (void *)ATH11K_HW_IPQ6018_HW10,
@@ -12,7 +11,7 @@ hb.c
  	  .data = (void *)ATH11K_HW_WCN6750_HW10,
  	},
  	{ .compatible = "qcom,ipq5018-wifi",
-@@ -406,14 +410,68 @@
+@@ -401,14 +405,68 @@
  	ath11k_ce_cleanup_pipes(ab);
  }
  
@@ -83,7 +82,7 @@ hb.c
  
  	return ret;
  }
-@@ -423,6 +481,7 @@
+@@ -418,6 +476,7 @@
  	struct ath11k_ahb *ab_ahb = ath11k_ahb_priv(ab);
  
  	rproc_shutdown(ab_ahb->tgt_rproc);
@@ -91,7 +90,7 @@ hb.c
  }
  
  static void ath11k_ahb_init_qmi_ce_config(struct ath11k_base *ab)
-@@ -839,7 +898,8 @@
+@@ -832,7 +891,8 @@
  	struct rproc *prproc;
  	phandle rproc_phandle;
  
@@ -101,7 +100,7 @@ hb.c
  		ath11k_err(ab, "failed to get q6_rproc handle\n");
  		return -ENOENT;
  	}
-@@ -1188,6 +1248,10 @@
+@@ -1181,6 +1241,10 @@
  	ab->fw_mode = ATH11K_FIRMWARE_MODE_NORMAL;
  	platform_set_drvdata(pdev, ab);
  
@@ -202,7 +201,7 @@ hb.c
  
  	return qcom_battmgr_request(battmgr, &request, sizeof(request));
  }
-@@ -989,6 +1028,9 @@
+@@ -988,6 +1027,9 @@
  		return -EINVAL;
  
  	prop = sm8350_usb_prop_map[psp];
@@ -212,7 +211,7 @@ hb.c
  
  	mutex_lock(&battmgr->lock);
  	ret = qcom_battmgr_request_property(battmgr, BATTMGR_USB_PROPERTY_GET, prop, 0);
-@@ -1042,6 +1084,62 @@
+@@ -1041,6 +1083,62 @@
  	}
  
  	return 0;
@@ -275,7 +274,7 @@ hb.c
  }
  
  static const enum power_supply_property sc8280xp_usb_props[] = {
-@@ -1082,6 +1180,8 @@
+@@ -1081,6 +1179,8 @@
  	.properties = sm8350_usb_props,
  	.num_properties = ARRAY_SIZE(sm8350_usb_props),
  	.get_property = qcom_battmgr_usb_get_property,
@@ -284,7 +283,7 @@ hb.c
  	.usb_types = BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN) |
  		     BIT(POWER_SUPPLY_USB_TYPE_SDP)     |
  		     BIT(POWER_SUPPLY_USB_TYPE_DCP)     |
-@@ -1203,6 +1303,8 @@
+@@ -1202,6 +1302,8 @@
  
  	notification = le32_to_cpu(msg->notification);
  	notification &= 0xff;
@@ -293,7 +292,7 @@ hb.c
  	switch (notification) {
  	case NOTIF_BAT_INFO:
  		battmgr->info.valid = false;
-@@ -1409,6 +1511,15 @@
+@@ -1382,6 +1484,15 @@
  	switch (opcode) {
  	case BATTMGR_BAT_PROPERTY_GET:
  		property = le32_to_cpu(resp->intval.property);
@@ -309,7 +308,7 @@ hb.c
  		if (property == BATT_MODEL_NAME) {
  			if (payload_len != sizeof(resp->strval)) {
  				dev_warn(battmgr->dev,
-@@ -1460,17 +1571,38 @@
+@@ -1433,17 +1544,38 @@
  			battmgr->info.voltage_max = le32_to_cpu(resp->intval.value);
  			break;
  		case BATT_CURR_NOW:
@@ -351,15 +350,15 @@ hb.c
  			break;
  		case BATT_CYCLE_COUNT:
  			battmgr->info.cycle_count = le32_to_cpu(resp->intval.value);
-@@ -1540,6 +1672,7 @@
- 		case USB_INPUT_CURR_LIMIT:
+@@ -1514,6 +1646,7 @@
  			battmgr->usb.current_limit = le32_to_cpu(resp->intval.value);
  			break;
-+		case USB_TYPE:
- 		case USB_ADAP_TYPE:
+ 		case USB_TYPE:
++		case USB_ADAP_TYPE:
  			battmgr->usb.usb_type = le32_to_cpu(resp->intval.value);
  			break;
-@@ -1584,12 +1717,18 @@
+ 		default:
+@@ -1557,12 +1690,18 @@
  		}
  		break;
  	case BATTMGR_REQUEST_NOTIFICATION:
@@ -379,7 +378,7 @@ hb.c
  	}
  
  out_complete:
-@@ -1601,6 +1740,9 @@
+@@ -1574,6 +1713,9 @@
  	const struct pmic_glink_hdr *hdr = data;
  	struct qcom_battmgr *battmgr = priv;
  	unsigned int opcode = le32_to_cpu(hdr->opcode);
@@ -389,7 +388,7 @@ hb.c
  
  	if (opcode == BATTMGR_NOTIFICATION)
  		qcom_battmgr_notification(battmgr, data, len);
-@@ -1680,7 +1822,12 @@
+@@ -1653,7 +1795,12 @@
  	init_completion(&battmgr->ack);
  
  	match = of_match_device(qcom_battmgr_of_variants, dev->parent);
@@ -521,7 +520,7 @@ hb.c
  					prev->flags = CPUFREQ_BOOST_FREQ;
 --- a/drivers/slimbus/qcom-ngd-ctrl.c
 +++ b/drivers/slimbus/qcom-ngd-ctrl.c
-@@ -1223,13 +1223,17 @@
+@@ -1146,13 +1146,17 @@
  	return 0;
  }
  
@@ -542,7 +541,7 @@ hb.c
  
  	/* By default enable message queues */
  	cfg |= NGD_CFG_RX_MSGQ_EN;
-@@ -1240,6 +1244,7 @@
+@@ -1163,6 +1167,7 @@
  		cfg |= NGD_CFG_ENABLE;
  
  	writel_relaxed(cfg, ctrl->ngd->base);
@@ -550,7 +549,7 @@ hb.c
  }
  
  static int qcom_slim_ngd_power_up(struct qcom_slim_ngd_ctrl *ctrl)
-@@ -1280,8 +1285,7 @@
+@@ -1203,8 +1208,7 @@
  			dev_info(ctrl->dev, "Subsys restart: ADSP active framer\n");
  			return 0;
  		}
@@ -560,7 +559,7 @@ hb.c
  	}
  
  	/*
-@@ -1295,7 +1299,9 @@
+@@ -1218,7 +1222,9 @@
  
  	writel_relaxed(rx_msgq|SLIM_RX_MSGQ_TIMEOUT_VAL,
  				ngd->base + NGD_RX_MSGQ_CFG);
@@ -571,7 +570,7 @@ hb.c
  
  	time_left = wait_for_completion_timeout(&ctrl->reconf, HZ);
  	if (!time_left) {
-@@ -1399,7 +1405,7 @@
+@@ -1322,7 +1328,7 @@
  		ctrl->state = QCOM_SLIM_NGD_CTRL_AWAKE;
  	}
  
@@ -580,7 +579,7 @@ hb.c
  }
  
  static int qcom_slim_ngd_enable(struct qcom_slim_ngd_ctrl *ctrl, bool enable)
-@@ -1416,9 +1422,11 @@
+@@ -1339,9 +1345,11 @@
  		complete(&ctrl->qmi.qmi_comp);
  		if (!pm_runtime_enabled(ctrl->ctrl.dev) ||
  			 !pm_runtime_suspended(ctrl->ctrl.dev))
@@ -594,7 +593,7 @@ hb.c
  
  		pm_runtime_mark_last_busy(ctrl->ctrl.dev);
  		pm_runtime_put(ctrl->ctrl.dev);
-@@ -1527,18 +1535,22 @@
+@@ -1450,18 +1458,22 @@
  static void qcom_slim_ngd_up_worker(struct work_struct *work)
  {
  	struct qcom_slim_ngd_ctrl *ctrl;
@@ -623,7 +622,7 @@ hb.c
  
 --- a/drivers/nvmem/qcom-spmi-sdam.c
 +++ b/drivers/nvmem/qcom-spmi-sdam.c
-@@ -160,7 +160,7 @@
+@@ -144,7 +144,7 @@
  	sdam->sdam_config.owner = THIS_MODULE;
  	sdam->sdam_config.add_legacy_fixed_of_cells = true;
  	sdam->sdam_config.stride = 1;
@@ -754,7 +753,7 @@ hb.c
 +	if (data->uke_legacy && !qcom_cpucp_uke_resources(pdev))
 +		return dev_err_probe(dev, -EINVAL, "Uke CPUCP resource contract differs\n");
  
- 	cpucp = devm_kzalloc_obj(dev, *cpucp);
+ 	cpucp = devm_kzalloc(dev, sizeof(*cpucp), GFP_KERNEL);
  	if (!cpucp)
 @@ -156,38 +244,47 @@
  	if (!cpucp->chans)
@@ -832,7 +831,7 @@ hb.c
  	{}
 --- a/drivers/pinctrl/qcom/Makefile
 +++ b/drivers/pinctrl/qcom/Makefile
-@@ -82,6 +82,7 @@
+@@ -79,6 +79,7 @@
  obj-$(CONFIG_PINCTRL_SM8550) += pinctrl-sm8550.o
  obj-$(CONFIG_PINCTRL_SM8550_LPASS_LPI) += pinctrl-sm8550-lpass-lpi.o
  obj-$(CONFIG_PINCTRL_SM8650) += pinctrl-sm8650.o
@@ -3058,7 +3057,7 @@ hb.c
 +MODULE_DEVICE_TABLE(of, cliffs_pinctrl_of_match);
 --- a/drivers/pinctrl/qcom/Kconfig.msm
 +++ b/drivers/pinctrl/qcom/Kconfig.msm
-@@ -597,6 +597,12 @@
+@@ -578,6 +578,12 @@
  	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
  	  Qualcomm Technologies Inc TLMM block found on the Qualcomm
  	  Technologies Inc SM8750 platform.
@@ -4225,9 +4224,9 @@ hb.c
  #include <kunit/of.h>
  #include <kunit/platform_device.h>
  #include <kunit/test.h>
-@@ -3876,10 +3877,144 @@
- 	.test_cases = clk_parse_clkspec_test_cases,
+@@ -3739,10 +3740,144 @@
  };
+ 
  
 +/* Boot handoff regressions: consumer refs, orphan reparent and failed hold. */
 +struct clk_hold_test_context {
@@ -4367,12 +4366,12 @@ hb.c
  	&clk_assigned_sscs_suite,
  	&clk_hw_get_dev_of_node_test_suite,
 +	&clk_hold_test_suite,
- 	&clk_parse_clkspec_test_suite,
  	&clk_leaf_mux_set_rate_parent_test_suite,
  	&clk_test_suite,
+ 	&clk_multiple_parents_mux_test_suite,
 --- a/drivers/clk/clk.c
 +++ b/drivers/clk/clk.c
-@@ -134,6 +134,8 @@
+@@ -133,6 +133,8 @@
  	struct clk_core		*new_child;
  	unsigned long		flags;
  	bool			orphan;
@@ -4381,7 +4380,7 @@ hb.c
  	bool			rpm_enabled;
  	unsigned int		enable_count;
  	unsigned int		prepare_count;
-@@ -1513,6 +1515,88 @@
+@@ -1511,6 +1513,88 @@
  	clk_core_unprepare_lock(core);
  }
  
@@ -4470,7 +4469,7 @@ hb.c
  static void __init clk_unprepare_unused_subtree(struct clk_core *core)
  {
  	struct clk_core *child;
-@@ -1521,6 +1605,9 @@
+@@ -1519,6 +1603,9 @@
  
  	hlist_for_each_entry(child, &core->children, child_node)
  		clk_unprepare_unused_subtree(child);
@@ -4480,7 +4479,7 @@ hb.c
  
  	if (core->prepare_count)
  		return;
-@@ -1547,6 +1634,9 @@
+@@ -1545,6 +1632,9 @@
  
  	hlist_for_each_entry(child, &core->children, child_node)
  		clk_disable_unused_subtree(child);
@@ -4490,7 +4489,7 @@ hb.c
  
  	if (core->flags & CLK_OPS_PARENT_ENABLE)
  		clk_core_prepare_enable(core->parent);
-@@ -2431,6 +2521,15 @@
+@@ -2429,6 +2519,15 @@
  			fail_clk = core;
  	}
  
@@ -4506,7 +4505,7 @@ hb.c
  	hlist_for_each_entry(child, &core->children, child_node) {
  		/* Skip children who will be reparented to another clock */
  		if (child->new_parent && child->new_parent != core)
-@@ -2524,6 +2623,9 @@
+@@ -2522,6 +2621,9 @@
  
  	if (core->flags & CLK_RECALC_NEW_RATES)
  		(void)clk_calc_new_rates(core, core->new_rate);
@@ -4516,7 +4515,7 @@ hb.c
  
  	/*
  	 * Use safe iteration, as change_rate can actually swap parents
-@@ -3639,6 +3741,7 @@
+@@ -3623,6 +3725,7 @@
  	ENTRY(CLK_IS_CRITICAL),
  	ENTRY(CLK_OPS_PARENT_ENABLE),
  	ENTRY(CLK_DUTY_CYCLE_PARENT),
@@ -4524,7 +4523,7 @@ hb.c
  #undef ENTRY
  };
  
-@@ -3962,6 +4065,7 @@
+@@ -3946,6 +4049,7 @@
  			__clk_set_parent_after(orphan, parent, NULL);
  			__clk_recalc_accuracies(orphan);
  			__clk_recalc_rates(orphan, true, 0);
@@ -4532,7 +4531,7 @@ hb.c
  
  			/*
  			 * __clk_init_parent() will set the initial req_rate to
-@@ -4145,6 +4249,8 @@
+@@ -4129,6 +4233,8 @@
  	else
  		rate = 0;
  	core->rate = core->req_rate = rate;
@@ -4541,7 +4540,7 @@ hb.c
  
  	/*
  	 * Enable CLK_IS_CRITICAL clocks so newly added critical clocks
-@@ -4168,6 +4274,7 @@
+@@ -4152,6 +4258,7 @@
  		}
  	}
  
@@ -4549,7 +4548,7 @@ hb.c
  	clk_core_reparent_orphans_nolock();
  out:
  	clk_pm_runtime_put(core);
-@@ -4680,6 +4787,11 @@
+@@ -4660,6 +4767,11 @@
  	 * Assign empty clock ops for consumers that might still hold
  	 * a reference to this clock.
  	 */
@@ -4691,7 +4690,7 @@ hb.c
  
  # Keep alphabetically sorted by config
  obj-$(CONFIG_APQ_GCC_8084) += gcc-apq8084.o
-@@ -200,6 +202,8 @@
+@@ -191,6 +193,8 @@
  obj-$(CONFIG_SM_GCC_8650) += gcc-sm8650.o
  obj-$(CONFIG_SM_GCC_8750) += gcc-sm8750.o
  obj-$(CONFIG_SM_GCC_MILOS) += gcc-milos.o
@@ -4700,7 +4699,7 @@ hb.c
  obj-$(CONFIG_SM_GPUCC_4450) += gpucc-sm4450.o
  obj-$(CONFIG_SM_GPUCC_6115) += gpucc-sm6115.o
  obj-$(CONFIG_SM_GPUCC_6125) += gpucc-sm6125.o
-@@ -230,3 +234,6 @@
+@@ -221,3 +225,6 @@
  obj-$(CONFIG_KPSS_XCC) += kpss-xcc.o
  obj-$(CONFIG_QCOM_HFPLL) += hfpll.o
  obj-$(CONFIG_KRAITCC) += krait-cc.o
@@ -6401,7 +6400,7 @@ hb.c
 +#endif
 --- a/drivers/clk/qcom/clk-alpha-pll.c
 +++ b/drivers/clk/qcom/clk-alpha-pll.c
-@@ -2557,6 +2557,10 @@
+@@ -2548,6 +2548,10 @@
  }
  
  const struct clk_ops clk_alpha_pll_fixed_lucid_evo_ops = {
@@ -7015,7 +7014,7 @@ hb.c
  
  menuconfig COMMON_CLK_QCOM
  	tristate "Support for Qualcomm's clock controllers"
-@@ -1827,6 +1835,21 @@
+@@ -1730,6 +1738,21 @@
  	  Support for the global clock controller on SM8750 devices.
  	  Say Y if you want to use peripheral devices such as UART,
  	  SPI, I2C, USB, SD/UFS, PCIe etc.
@@ -7096,16 +7095,16 @@ hb.c
  	},
  };
  
-@@ -1753,7 +1767,7 @@
- 	.num_clk_cbcrs = ARRAY_SIZE(disp_cc_sm8550_critical_cbcrs),
+@@ -1744,7 +1758,7 @@
+ 	.fast_io = true,
  };
  
 -static const struct qcom_cc_desc disp_cc_sm8550_desc = {
 +static struct qcom_cc_desc disp_cc_sm8550_desc = {
- 	.driver_data = &disp_cc_sm8550_driver_data,
  	.config = &disp_cc_sm8550_regmap_config,
  	.clks = disp_cc_sm8550_clocks,
-@@ -1768,15 +1782,95 @@
+ 	.num_clks = ARRAY_SIZE(disp_cc_sm8550_clocks),
+@@ -1758,15 +1772,95 @@
  	{ .compatible = "qcom,sar2130p-dispcc" },
  	{ .compatible = "qcom,sm8550-dispcc" },
  	{ .compatible = "qcom,sm8650-dispcc" },
@@ -7201,7 +7200,7 @@ hb.c
  	ret = devm_pm_runtime_enable(&pdev->dev);
  	if (ret)
  		return ret;
-@@ -1791,9 +1885,12 @@
+@@ -1781,9 +1875,12 @@
  		goto err_put_rpm;
  	}
  
@@ -7216,7 +7215,7 @@ hb.c
  		disp_cc_mdss_dptx1_usb_router_link_intf_clk.clkr.hw.init->parent_hws[0] =
  			&disp_cc_mdss_dptx1_link_div_clk_src.clkr.hw;
  	} else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sar2130p-dispcc")) {
-@@ -1804,15 +1901,34 @@
+@@ -1794,11 +1891,17 @@
  		disp_cc_mdss_mdp_clk_src.freq_tbl = ftbl_disp_cc_mdss_mdp_clk_src_sar2130p;
  	}
  
@@ -7237,6 +7236,9 @@ hb.c
 +		regmap_update_bits(regmap, DISP_CC_MISC_CMD, 0x10, 0x10);
 +	}
  
+ 	/* Keep some clocks always-on */
+ 	qcom_branch_set_clk_en(regmap, 0xe054); /* DISP_CC_XO_CLK */
+@@ -1806,6 +1909,19 @@
  	ret = qcom_cc_really_probe(&pdev->dev, &disp_cc_sm8550_desc, regmap);
  	if (ret)
  		goto err_put_rpm;
@@ -7256,7 +7258,7 @@ hb.c
  
  	pm_runtime_put(&pdev->dev);
  
-@@ -1828,6 +1944,7 @@
+@@ -1821,6 +1937,7 @@
  	.probe = disp_cc_sm8550_probe,
  	.driver = {
  		.name = "disp_cc-sm8550",
@@ -7282,7 +7284,7 @@ hb.c
  
  enum {
  	DT_IFACE,
-@@ -3566,14 +3568,118 @@
+@@ -3566,14 +3568,112 @@
  	.driver_data = &cam_cc_sm8650_driver_data,
  };
  
@@ -7335,7 +7337,6 @@ hb.c
 +};
 +
 +static struct alpha_pll_config cam_cc_cliffs_pll_cfg[ARRAY_SIZE(cam_cc_cliffs_pll_fixups)];
-+static struct alpha_pll_config cam_cc_cliffs_pll2_cfg;
 +
 +static void cam_cc_cliffs_vdd_release(void *data)
 +{
@@ -7356,11 +7357,6 @@ hb.c
 +		cam_cc_cliffs_pll_cfg[i].alpha = cam_cc_cliffs_pll_fixups[i].alpha;
 +		cam_cc_cliffs_pll_fixups[i].pll->config = &cam_cc_cliffs_pll_cfg[i];
 +	}
-+
-+	/* Stock camcc-cliffs.ko sets user_ctl_hi_val = 0x00100000 on PLL2 (drives MCLK0..7). */
-+	cam_cc_cliffs_pll2_cfg = *cam_cc_pll2.config;
-+	cam_cc_cliffs_pll2_cfg.user_ctl_hi_val = 0x00100000;
-+	cam_cc_pll2.config = &cam_cc_cliffs_pll2_cfg;
 +
 +	ret = clk_regulator_init(&pdev->dev, &cam_cc_cliffs_desc);
 +	if (ret)
@@ -7403,7 +7399,7 @@ hb.c
  
 --- /dev/null
 +++ b/drivers/clk/qcom/gcc-cliffs.c
-@@ -0,0 +1,3229 @@
+@@ -0,0 +1,3226 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -10581,9 +10577,6 @@ hb.c
 +	/* U880 camera bring-up: camcc registers sit behind these two gates (SM8550 forces them on too, GCC_CAMERA_AHB_CLK/XO_CLK). */
 +	qcom_branch_set_clk_en(regmap, 0x26004);
 +	qcom_branch_set_clk_en(regmap, 0x26028);
-+	/* U880 video bring-up: videocc registers sit behind these two gates (GCC_VIDEO_AHB_CLK/XO_CLK). */
-+	qcom_branch_set_clk_en(regmap, 0x32004);
-+	qcom_branch_set_clk_en(regmap, 0x32030);
 +
 +	ret = clk_vdd_proxy_vote(&pdev->dev, &gcc_cliffs_desc);
 +	if (ret)
@@ -10983,253 +10976,9 @@ hb.c
 +
 +MODULE_DESCRIPTION("Xiaomi Uke USB GDSC regulator");
 +MODULE_LICENSE("GPL");
---- a/drivers/media/i2c/gc05a2.c
-+++ b/drivers/media/i2c/gc05a2.c
-@@ -87,6 +87,7 @@
- 	struct clk *xclk;
- 	struct regulator_bulk_data supplies[ARRAY_SIZE(gc05a2_supply_name)];
- 	struct gpio_desc *reset_gpio;
-+	struct gpio_desc *pwdn_gpio;
- 
- 	struct v4l2_ctrl_handler ctrls;
- 	struct v4l2_ctrl *pixel_rate;
-@@ -631,6 +632,7 @@
- 
- 	fsleep(GC05A2_SLEEP_US);
- 
-+	gpiod_set_value_cansleep(gc05a2->pwdn_gpio, 0);
- 	gpiod_set_value_cansleep(gc05a2->reset_gpio, 0);
- 	fsleep(GC05A2_SLEEP_US);
- 
-@@ -644,6 +646,7 @@
- 
- 	clk_disable_unprepare(gc05a2->xclk);
- 	gpiod_set_value_cansleep(gc05a2->reset_gpio, 1);
-+	gpiod_set_value_cansleep(gc05a2->pwdn_gpio, 1);
- 	regulator_bulk_disable(ARRAY_SIZE(gc05a2_supply_name),
- 			       gc05a2->supplies);
- 
-@@ -1247,10 +1250,15 @@
- 		return dev_err_probe(dev, ret,
- 				     "failed to get regulators\n");
- 
--	gc05a2->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
-+	gc05a2->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
- 	if (IS_ERR(gc05a2->reset_gpio))
- 		return dev_err_probe(dev, PTR_ERR(gc05a2->reset_gpio),
- 				     "failed to get gpio\n");
-+
-+	gc05a2->pwdn_gpio = devm_gpiod_get_optional(dev, "pwdn", GPIOD_OUT_HIGH);
-+	if (IS_ERR(gc05a2->pwdn_gpio))
-+		return dev_err_probe(dev, PTR_ERR(gc05a2->pwdn_gpio),
-+				     "failed to get pwdn gpio\n");
- 
- 	v4l2_i2c_subdev_init(&gc05a2->sd, client, &gc05a2_subdev_ops);
- 	gc05a2->sd.internal_ops = &gc05a2_internal_ops;
---- a/drivers/media/i2c/ov13b10.c
-+++ b/drivers/media/i2c/ov13b10.c
-@@ -717,6 +717,7 @@
- 	struct clk *img_clk;
- 	struct regulator_bulk_data supplies[ARRAY_SIZE(ov13b10_supply_names)];
- 	struct gpio_desc *reset;
-+	struct gpio_desc *pwdn;
- 
- 	/* V4L2 Controls */
- 	struct v4l2_ctrl *link_freq;
-@@ -1202,6 +1203,7 @@
- 	struct ov13b10 *ov13b10 = to_ov13b10(sd);
- 
- 	gpiod_set_value_cansleep(ov13b10->reset, 1);
-+	gpiod_set_value_cansleep(ov13b10->pwdn, 1);
- 	regulator_bulk_disable(ARRAY_SIZE(ov13b10_supply_names),
- 			       ov13b10->supplies);
- 
-@@ -1229,6 +1231,7 @@
- 		return ret;
- 	}
- 
-+	gpiod_set_value_cansleep(ov13b10->pwdn, 0);
- 	gpiod_set_value_cansleep(ov13b10->reset, 0);
- 	/* 5ms to wait ready after XSHUTDN assert */
- 	usleep_range(5000, 5500);
-@@ -1481,10 +1484,16 @@
- 	int ret;
- 
- 	ov13b->reset = devm_gpiod_get_optional(ov13b->dev, "reset",
--					       GPIOD_OUT_LOW);
-+					       GPIOD_OUT_HIGH);
- 	if (IS_ERR(ov13b->reset))
- 		return dev_err_probe(ov13b->dev, PTR_ERR(ov13b->reset),
- 				     "failed to get reset gpio\n");
-+
-+	ov13b->pwdn = devm_gpiod_get_optional(ov13b->dev, "pwdn",
-+					      GPIOD_OUT_HIGH);
-+	if (IS_ERR(ov13b->pwdn))
-+		return dev_err_probe(ov13b->dev, PTR_ERR(ov13b->pwdn),
-+				     "failed to get pwdn gpio\n");
- 
- 	ov13b->img_clk = devm_v4l2_sensor_clk_get(ov13b->dev, NULL);
- 	if (IS_ERR(ov13b->img_clk))
-@@ -1706,11 +1715,18 @@
- MODULE_DEVICE_TABLE(acpi, ov13b10_acpi_ids);
- #endif
- 
-+static const struct of_device_id ov13b10_of_match[] = {
-+	{ .compatible = "ovti,ov13b10" },
-+	{ /* sentinel */ }
-+};
-+MODULE_DEVICE_TABLE(of, ov13b10_of_match);
-+
- static struct i2c_driver ov13b10_i2c_driver = {
- 	.driver = {
- 		.name = "ov13b10",
- 		.pm = pm_ptr(&ov13b10_pm_ops),
- 		.acpi_match_table = ACPI_PTR(ov13b10_acpi_ids),
-+		.of_match_table = ov13b10_of_match,
- 	},
- 	.probe = ov13b10_probe,
- 	.remove = ov13b10_remove,
---- a/drivers/media/platform/qcom/camss/camss.c
-+++ b/drivers/media/platform/qcom/camss/camss.c
-@@ -5789,6 +5789,20 @@
- 	.vfe_num = ARRAY_SIZE(vfe_res_sm8650),
- };
- 
-+static const struct camss_resources sm7675_resources = {
-+	.version = CAMSS_8650,
-+	.pd_name = "top",
-+	.csiphy_res = csiphy_res_sm8650,
-+	.csid_res = csid_res_sm8650,
-+	.csid_wrapper_res = &csid_wrapper_res_sm8550,
-+	.vfe_res = vfe_res_sm8650,
-+	.icc_res = icc_res_sm8650,
-+	.icc_path_num = ARRAY_SIZE(icc_res_sm8650),
-+	.csiphy_num = 5, /* SM7675 Cliffs has 5 CSIPHYs (0..4) vs 6 on SM8650 */
-+	.csid_num = ARRAY_SIZE(csid_res_sm8650),
-+	.vfe_num = ARRAY_SIZE(vfe_res_sm8650),
-+};
-+
- static const struct camss_resources x1e80100_resources = {
- 	.version = CAMSS_X1E80100,
- 	.pd_name = "top",
-@@ -5821,6 +5835,7 @@
- 	{ .compatible = "qcom,sm6150-camss", .data = &sm6150_resources },
- 	{ .compatible = "qcom,sm6350-camss", .data = &sm6350_resources },
- 	{ .compatible = "qcom,sm8250-camss", .data = &sm8250_resources },
-+	{ .compatible = "qcom,sm7675-camss", .data = &sm7675_resources },
- 	{ .compatible = "qcom,sm8550-camss", .data = &sm8550_resources },
- 	{ .compatible = "qcom,sm8650-camss", .data = &sm8650_resources },
- 	{ .compatible = "qcom,x1e80100-camss", .data = &x1e80100_resources },
---- a/drivers/media/platform/qcom/iris/iris_platform_common.h
-+++ b/drivers/media/platform/qcom/iris/iris_platform_common.h
-@@ -68,6 +68,7 @@
- extern const struct iris_platform_data sc7280_data;
- extern const struct iris_platform_data sm8250_data;
- extern const struct iris_platform_data sm8550_data;
-+extern const struct iris_platform_data sm7675_data;
- extern const struct iris_platform_data sm8650_data;
- extern const struct iris_platform_data sm8750_data;
- extern const struct iris_platform_data x1p42100_data;
---- a/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
-+++ b/drivers/media/platform/qcom/iris/iris_platform_vpu3x.c
-@@ -26,6 +26,12 @@
- 	.fwname = "qcom/vpu/vpu30_p4_s6.mbn",
- };
- 
-+static const struct iris_firmware_desc iris_vpu30_p2_gen2_desc = {
-+	.firmware_data = &iris_hfi_gen2_data,
-+	.get_vpu_buffer_size = iris_vpu33_buf_size,
-+	.fwname = "qcom/vpu/vpu30_2v.mbn",
-+};
-+
- static const struct iris_firmware_desc iris_vpu30_p4_gen2_desc = {
- 	.firmware_data = &iris_hfi_gen2_data,
- 	.get_vpu_buffer_size = iris_vpu_buf_size,
-@@ -104,6 +110,40 @@
- 	.pmdomain_tbl_size = ARRAY_SIZE(iris_pmdomain_table_vpu3x),
- 	.opp_pd_tbl = iris_opp_pd_table_vpu3x,
- 	.opp_pd_tbl_size = ARRAY_SIZE(iris_opp_pd_table_vpu3x),
-+	.clk_tbl = sm8550_clk_table,
-+	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
-+	.opp_clk_tbl = iris_opp_clk_table_vpu3x,
-+	/* Upper bound of DMA address range */
-+	.dma_mask = 0xe0000000 - 1,
-+	.inst_iris_fmts = iris_fmts_vpu3x_dec,
-+	.inst_iris_fmts_size = ARRAY_SIZE(iris_fmts_vpu3x_dec),
-+	.inst_caps = &platform_inst_cap_qcs8300,
-+	.slice_caps = &iris_vpu2_vpu3x_slice_caps,
-+	.tz_cp_config_data = tz_cp_config_vpu3,
-+	.tz_cp_config_data_size = ARRAY_SIZE(tz_cp_config_vpu3),
-+	.num_vpp_pipe = 2,
-+	.wd_intr_mask = WRAPPER_INTR_STATUS_A2HWD_BMSK,
-+	.icc_ib_multiplier = 1,
-+	.max_session_count = 16,
-+	.max_core_mbpf = ((4096 * 2176) / 256) * 4,
-+	.max_core_mbps = (((3840 * 2176) / 256) * 120),
-+};
-+
-+const struct iris_platform_data sm7675_data = {
-+	.firmware_desc_gen2 = &iris_vpu30_p2_gen2_desc,
-+	.vpu_ops = &iris_vpu33_ops,
-+	.icc_tbl = iris_icc_info_vpu3x,
-+	.icc_tbl_size = ARRAY_SIZE(iris_icc_info_vpu3x),
-+	.clk_rst_tbl = sm8650_clk_reset_table,
-+	.clk_rst_tbl_size = ARRAY_SIZE(sm8650_clk_reset_table),
-+	.controller_rst_tbl = sm8650_controller_reset_table,
-+	.controller_rst_tbl_size = ARRAY_SIZE(sm8650_controller_reset_table),
-+	.bw_tbl_dec = iris_bw_table_dec_vpu3x,
-+	.bw_tbl_dec_size = ARRAY_SIZE(iris_bw_table_dec_vpu3x),
-+	.pmdomain_tbl = iris_pmdomain_table_vpu3x,
-+	.pmdomain_tbl_size = ARRAY_SIZE(iris_pmdomain_table_vpu3x),
-+	.opp_pd_tbl = NULL,
-+	.opp_pd_tbl_size = 0,
- 	.clk_tbl = sm8550_clk_table,
- 	.clk_tbl_size = ARRAY_SIZE(sm8550_clk_table),
- 	.opp_clk_tbl = iris_opp_clk_table_vpu3x,
---- a/drivers/media/platform/qcom/iris/iris_probe.c
-+++ b/drivers/media/platform/qcom/iris/iris_probe.c
-@@ -64,16 +64,18 @@
- 	if (ret < 0)
- 		return ret;
- 
--	ret =  devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
--	/* backwards compatibility for incomplete ABI SM8250 */
--	if (ret == -ENODEV &&
--	    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
--		iris_opp_pd_data.num_pd_names--;
--		ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
--						 &core->opp_pmdomain_tbl);
-+	if (core->iris_platform_data->opp_pd_tbl_size) {
-+		ret =  devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data, &core->opp_pmdomain_tbl);
-+		/* backwards compatibility for incomplete ABI SM8250 */
-+		if (ret == -ENODEV &&
-+		    of_device_is_compatible(core->dev->of_node, "qcom,sm8250-venus")) {
-+			iris_opp_pd_data.num_pd_names--;
-+			ret = devm_pm_domain_attach_list(core->dev, &iris_opp_pd_data,
-+							 &core->opp_pmdomain_tbl);
-+		}
-+		if (ret < 0)
-+			return ret;
- 	}
--	if (ret < 0)
--		return ret;
- 
- 	ret = devm_pm_opp_set_config(core->dev, &iris_opp_clk_data);
- 	if (ret)
-@@ -435,6 +437,10 @@
- 		.data = &sc7280_data,
- 	},
- 	{
-+		.compatible = "qcom,sm7675-iris",
-+		.data = &sm7675_data,
-+	},
-+	{
- 		.compatible = "qcom,sm8250-venus",
- 		.data = &sm8250_data,
- 	},
 --- a/drivers/interconnect/qcom/icc-rpmh.c
 +++ b/drivers/interconnect/qcom/icc-rpmh.c
-@@ -373,11 +373,18 @@
+@@ -312,11 +312,18 @@
  		qp->regmap = dev_get_regmap(dev->parent, NULL);
  		if (!qp->regmap) {
  			base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
@@ -11249,7 +10998,7 @@ hb.c
  				dev_info(dev, "Skipping QoS, regmap failed; %ld\n",
  					 PTR_ERR(qp->regmap));
  				goto skip_qos_config;
-@@ -385,15 +392,22 @@
+@@ -324,15 +331,22 @@
  		}
  
  		qp->num_clks = devm_clk_bulk_get_all(qp->dev, &qp->clks);
@@ -11276,7 +11025,7 @@ hb.c
  	}
 --- /dev/null
 +++ b/drivers/interconnect/qcom/cliffs-display-icc.h
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,98 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -11286,13 +11035,9 @@ hb.c
 + * Reuses the existing LLCC/DDR and configuration nodes, not parallel providers.
 + * No display-voter aliases or camera/DP paths are admitted here.
 + */
-+#define MASTER_CAMNOC_HF 11
 +#define MASTER_MDP 21
 +#define MASTER_MNOC_HF_MEM_NOC 23
-+#define MASTER_VIDEO 28
-+#define SLAVE_CAMERA_CFG 516
 +#define SLAVE_DISPLAY_CFG 524
-+#define SLAVE_VENUS_CFG 548
 +#define SLAVE_MNOC_HF_MEM_NOC 559
 +
 +static struct qcom_icc_node qns_mem_noc_hf;
@@ -11340,36 +11085,6 @@ hb.c
 +	.link_nodes = { &qns_gem_noc_cnoc, &qns_llcc },
 +};
 +
-+static struct qcom_icc_node qnm_camnoc_hf = {
-+	.name = "qnm_camnoc_hf",
-+	.channels = 2,
-+	.buswidth = 32,
-+	.num_links = 1,
-+	.link_nodes = { &qns_mem_noc_hf },
-+};
-+
-+static struct qcom_icc_node qnm_video = {
-+	.name = "qnm_video",
-+	.channels = 2,
-+	.buswidth = 32,
-+	.num_links = 1,
-+	.link_nodes = { &qns_mem_noc_hf },
-+};
-+
-+static struct qcom_icc_node qhs_camera_cfg = {
-+	.name = "qhs_camera_cfg",
-+	.channels = 1,
-+	.buswidth = 4,
-+	.num_links = 0,
-+};
-+
-+static struct qcom_icc_node qhs_venus_cfg = {
-+	.name = "qhs_venus_cfg",
-+	.channels = 1,
-+	.buswidth = 4,
-+	.num_links = 0,
-+};
-+
 +static struct qcom_icc_node qhs_display_cfg = {
 +	.name = "qhs_display_cfg",
 +	.channels = 1,
@@ -11387,9 +11102,7 @@ hb.c
 +};
 +
 +static struct qcom_icc_node * const mmss_noc_nodes[] = {
-+	[MASTER_CAMNOC_HF] = &qnm_camnoc_hf,
 +	[MASTER_MDP] = &qnm_mdp,
-+	[MASTER_VIDEO] = &qnm_video,
 +	[SLAVE_MNOC_HF_MEM_NOC] = &qns_mem_noc_hf,
 +};
 +
@@ -11413,7 +11126,7 @@ hb.c
 + */
 --- a/drivers/interconnect/qcom/Makefile
 +++ b/drivers/interconnect/qcom/Makefile
-@@ -77,6 +77,7 @@
+@@ -75,6 +75,7 @@
  obj-$(CONFIG_INTERCONNECT_QCOM_QCS8300) += qnoc-qcs8300.o
  obj-$(CONFIG_INTERCONNECT_QCOM_QDU1000) += qnoc-qdu1000.o
  obj-$(CONFIG_INTERCONNECT_QCOM_RPMH) += icc-rpmh.o
@@ -11433,7 +11146,7 @@ hb.c
  int qcom_icc_aggregate(struct icc_node *node, u32 tag, u32 avg_bw,
 --- a/drivers/interconnect/qcom/Kconfig
 +++ b/drivers/interconnect/qcom/Kconfig
-@@ -251,6 +251,15 @@
+@@ -219,6 +219,15 @@
  config INTERCONNECT_QCOM_RPMH
  	tristate
  
@@ -11451,7 +11164,7 @@ hb.c
  	depends on INTERCONNECT_QCOM_RPMH_POSSIBLE
 --- /dev/null
 +++ b/drivers/interconnect/qcom/qnoc-cliffs-usb.c
-@@ -0,0 +1,772 @@
+@@ -0,0 +1,714 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
@@ -11474,7 +11187,6 @@ hb.c
 +#define MASTER_QUP_1	7
 +#define MASTER_A1NOC_SNOC	8
 +#define MASTER_A2NOC_SNOC	9
-+#define MASTER_CDSP_GEM_NOC	12
 +#define MASTER_GEM_NOC_CNOC	15
 +#define MASTER_GFX3D	17
 +#define MASTER_LPASS_GEM_NOC	18
@@ -11485,7 +11197,6 @@ hb.c
 +#define MASTER_QUP_CORE_0	36
 +#define MASTER_QUP_CORE_1	37
 +#define MASTER_LPASS_PROC	40
-+#define MASTER_CDSP_PROC	41
 +#define MASTER_UFS_MEM	48
 +#define MASTER_USB3_0	49
 +#define SLAVE_EBI1	512
@@ -11501,7 +11212,6 @@ hb.c
 +#define SLAVE_LPASS_GEM_NOC	556
 +#define SLAVE_LPIAON_NOC_LPASS_AG_NOC	557
 +#define SLAVE_LPICX_NOC_LPIAON_NOC	558
-+#define SLAVE_CDSP_MEM_NOC	560
 +#define SLAVE_CNOC_CFG	565
 +#define SLAVE_QUP_CORE_0	572
 +#define SLAVE_QUP_CORE_1	573
@@ -11546,9 +11256,6 @@ hb.c
 +static struct qcom_icc_node qnm_lpiaon_noc;
 +static struct qcom_icc_node qns_lpass_ag_noc_gemnoc;
 +static struct qcom_icc_node qnm_lpass_gemnoc;
-+static struct qcom_icc_node qnm_nsp;
-+static struct qcom_icc_node qns_nsp_gemnoc;
-+static struct qcom_icc_node qnm_nsp_gemnoc;
 +
 +#include "cliffs-display-icc.h"
 +
@@ -11632,8 +11339,8 @@ hb.c
 +	.name = "qsm_cfg",
 +	.channels = 1,
 +	.buswidth = 4,
-+	.num_links = 7,
-+	.link_nodes = { &qhs_qup0, &qhs_qup1, &qhs_usb3_0, &qhs_ufs_mem_cfg, &qhs_display_cfg, &qhs_camera_cfg, &qhs_venus_cfg },
++	.num_links = 5,
++	.link_nodes = { &qhs_qup0, &qhs_qup1, &qhs_usb3_0, &qhs_ufs_mem_cfg, &qhs_display_cfg },
 +};
 +
 +static struct qcom_icc_node qnm_gemnoc_cnoc = {
@@ -11892,8 +11599,8 @@ hb.c
 +
 +static struct qcom_icc_bcm bcm_cn1 = {
 +	.name = "CN1",
-+	.num_nodes = 4,
-+	.nodes = { &qhs_qup0, &qhs_display_cfg, &qhs_camera_cfg, &qhs_venus_cfg },
++	.num_nodes = 2,
++	.nodes = { &qhs_qup0, &qhs_display_cfg },
 +};
 +
 +static struct qcom_icc_bcm bcm_lp0 = {
@@ -12006,14 +11713,12 @@ hb.c
 +};
 +
 +static struct qcom_icc_node * const cnoc_cfg_nodes[] = {
-+	[SLAVE_CAMERA_CFG] = &qhs_camera_cfg,
 +	[SLAVE_DISPLAY_CFG] = &qhs_display_cfg,
 +	[MASTER_CNOC_CFG] = &qsm_cfg,
 +	[SLAVE_QUP_0] = &qhs_qup0,
 +	[SLAVE_QUP_1] = &qhs_qup1,
 +	[SLAVE_UFS_MEM_CFG] = &qhs_ufs_mem_cfg,
 +	[SLAVE_USB3_0] = &qhs_usb3_0,
-+	[SLAVE_VENUS_CFG] = &qhs_venus_cfg,
 +};
 +
 +static struct qcom_icc_bcm * const cnoc_cfg_bcms[] = {
@@ -12048,7 +11753,6 @@ hb.c
 +static struct qcom_icc_node * const gem_noc_nodes[] = {
 +	[MASTER_MNOC_HF_MEM_NOC] = &qnm_mnoc_hf,
 +	[MASTER_APPSS_PROC] = &chm_apps,
-+	[MASTER_CDSP_GEM_NOC] = &qnm_nsp_gemnoc,
 +	[MASTER_GFX3D] = &qnm_gpu,
 +	[MASTER_LPASS_GEM_NOC] = &qnm_lpass_gemnoc,
 +	[MASTER_SNOC_SF_MEM_NOC] = &qnm_snoc_sf,
@@ -12145,57 +11849,8 @@ hb.c
 +	.num_bcms = ARRAY_SIZE(system_noc_bcms),
 +};
 +
-+static struct qcom_icc_node qnm_nsp = {
-+	.name = "qnm_nsp",
-+	.channels = 2,
-+	.buswidth = 32,
-+	.num_links = 1,
-+	.link_nodes = { &qns_nsp_gemnoc },
-+};
-+
-+static struct qcom_icc_node qns_nsp_gemnoc = {
-+	.name = "qns_nsp_gemnoc",
-+	.channels = 2,
-+	.buswidth = 32,
-+	.num_links = 1,
-+	.link_nodes = { &qnm_nsp_gemnoc },
-+};
-+
-+static struct qcom_icc_node qnm_nsp_gemnoc = {
-+	.name = "qnm_nsp_gemnoc",
-+	.channels = 2,
-+	.buswidth = 32,
-+	.num_links = 1,
-+	.link_nodes = { &qns_llcc },
-+};
-+
-+static struct qcom_icc_bcm bcm_co0 = {
-+	.name = "CO0",
-+	.enable_mask = BIT(0),
-+	.num_nodes = 2,
-+	.nodes = { &qnm_nsp, &qns_nsp_gemnoc },
-+};
-+
-+static struct qcom_icc_node * const nsp_noc_nodes[] = {
-+	[MASTER_CDSP_PROC] = &qnm_nsp,
-+	[SLAVE_CDSP_MEM_NOC] = &qns_nsp_gemnoc,
-+};
-+
-+static struct qcom_icc_bcm * const nsp_noc_bcms[] = {
-+	&bcm_co0,
-+};
-+
-+static const struct qcom_icc_desc cliffs_nsp_noc = {
-+	.config = &cliffs_icc_regmap_config,
-+	.nodes = nsp_noc_nodes,
-+	.num_nodes = ARRAY_SIZE(nsp_noc_nodes),
-+	.bcms = nsp_noc_bcms,
-+	.num_bcms = ARRAY_SIZE(nsp_noc_bcms),
-+};
-+
 +static const struct of_device_id cliffs_usb_of_match[] = {
 +	{ .compatible = "qcom,cliffs-mmss_noc", .data = &cliffs_mmss_noc },
-+	{ .compatible = "qcom,cliffs-nsp_noc", .data = &cliffs_nsp_noc },
 +	{ .compatible = "qcom,cliffs-aggre1_noc", .data = &cliffs_aggre1_noc },
 +	{ .compatible = "qcom,cliffs-aggre2_noc", .data = &cliffs_aggre2_noc },
 +	{ .compatible = "qcom,cliffs-clk_virt", .data = &cliffs_clk_virt },
@@ -12581,7 +12236,7 @@ hb.c
  }
 --- a/drivers/usb/dwc3/core.h
 +++ b/drivers/usb/dwc3/core.h
-@@ -1072,6 +1072,7 @@
+@@ -1071,6 +1071,7 @@
   * @psy_nb: power supply notifier block
   * @vbus_draw_work: Work to set the vbus drawing limit
   * @current_limit: How much current to draw from vbus, in milliAmperes.
@@ -12589,7 +12244,7 @@ hb.c
   * @usb2_phy: pointer to USB2 PHY
   * @usb3_phy: pointer to USB3 PHY
   * @usb2_generic_phy: pointer to array of USB2 PHYs
-@@ -1271,8 +1272,9 @@
+@@ -1270,8 +1271,9 @@
  	struct power_supply	*usb_psy;
  	const char		*usb_psy_name;
  	struct notifier_block	psy_nb;
@@ -12867,7 +12522,7 @@ hb.c
  
  #define DWC3_ALIGN_FRAME(d, n)	(((d)->frame_number + ((d)->interval * (n))) \
  					& ~((d)->interval - 1))
-@@ -3198,7 +3221,9 @@
+@@ -3158,7 +3181,9 @@
  	struct dwc3		*dwc = gadget_to_dwc(g);
  	unsigned long		flags;
  
@@ -12878,7 +12533,7 @@ hb.c
  		return usb_phy_set_power(dwc->usb2_phy, mA);
  
  	spin_lock_irqsave(&dwc->lock, flags);
-@@ -3213,8 +3238,9 @@
+@@ -3173,8 +3198,9 @@
  		return 0;
  	}
  
@@ -12890,7 +12545,7 @@ hb.c
  	spin_unlock_irqrestore(&dwc->lock, flags);
  
  	return 0;
-@@ -4191,6 +4217,21 @@
+@@ -4141,6 +4167,21 @@
  	}
  }
  
@@ -12912,7 +12567,7 @@ hb.c
  static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
  {
  	int			reg;
-@@ -4207,6 +4248,8 @@
+@@ -4157,6 +4198,8 @@
  	dwc->connected = false;
  
  	dwc3_disconnect_gadget(dwc);
@@ -12921,7 +12576,7 @@ hb.c
  
  	dwc->gadget->speed = USB_SPEED_UNKNOWN;
  	dwc->setup_packet_pending = false;
-@@ -4227,6 +4270,8 @@
+@@ -4177,6 +4220,8 @@
  static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
  {
  	u32			reg;
@@ -12930,7 +12585,7 @@ hb.c
  
  	dwc->suspended = false;
  
-@@ -4314,6 +4359,8 @@
+@@ -4264,6 +4309,8 @@
  	u8			lanes = 1;
  	u8			speed;
  
@@ -12939,7 +12594,7 @@ hb.c
  	if (!dwc->softconnect)
  		return;
  
-@@ -4383,6 +4430,8 @@
+@@ -4333,6 +4380,8 @@
  		dwc->gadget->speed = USB_SPEED_FULL;
  		break;
  	}
@@ -14717,7 +14372,7 @@ hb.c
 +MODULE_LICENSE("GPL v2");
 --- a/drivers/usb/typec/mux/nb7vpq904m.c
 +++ b/drivers/usb/typec/mux/nb7vpq904m.c
-@@ -507,6 +507,8 @@
+@@ -506,6 +506,8 @@
  
  static const struct of_device_id nb7vpq904m_of_table[] = {
  	{ .compatible = "onnn,nb7vpq904m" },
@@ -14784,7 +14439,7 @@ hb.c
  	 * contents can be overridden by the composite_dev glue.
 --- a/drivers/regulator/Makefile
 +++ b/drivers/regulator/Makefile
-@@ -222,3 +222,6 @@
+@@ -220,3 +220,6 @@
  obj-$(CONFIG_REGULATOR_WM8994) += wm8994-regulator.o
  
  ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG
@@ -14793,7 +14448,7 @@ hb.c
 +obj-$(CONFIG_REGULATOR_PROXY_CONSUMER) += qcom-proxy-consumer-uke.o
 --- /dev/null
 +++ b/drivers/regulator/qcom-rpmh-regulator-uke.c
-@@ -0,0 +1,2147 @@
+@@ -0,0 +1,2145 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved. */
 +/* Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved. */
@@ -16794,12 +16449,10 @@ hb.c
 +	    strcmp(aggr_vreg->resource_name, "lcx.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "lmx.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "mxc.lvl") &&
-+	    strcmp(aggr_vreg->resource_name, "nsp.lvl") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob2") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob3") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob4") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob7") &&
-+	    strcmp(aggr_vreg->resource_name, "bobb1") &&
 +	    strcmp(aggr_vreg->resource_name, "ldob17") &&
 +	    strcmp(aggr_vreg->resource_name, "smpb2") &&
 +	    strcmp(aggr_vreg->resource_name, "smpb1") &&
@@ -16943,7 +16596,7 @@ hb.c
 +module_exit(rpmh_regulator_exit);
 --- a/drivers/regulator/Kconfig
 +++ b/drivers/regulator/Kconfig
-@@ -1917,3 +1917,14 @@
+@@ -1897,3 +1897,14 @@
  	  for LCD display panel.
  
  endif
@@ -17371,7 +17024,7 @@ hb.c
 +MODULE_SOFTDEP("pre: qcom_pd_mapper");
 --- a/drivers/remoteproc/qcom_q6v5_pas.c
 +++ b/drivers/remoteproc/qcom_q6v5_pas.c
-@@ -9,6 +9,7 @@
+@@ -8,6 +8,7 @@
   */
  
  #include <linux/clk.h>
@@ -17379,25 +17032,24 @@ hb.c
  #include <linux/delay.h>
  #include <linux/firmware.h>
  #include <linux/interrupt.h>
-@@ -65,6 +66,7 @@
+@@ -51,6 +52,7 @@
  	bool decrypt_shutdown;
  
  	char **proxy_pd_names;
 +	unsigned int proxy_regulator_level;
- 	const unsigned int *proxy_pd_performance_states;
- 	unsigned int num_proxy_pd_performance_states;
  
-@@ -102,6 +104,9 @@
- 	const unsigned int *proxy_pd_performance_states;
+ 	const char *load_state;
+ 	const char *ssr_name;
+@@ -81,6 +83,8 @@
+ 	struct device *proxy_pds[3];
  
  	int proxy_pd_count;
 +	unsigned int proxy_regulator_level;
-+	int proxy_reg_count;
-+	struct regulator_bulk_data proxy_regs[3];
++	struct regulator_bulk_data proxy_regs[2];
  
  	const char *dtb_firmware_name;
  	int pas_id;
-@@ -183,11 +188,39 @@
+@@ -160,11 +164,39 @@
  	pas->mem_region = NULL;
  }
  
@@ -17424,7 +17076,7 @@ hb.c
  	int i;
 +
 +	if (pas->proxy_regulator_level) {
-+		for (i = 0; i < pas->proxy_reg_count; i++) {
++		for (i = 0; i < ARRAY_SIZE(pas->proxy_regs); i++) {
 +			ret = regulator_set_voltage(pas->proxy_regs[i].consumer,
 +						pas->proxy_regulator_level, INT_MAX);
 +			if (ret) {
@@ -17432,15 +17084,15 @@ hb.c
 +				return ret;
 +			}
 +		}
-+		ret = regulator_bulk_enable(pas->proxy_reg_count, pas->proxy_regs);
++		ret = regulator_bulk_enable(ARRAY_SIZE(pas->proxy_regs), pas->proxy_regs);
 +		if (ret)
-+			qcom_pas_proxy_unvote(pas, pas->proxy_reg_count);
++			qcom_pas_proxy_unvote(pas, ARRAY_SIZE(pas->proxy_regs));
 +		return ret;
 +	}
  
  	for (i = 0; i < pd_count; i++) {
- 		unsigned int state = INT_MAX;
-@@ -215,10 +248,22 @@
+ 		dev_pm_genpd_set_performance_state(pds[i], INT_MAX);
+@@ -187,10 +219,22 @@
  	return ret;
  };
  
@@ -17454,56 +17106,37 @@ hb.c
  	int i;
 +
 +	if (pas->proxy_regulator_level) {
-+		int ret = regulator_bulk_disable(pas->proxy_reg_count, pas->proxy_regs);
++		int ret = regulator_bulk_disable(ARRAY_SIZE(pas->proxy_regs), pas->proxy_regs);
 +
 +		if (ret) {
 +			dev_err(pas->dev, "failed to disable proxy regulators: %d\n", ret);
 +			return;
 +		}
-+		qcom_pas_proxy_unvote(pas, pas->proxy_reg_count);
++		qcom_pas_proxy_unvote(pas, ARRAY_SIZE(pas->proxy_regs));
 +		return;
 +	}
  
  	for (i = 0; i < pd_count; i++) {
  		dev_pm_genpd_set_performance_state(pds[i], 0);
-@@ -310,17 +355,17 @@
- 	struct qcom_pas *pas = rproc->priv;
- 	int ret;
- 
-+	ret = qcom_pas_proxy_enable(pas);
-+	if (ret < 0)
-+		return ret;
-+
- 	ret = qcom_q6v5_prepare(&pas->q6v5);
+@@ -286,7 +330,7 @@
  	if (ret)
--		return ret;
--
+ 		return ret;
+ 
 -	ret = qcom_pas_pds_enable(pas, pas->proxy_pds, pas->proxy_pd_count);
--	if (ret < 0)
--		goto disable_irqs;
-+		goto disable_proxy_pds;
++	ret = qcom_pas_proxy_enable(pas);
+ 	if (ret < 0)
+ 		goto disable_irqs;
  
- 	ret = clk_prepare_enable(pas->xo);
- 	if (ret)
--		goto disable_proxy_pds;
-+		goto disable_irqs;
- 
- 	ret = clk_prepare_enable(pas->aggre2_clk);
- 	if (ret)
-@@ -405,10 +450,10 @@
- 	clk_disable_unprepare(pas->aggre2_clk);
+@@ -378,7 +422,7 @@
  disable_xo_clk:
  	clk_disable_unprepare(pas->xo);
--disable_proxy_pds:
+ disable_proxy_pds:
 -	qcom_pas_pds_disable(pas, pas->proxy_pds, pas->proxy_pd_count);
++	qcom_pas_proxy_disable(pas);
  disable_irqs:
  	qcom_q6v5_unprepare(&pas->q6v5);
-+disable_proxy_pds:
-+	qcom_pas_proxy_disable(pas);
  
- 	/* firmware is used to pass reference from qcom_pas_start(), drop it now */
- 	pas->firmware = NULL;
-@@ -426,7 +471,7 @@
+@@ -398,7 +442,7 @@
  		regulator_disable(pas->cx_supply);
  	clk_disable_unprepare(pas->aggre2_clk);
  	clk_disable_unprepare(pas->xo);
@@ -17512,30 +17145,25 @@ hb.c
  }
  
  static int qcom_pas_stop(struct rproc *rproc)
-@@ -660,6 +705,22 @@
+@@ -632,6 +676,17 @@
  
  static int qcom_pas_init_regulator(struct qcom_pas *pas)
  {
 +	if (pas->proxy_regulator_level) {
-+		/* Cliffs votes ARC levels through the OEM CX/MX(/NSP) regulator graph. */
++		/* Cliffs votes ARC levels through the OEM CX/MX regulator graph. */
 +		if (!of_property_present(pas->dev->of_node, "cx-supply") ||
 +		    !of_property_present(pas->dev->of_node, "mx-supply"))
 +			return dev_err_probe(pas->dev, -EINVAL, "Cliffs PAS requires CX and MX supplies\n");
 +		pas->proxy_regs[0].supply = "cx";
 +		pas->proxy_regs[1].supply = "mx";
-+		pas->proxy_reg_count = 2;
-+		if (of_property_present(pas->dev->of_node, "nsp-supply")) {
-+			pas->proxy_regs[2].supply = "nsp";
-+			pas->proxy_reg_count = 3;
-+		}
-+		return devm_regulator_bulk_get(pas->dev, pas->proxy_reg_count,
++		return devm_regulator_bulk_get(pas->dev, ARRAY_SIZE(pas->proxy_regs),
 +					       pas->proxy_regs);
 +	}
 +
  	pas->cx_supply = devm_regulator_get_optional(pas->dev, "cx");
  	if (IS_ERR(pas->cx_supply)) {
  		if (PTR_ERR(pas->cx_supply) == -ENODEV)
-@@ -946,11 +1007,18 @@
+@@ -861,11 +916,18 @@
  
  	rproc->has_iommu = of_property_present(pdev->dev.of_node, "iommus");
  	rproc->auto_boot = desc->auto_boot;
@@ -17554,7 +17182,7 @@ hb.c
  	pas->minidump_id = desc->minidump_id;
  	pas->pas_id = desc->pas_id;
  	pas->lite_pas_id = desc->lite_pas_id;
-@@ -1008,6 +1076,11 @@
+@@ -913,6 +975,11 @@
  	if (ret)
  		goto detach_proxy_pds;
  
@@ -17566,7 +17194,7 @@ hb.c
  	qcom_add_glink_subdev(rproc, &pas->glink_subdev, desc->ssr_name);
  	qcom_add_smd_subdev(rproc, &pas->smd_subdev);
  	qcom_add_pdm_subdev(rproc, &pas->pdm_subdev);
-@@ -1051,6 +1124,7 @@
+@@ -948,6 +1015,7 @@
  	qcom_remove_pdm_subdev(rproc, &pas->pdm_subdev);
  	qcom_remove_smd_subdev(rproc, &pas->smd_subdev);
  	qcom_remove_glink_subdev(rproc, &pas->glink_subdev);
@@ -17574,15 +17202,10 @@ hb.c
  	qcom_q6v5_deinit(&pas->q6v5);
  detach_proxy_pds:
  	qcom_pas_pds_detach(pas, pas->proxy_pds, pas->proxy_pd_count);
-@@ -1761,75 +1835,23 @@
+@@ -1628,6 +1696,35 @@
  	.region_assign_vmid = QCOM_SCM_VMID_MSS_MSA,
  };
  
--static const struct qcom_pas_data sc7280_wpss_resource = {
--	.crash_reason_smem = 626,
--	.firmware_name = "wpss.mdt",
--	.pas_id = 6,
--	.minidump_id = 4,
 +static const struct qcom_pas_data cliffs_adsp_resource = {
 +	.crash_reason_smem = 423,
 +	.firmware_name = "adsp.mdt",
@@ -17590,70 +17213,7 @@ hb.c
 +	.pas_id = 1,
 +	.dtb_pas_id = 0x24,
 +	.minidump_id = 5,
- 	.auto_boot = false,
--	.proxy_pd_names = (char*[]){
--		"cx",
--		"mx",
--		NULL
--	},
--	.load_state = "wpss",
--	.ssr_name = "wpss",
--	.sysmon_name = "wpss",
--	.ssctl_id = 0x19,
--};
--
--static const struct qcom_pas_data shikra_cdsp_resource = {
--	.crash_reason_smem = 601,
--	.firmware_name = "cdsp.mbn",
--	.pas_id = 18,
--	.minidump_id = 7,
--	.auto_boot = true,
--	.proxy_pd_names = (char *[]){
--		"cx",
--		NULL
--	},
--	.load_state = "cdsp",
--	.ssr_name = "cdsp",
--	.sysmon_name = "cdsp",
--	.ssctl_id = 0x17,
--	.smem_host_id = 5,
--	.tmd_instance_id = 0x43,
--	.tmd_name = cdsp_tmd_name,
--	.num_tmd = ARRAY_SIZE(cdsp_tmd_name),
--};
--
--static const struct qcom_pas_data shikra_lpaicp_resource = {
--	.crash_reason_smem = 682,
--	.firmware_name = "lpaicp.mbn",
--	.dtb_firmware_name = "lpaicp_dtb.mbn",
--	.pas_id = 0x56,
--	.dtb_pas_id = 0x57,
--	.minidump_id = 0,
--	.auto_boot = true,
--	.ssr_name = "lpaicp",
--	.sysmon_name = "lpaicp",
--};
--
--static const struct qcom_pas_data shikra_mpss_resource = {
--	.crash_reason_smem = 421,
--	.firmware_name = "qdsp6sw.mbn",
--	.pas_id = 4,
--	.minidump_id = 3,
--	.auto_boot = false,
--	.proxy_pd_names = (char *[]){
--		"cx",
--		NULL
--	},
--	.load_state = "modem",
--	.ssr_name = "mpss",
--	.sysmon_name = "modem",
--	.ssctl_id = 0x12,
--	.tmd_instance_id = 0x0,
--	.tmd_name = modem_tmd_name,
--	.num_tmd = ARRAY_SIZE(modem_tmd_name),
--};
--
--static const struct qcom_pas_data sm8650_cdsp_resource = {
++	.auto_boot = false,
 +	.proxy_regulator_level = RPMH_REGULATOR_LEVEL_TURBO,
 +	.load_state = "adsp",
 +	.ssr_name = "lpass",
@@ -17662,28 +17222,6 @@ hb.c
 +	.smem_host_id = 2,
 +};
 +
-+static const struct qcom_pas_data cliffs_cdsp_resource = {
- 	.crash_reason_smem = 601,
- 	.firmware_name = "cdsp.mdt",
- 	.dtb_firmware_name = "cdsp_dtb.mdt",
-@@ -1837,12 +1859,7 @@
- 	.dtb_pas_id = 0x25,
- 	.minidump_id = 7,
- 	.auto_boot = true,
--	.proxy_pd_names = (char*[]){
--		"cx",
--		"mxc",
--		"nsp",
--		NULL
--	},
-+	.proxy_regulator_level = RPMH_REGULATOR_LEVEL_TURBO,
- 	.load_state = "cdsp",
- 	.ssr_name = "cdsp",
- 	.sysmon_name = "cdsp",
-@@ -1854,6 +1871,112 @@
- 	.region_assign_vmid = QCOM_SCM_VMID_CDSP,
- };
- 
 +static const struct qcom_pas_data cliffs_wpss_resource = {
 +	.crash_reason_smem = 626,
 +	.firmware_name = "qca6750/wpss.mdt",
@@ -17697,115 +17235,21 @@ hb.c
 +	.ssctl_id = 0x19,
 +};
 +
-+static const struct qcom_pas_data sc7280_wpss_resource = {
-+	.crash_reason_smem = 626,
-+	.firmware_name = "wpss.mdt",
-+	.pas_id = 6,
-+	.minidump_id = 4,
-+	.auto_boot = false,
-+	.proxy_pd_names = (char*[]){
-+		"cx",
-+		"mx",
-+		NULL
-+	},
-+	.load_state = "wpss",
-+	.ssr_name = "wpss",
-+	.sysmon_name = "wpss",
-+	.ssctl_id = 0x19,
-+};
-+
-+static const struct qcom_pas_data shikra_cdsp_resource = {
-+	.crash_reason_smem = 601,
-+	.firmware_name = "cdsp.mbn",
-+	.pas_id = 18,
-+	.minidump_id = 7,
-+	.auto_boot = true,
-+	.proxy_pd_names = (char *[]){
-+		"cx",
-+		NULL
-+	},
-+	.load_state = "cdsp",
-+	.ssr_name = "cdsp",
-+	.sysmon_name = "cdsp",
-+	.ssctl_id = 0x17,
-+	.smem_host_id = 5,
-+	.tmd_instance_id = 0x43,
-+	.tmd_name = cdsp_tmd_name,
-+	.num_tmd = ARRAY_SIZE(cdsp_tmd_name),
-+};
-+
-+static const struct qcom_pas_data shikra_lpaicp_resource = {
-+	.crash_reason_smem = 682,
-+	.firmware_name = "lpaicp.mbn",
-+	.dtb_firmware_name = "lpaicp_dtb.mbn",
-+	.pas_id = 0x56,
-+	.dtb_pas_id = 0x57,
-+	.minidump_id = 0,
-+	.auto_boot = true,
-+	.ssr_name = "lpaicp",
-+	.sysmon_name = "lpaicp",
-+};
-+
-+static const struct qcom_pas_data shikra_mpss_resource = {
-+	.crash_reason_smem = 421,
-+	.firmware_name = "qdsp6sw.mbn",
-+	.pas_id = 4,
-+	.minidump_id = 3,
-+	.auto_boot = false,
-+	.proxy_pd_names = (char *[]){
-+		"cx",
-+		NULL
-+	},
-+	.load_state = "modem",
-+	.ssr_name = "mpss",
-+	.sysmon_name = "modem",
-+	.ssctl_id = 0x12,
-+	.tmd_instance_id = 0x0,
-+	.tmd_name = modem_tmd_name,
-+	.num_tmd = ARRAY_SIZE(modem_tmd_name),
-+};
-+
-+static const struct qcom_pas_data sm8650_cdsp_resource = {
-+	.crash_reason_smem = 601,
-+	.firmware_name = "cdsp.mdt",
-+	.dtb_firmware_name = "cdsp_dtb.mdt",
-+	.pas_id = 18,
-+	.dtb_pas_id = 0x25,
-+	.minidump_id = 7,
-+	.auto_boot = true,
-+	.proxy_pd_names = (char*[]){
-+		"cx",
-+		"mxc",
-+		"nsp",
-+		NULL
-+	},
-+	.load_state = "cdsp",
-+	.ssr_name = "cdsp",
-+	.sysmon_name = "cdsp",
-+	.ssctl_id = 0x17,
-+	.smem_host_id = 5,
-+	.region_assign_idx = 2,
-+	.region_assign_count = 1,
-+	.region_assign_shared = true,
-+	.region_assign_vmid = QCOM_SCM_VMID_CDSP,
-+};
-+
- static const struct qcom_pas_data sm8650_mpss_resource = {
- 	.crash_reason_smem = 421,
- 	.firmware_name = "modem.mdt",
-@@ -1990,6 +2113,9 @@
+ static const struct qcom_pas_data sc7280_wpss_resource = {
+ 	.crash_reason_smem = 626,
+ 	.firmware_name = "wpss.mdt",
+@@ -1824,6 +1921,8 @@
  };
  
  static const struct of_device_id qcom_pas_of_match[] = {
 +	{ .compatible = "qcom,cliffs-adsp-pas", .data = &cliffs_adsp_resource },
-+	{ .compatible = "qcom,cliffs-cdsp-pas", .data = &cliffs_cdsp_resource },
 +	{ .compatible = "qcom,cliffs-wpss-pas", .data = &cliffs_wpss_resource },
  	{ .compatible = "qcom,eliza-adsp-pas", .data = &sm8550_adsp_resource },
  	{ .compatible = "qcom,eliza-cdsp-pas", .data = &eliza_cdsp_resource },
  	{ .compatible = "qcom,glymur-soccp-pas", .data = &glymur_soccp_resource },
 --- a/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
 +++ b/drivers/phy/qualcomm/phy-qcom-qmp-combo.c
-@@ -2376,6 +2376,13 @@
+@@ -2354,6 +2354,13 @@
  	{ .supply = "vdda-pll", .init_load_uA = 36000, },
  };
  
@@ -17819,7 +17263,7 @@ hb.c
  static struct regulator_bulk_data qmp_phy_vreg_refgen[] = {
  	{ .supply = "vdda-phy", .init_load_uA = 21800 },
  	{ .supply = "vdda-pll", .init_load_uA = 36000 },
-@@ -2623,6 +2630,9 @@
+@@ -2583,6 +2590,9 @@
  	int num_clks;
  	struct reset_control_bulk_data *resets;
  	struct regulator_bulk_data *vregs;
@@ -17829,7 +17273,7 @@ hb.c
  
  	struct mutex phy_mutex;
  	int init_count;
-@@ -3294,6 +3304,289 @@
+@@ -3257,6 +3267,289 @@
  	.num_resets		= ARRAY_SIZE(msm8996_usb3phy_reset_l),
  	.vreg_list		= qmp_phy_vreg_l,
  	.num_vregs		= ARRAY_SIZE(qmp_phy_vreg_l),
@@ -18119,7 +17563,7 @@ hb.c
  };
  
  static const struct qmp_phy_cfg sm8650_usb3dpphy_cfg = {
-@@ -4055,6 +4348,19 @@
+@@ -3973,6 +4266,19 @@
  	const struct phy_configure_opts_dp *dp_opts = &opts->dp;
  	struct qmp_combo *qmp = phy_get_drvdata(phy);
  	const struct qmp_phy_cfg *cfg = qmp->cfg;
@@ -18139,7 +17583,7 @@ hb.c
  
  	mutex_lock(&qmp->phy_mutex);
  
-@@ -4096,6 +4402,8 @@
+@@ -4011,6 +4317,8 @@
  	int ret;
  	u32 val;
  
@@ -18148,9 +17592,9 @@ hb.c
  	if (!force && qmp->init_count++)
  		return 0;
  
-@@ -4114,10 +4422,15 @@
- 			dp_reset_val &= ~SW_DPPHY_RESET_MUX;
- 	}
+@@ -4019,10 +4327,15 @@
+ 	else
+ 		aon_toggle = qmp->pcs_aon;
  
 +	if (qmp->uke_gdsc) {
 +		ret = regulator_enable(qmp->uke_gdsc);
@@ -18165,16 +17609,16 @@ hb.c
  	}
  
  	ret = reset_control_bulk_assert(cfg->num_resets, qmp->resets);
-@@ -4215,6 +4528,8 @@
+@@ -4103,6 +4416,8 @@
  
- 	qphy_setbits(pcs, cfg->regs[QPHY_PCS_POWER_DOWN_CONTROL],
+ 	qphy_setbits(qmp->pcs, cfg->regs[QPHY_PCS_POWER_DOWN_CONTROL],
  			SW_PWRDN);
 +	if (qmp->uke_gdsc)
 +		qmp->uke_powered = true;
  
  	return 0;
  
-@@ -4224,8 +4539,14 @@
+@@ -4112,8 +4427,14 @@
  	reset_control_bulk_assert(cfg->num_resets, qmp->resets);
  err_disable_regulators:
  	regulator_bulk_disable(cfg->num_vregs, qmp->vregs);
@@ -18190,7 +17634,7 @@ hb.c
  
  	return ret;
  }
-@@ -4233,18 +4554,62 @@
+@@ -4121,18 +4442,62 @@
  static int qmp_combo_com_exit(struct qmp_combo *qmp, bool force)
  {
  	const struct qmp_phy_cfg *cfg = qmp->cfg;
@@ -18255,7 +17699,7 @@ hb.c
  }
  
  static int qmp_combo_dp_init(struct phy *phy)
-@@ -4259,6 +4624,12 @@
+@@ -4147,6 +4512,12 @@
  	if (ret)
  		goto out_unlock;
  
@@ -18268,7 +17712,7 @@ hb.c
  	cfg->dp_aux_init(qmp);
  
  	qmp->dp_init_count++;
-@@ -4271,16 +4642,21 @@
+@@ -4159,16 +4530,21 @@
  static int qmp_combo_dp_exit(struct phy *phy)
  {
  	struct qmp_combo *qmp = phy_get_drvdata(phy);
@@ -18293,7 +17737,7 @@ hb.c
  }
  
  static int qmp_combo_dp_power_on(struct phy *phy)
-@@ -4289,8 +4665,13 @@
+@@ -4177,8 +4553,13 @@
  	const struct qmp_phy_cfg *cfg = qmp->cfg;
  	void __iomem *tx = qmp->dp_tx;
  	void __iomem *tx2 = qmp->dp_tx2;
@@ -18307,7 +17751,7 @@ hb.c
  
  	qmp_combo_dp_serdes_init(qmp);
  
-@@ -4301,13 +4682,15 @@
+@@ -4189,13 +4570,15 @@
  	cfg->configure_dp_tx(qmp);
  
  	/* Configure link rate, swing, etc. */
@@ -18326,7 +17770,7 @@ hb.c
  }
  
  static int qmp_combo_dp_power_off(struct phy *phy)
-@@ -5067,11 +5450,50 @@
+@@ -4773,17 +5156,64 @@
  }
  
  #if IS_ENABLED(CONFIG_TYPEC)
@@ -18371,25 +17815,27 @@ hb.c
  {
  	struct qmp_combo *qmp = typec_switch_get_drvdata(sw);
  	const struct qmp_phy_cfg *cfg = qmp->cfg;
-+
 +	if (qmp->uke_gdsc && READ_ONCE(qmp->uke_route_error))
 +		return READ_ONCE(qmp->uke_route_error);
  
- 	if (qmp->qmpphy_mode == QMPPHY_MODE_USB4) {
- 		/* QMPPHY has no orientation handling in USB4 mode, don't cache the setting */
-@@ -5083,7 +5505,11 @@
+ 	if (orientation == qmp->orientation || orientation == TYPEC_ORIENTATION_NONE)
  		return 0;
  
- 	guard(mutex)(&qmp->phy_mutex);
-+	if (qmp->uke_gdsc && qmp->dp_powered_on)
+ 	mutex_lock(&qmp->phy_mutex);
++	if (qmp->uke_gdsc && qmp->dp_powered_on) {
++		mutex_unlock(&qmp->phy_mutex);
 +		return -EBUSY;
++	}
  	qmp->orientation = orientation;
-+	if (qmp->uke_gdsc)
-+		return qmp_combo_uke_reconfigure(qmp);
++	if (qmp->uke_gdsc) {
++		int ret = qmp_combo_uke_reconfigure(qmp);
++		mutex_unlock(&qmp->phy_mutex);
++		return ret;
++	}
  
  	if (qmp->init_count) {
- 		if (qmp->usb_init_count || qmp->usb4_init_count)
-@@ -5107,6 +5533,8 @@
+ 		if (qmp->usb_init_count)
+@@ -4809,13 +5239,17 @@
  	unsigned int svid;
  
  	guard(mutex)(&qmp->phy_mutex);
@@ -18398,9 +17844,8 @@ hb.c
  
  	if (state->alt)
  		svid = state->alt->svid;
-@@ -5136,7 +5564,9 @@
- 	if (svid == USB_TYPEC_TBT_SID || (!state->alt && state->mode == TYPEC_MODE_USB4))
- 		return 0;
+ 	else
+ 		svid = 0;
  
 -	if (svid == USB_TYPEC_DP_SID) {
 +	if (qmp->uke_gdsc && state->mode < TYPEC_STATE_MODAL) {
@@ -18409,7 +17854,7 @@ hb.c
  		switch (state->mode) {
  		/* DP Only */
  		case TYPEC_DP_STATE_C:
-@@ -5150,11 +5580,16 @@
+@@ -4829,11 +5263,16 @@
  
  		/* Safe fallback...*/
  		default:
@@ -18426,21 +17871,24 @@ hb.c
  		new_mode = QMPPHY_MODE_USB3_ONLY;
  	}
  
-@@ -5165,7 +5600,12 @@
+@@ -4844,13 +5283,15 @@
  
  	if (qmp->qmpphy_mode != QMPPHY_MODE_USB3_ONLY && qmp->dp_powered_on) {
  		dev_dbg(qmp->dev, "typec_mux_set: DP PHY is still in use, delaying switch\n");
 -		return 0;
 +		return qmp->uke_gdsc ? -EBUSY : 0;
-+	}
-+
-+	if (qmp->uke_gdsc) {
-+		qmp->qmpphy_mode = new_mode;
-+		return qmp_combo_uke_reconfigure(qmp);
  	}
  
- 	/* The mux still receives Type-C events, even if all PHYs are uninitialized */
-@@ -5529,6 +5969,18 @@
+ 	dev_dbg(qmp->dev, "typec_mux_set: switching from qmpphy mode %d to %d\n",
+ 		qmp->qmpphy_mode, new_mode);
+ 
+ 	qmp->qmpphy_mode = new_mode;
++	if (qmp->uke_gdsc)
++		return qmp_combo_uke_reconfigure(qmp);
+ 
+ 	if (qmp->init_count) {
+ 		if (qmp->usb_init_count)
+@@ -5227,6 +5668,18 @@
  					qmp->cfg->vreg_list, &qmp->vregs);
  	if (ret)
  		return ret;
@@ -18459,7 +17907,7 @@ hb.c
  
  	/* Check for legacy binding with child nodes. */
  	usb_np = of_get_child_by_name(dev->of_node, "usb3-phy");
-@@ -5725,6 +6177,9 @@
+@@ -5408,6 +5861,9 @@
  		.data = &sm8475_usb3dpphy_cfg,
  	},
  	{
@@ -18469,7 +17917,7 @@ hb.c
  		.compatible = "qcom,sm8550-qmp-usb3-dp-phy",
  		.data = &sm8550_usb3dpphy_cfg,
  	},
-@@ -5744,12 +6199,39 @@
+@@ -5427,12 +5883,39 @@
  };
  MODULE_DEVICE_TABLE(of, qmp_combo_of_match_table);
  
@@ -18600,7 +18048,7 @@ hb.c
  static const struct qmp_phy_init_tbl sm8650_ufsphy_serdes[] = {
  	QMP_PHY_INIT_CFG(QSERDES_V6_COM_SYSCLK_EN_SEL, 0xd9),
  	QMP_PHY_INIT_CFG(QSERDES_V6_COM_CMN_CONFIG_1, 0x16),
-@@ -1771,6 +1853,40 @@
+@@ -1795,6 +1877,40 @@
  	.vreg_list		= sm8550_ufsphy_vreg_l,
  	.num_vregs		= ARRAY_SIZE(sm8550_ufsphy_vreg_l),
  	.regs			= ufsphy_v6_regs_layout,
@@ -18641,7 +18089,7 @@ hb.c
  };
  
  static const struct qmp_phy_cfg sm8650_ufsphy_cfg = {
-@@ -2433,6 +2549,13 @@
+@@ -2458,6 +2574,13 @@
  		.compatible = "qcom,sm8650-qmp-ufs-phy",
  		.data = &sm8650_ufsphy_cfg,
  	}, {
@@ -18657,7 +18105,7 @@ hb.c
  	},
 --- a/drivers/leds/rgb/leds-qcom-lpg.c
 +++ b/drivers/leds/rgb/leds-qcom-lpg.c
-@@ -1823,6 +1823,17 @@
+@@ -1819,6 +1819,17 @@
  	},
  };
  
@@ -18675,7 +18123,7 @@ hb.c
  static const struct of_device_id lpg_of_table[] = {
  	{ .compatible = "qcom,pm660l-lpg", .data = &pm660l_lpg_data },
  	{ .compatible = "qcom,pm8150b-lpg", .data = &pm8150b_lpg_data },
-@@ -1837,6 +1848,7 @@
+@@ -1833,6 +1844,7 @@
  	{ .compatible = "qcom,pmi8998-lpg", .data = &pmi8998_lpg_data },
  	{ .compatible = "qcom,pmc8180c-lpg", .data = &pm8150l_lpg_data },
  	{ .compatible = "qcom,pmk8550-pwm", .data = &pmk8550_pwm_data },
@@ -18771,7 +18219,7 @@ hb.c
  static int simpledrm_device_attach_genpd(struct simpledrm_device *sdev)
  {
  	struct device *dev = sdev->sysfb.dev.dev;
-@@ -581,8 +603,30 @@
+@@ -583,8 +605,30 @@
  	.destroy = drm_plane_cleanup,
  };
  
@@ -18802,7 +18250,7 @@ hb.c
  };
  
  static const struct drm_crtc_funcs simpledrm_crtc_funcs = {
-@@ -621,6 +665,7 @@
+@@ -623,6 +667,7 @@
  	struct drm_device *dev;
  	int width, height, stride;
  	u16 width_mm = 0, height_mm = 0;
@@ -18810,7 +18258,7 @@ hb.c
  	struct device_node *panel_node;
  	enum drm_panel_orientation orientation = DRM_MODE_PANEL_ORIENTATION_UNKNOWN;
  	const struct drm_format_info *format;
-@@ -640,6 +685,10 @@
+@@ -642,6 +687,10 @@
  	sysfb = &sdev->sysfb;
  	dev = &sysfb->dev;
  	platform_set_drvdata(pdev, sdev);
@@ -18821,7 +18269,7 @@ hb.c
  
  	/*
  	 * Hardware settings
-@@ -652,6 +701,9 @@
+@@ -654,6 +703,9 @@
  	if (ret)
  		return ERR_PTR(ret);
  	ret = simpledrm_device_attach_genpd(sdev);
@@ -18831,7 +18279,7 @@ hb.c
  	if (ret)
  		return ERR_PTR(ret);
  
-@@ -698,6 +750,9 @@
+@@ -700,6 +752,9 @@
  			ret = simplefb_get_panel_height_mm_of(dev, panel_node);
  			if (ret > 0)
  				height_mm = ret;
@@ -18841,7 +18289,7 @@ hb.c
  			/*
  			 * Ignore errors from parsing the panel orientation. With
  			 * the orientation initialized to UNKNOWN, the connector
-@@ -863,6 +918,7 @@
+@@ -865,6 +920,7 @@
  
  	connector = &sdev->connector;
  	ret = drm_connector_init(dev, connector, &simpledrm_connector_funcs,
@@ -18849,7 +18297,7 @@ hb.c
  				 DRM_MODE_CONNECTOR_Unknown);
  	if (ret)
  		return ERR_PTR(ret);
-@@ -885,8 +941,28 @@
+@@ -887,8 +943,28 @@
  
  DEFINE_DRM_GEM_FOPS(simpledrm_fops);
  
@@ -19819,7 +19267,7 @@ hb.c
 +};
 --- a/drivers/gpu/drm/panel/Makefile
 +++ b/drivers/gpu/drm/panel/Makefile
-@@ -141,3 +141,6 @@
+@@ -137,3 +137,6 @@
  obj-$(CONFIG_DRM_PANEL_VISIONOX_R66451) += panel-visionox-r66451.o
  obj-$(CONFIG_DRM_PANEL_WIDECHIPS_WS2401) += panel-widechips-ws2401.o
  obj-$(CONFIG_DRM_PANEL_XINPENG_XPP055C272) += panel-xinpeng-xpp055c272.o
@@ -21202,7 +20650,7 @@ hb.c
 +MODULE_LICENSE("GPL");
 --- a/drivers/gpu/drm/panel/Kconfig
 +++ b/drivers/gpu/drm/panel/Kconfig
-@@ -1467,4 +1467,14 @@
+@@ -1415,4 +1415,14 @@
  	  Say Y here if you want to enable support for the Xinpeng
  	  XPP055C272 controller for 720x1280 LCD panels with MIPI/RGB/SPI
  	  system interfaces.
@@ -21447,7 +20895,7 @@ hb.c
  
  static int msm_mdss_parse_data_bus_icc_path(struct device *dev,
  					    struct msm_mdss *msm_mdss)
-@@ -243,21 +248,50 @@
+@@ -228,21 +233,50 @@
  	 (((minor) & 0xfff) << 16) |	\
  	 ((step) & 0xffff))
  
@@ -21504,7 +20952,7 @@ hb.c
  
  	/*
  	 * TODO:
-@@ -267,6 +301,9 @@
+@@ -252,6 +286,9 @@
  	 * correct OPP has been set in one of the MDPn or DPU drivers, or during initial probe,
  	 * before the RPM(H)PD sync_state is done.
  	 */
@@ -21514,7 +20962,7 @@ hb.c
  	ret = clk_bulk_prepare_enable(msm_mdss->num_clocks, msm_mdss->clocks);
  	if (ret) {
  		dev_err(msm_mdss->dev, "clock enable failed, ret:%d\n", ret);
-@@ -277,18 +314,13 @@
+@@ -262,18 +299,13 @@
  	 * Register access requires MDSS_MDP_CLK, which is not enabled by the
  	 * mdss on mdp5 hardware. Skip it for now.
  	 */
@@ -21539,7 +20987,7 @@ hb.c
  
  	return ret;
  }
-@@ -385,7 +417,8 @@
+@@ -369,7 +401,8 @@
  	int ret;
  	int irq;
  
@@ -21549,7 +20997,7 @@ hb.c
  	if (ret)
  		return ERR_PTR(ret);
  
-@@ -437,6 +470,9 @@
+@@ -421,6 +454,9 @@
  	irq_set_chained_handler_and_data(irq, msm_mdss_irq,
  					 msm_mdss);
  
@@ -21559,7 +21007,7 @@ hb.c
  	pm_runtime_enable(&pdev->dev);
  
  	return msm_mdss;
-@@ -494,6 +530,13 @@
+@@ -478,6 +514,13 @@
  		return PTR_ERR(mdss);
  
  	platform_set_drvdata(pdev, mdss);
@@ -21573,7 +21021,7 @@ hb.c
  
  	/*
  	 * MDP5/DPU based devices don't have a flat hierarchy. There is a top
-@@ -541,6 +584,7 @@
+@@ -525,6 +568,7 @@
  };
  
  static const struct of_device_id mdss_dt_match[] = {
@@ -21583,10 +21031,10 @@ hb.c
  	{ .compatible = "qcom,glymur-mdss", .data = &data_57k },
 --- a/drivers/gpu/drm/msm/msm_drv.c
 +++ b/drivers/gpu/drm/msm/msm_drv.c
-@@ -65,6 +65,15 @@
- MODULE_PARM_DESC(separate_gpu_kms,
- 		 "Use separate DRM device for the GPU (-1=auto (default), 0=single DRM device, 1=separate DRM devices)");
- module_param(separate_gpu_kms, int, 0400);
+@@ -57,6 +57,15 @@
+ static bool separate_gpu_kms;
+ MODULE_PARM_DESC(separate_gpu_kms, "Use separate DRM device for the GPU (0=single DRM device for both GPU and display (default), 1=two DRM devices)");
+ module_param(separate_gpu_kms, bool, 0400);
 +
 +unsigned int u880_dbg = 0xfff;
 +MODULE_PARM_DESC(u880_dbg, "U880 native display bring-up switches (see msm_drv.h)");
@@ -21597,13 +21045,13 @@ hb.c
 +MODULE_PARM_DESC(u880_dbg2, "U880 native display bring-up switches, second word (see msm_drv.h)");
 +module_param(u880_dbg2, uint, 0644);
  
- #ifdef CONFIG_TRANSPARENT_HUGEPAGE
- static bool transparent_hugepage = true;
+ DECLARE_FAULT_ATTR(fail_gem_alloc);
+ DECLARE_FAULT_ATTR(fail_gem_iova);
 --- a/drivers/gpu/drm/msm/msm_drv.h
 +++ b/drivers/gpu/drm/msm/msm_drv.h
-@@ -540,4 +540,32 @@
+@@ -536,4 +536,32 @@
  
- bool msm_separate_gpu_kms_components(void);
+ bool msm_gpu_no_components(void);
  
 +/*
 + * U880 native display bring-up switches (msm.u880_dbg, writable at runtime). Bits:
@@ -21636,7 +21084,7 @@ hb.c
  #endif /* __MSM_DRV_H__ */
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
-@@ -795,6 +795,7 @@
+@@ -793,6 +793,7 @@
  #include "catalog/dpu_9_2_x1e80100.h"
  
  #include "catalog/dpu_10_0_sm8650.h"
@@ -21665,7 +21113,7 @@ hb.c
  	return dpu_plane_is_multirect_capable(sspp, pipe_cfg, fmt) &&
  		dpu_plane_is_parallel_capable(pipe_cfg, fmt, max_linewidth);
  }
-@@ -1830,7 +1835,7 @@
+@@ -1834,7 +1839,7 @@
  	int ret;
  
  	pdpu = drmm_universal_plane_alloc(dev, struct dpu_plane, base,
@@ -21813,7 +21261,7 @@ hb.c
  }
  
  /**
-@@ -1785,11 +1869,29 @@
+@@ -1787,11 +1871,29 @@
  	struct dpu_hw_ctl *ctl;
  	uint32_t i, pending_flush;
  	unsigned long lock_flags;
@@ -21843,7 +21291,7 @@ hb.c
  
  	/* don't perform flush/start operations for slave encoders */
  	for (i = 0; i < dpu_enc->num_phys_encs; i++) {
-@@ -1808,6 +1910,13 @@
+@@ -1810,6 +1912,13 @@
  		if (phys->split_role != ENC_ROLE_SLAVE)
  			set_bit(i, dpu_enc->frame_busy_mask);
  
@@ -21857,7 +21305,7 @@ hb.c
  		if (!phys->ops.needs_single_flush ||
  				!phys->ops.needs_single_flush(phys))
  			_dpu_encoder_trigger_flush(&dpu_enc->base, phys, 0x0);
-@@ -1816,7 +1925,10 @@
+@@ -1818,7 +1927,10 @@
  	}
  
  	/* for split flush, combine pending flush masks and send to master */
@@ -21869,7 +21317,7 @@ hb.c
  		_dpu_encoder_trigger_flush(
  				&dpu_enc->base,
  				dpu_enc->cur_master,
-@@ -1988,6 +2100,7 @@
+@@ -1990,6 +2102,7 @@
  static void dpu_encoder_dsc_pipe_cfg(struct dpu_hw_ctl *ctl,
  				     struct dpu_hw_dsc *hw_dsc,
  				     struct dpu_hw_pingpong *hw_pp,
@@ -21877,7 +21325,7 @@ hb.c
  				     struct drm_dsc_config *dsc,
  				     u32 common_mode,
  				     u32 initial_lines)
-@@ -2002,7 +2115,7 @@
+@@ -2004,7 +2117,7 @@
  		hw_pp->ops.setup_dsc(hw_pp);
  
  	if (hw_dsc->ops.dsc_bind_pingpong_blk)
@@ -21886,7 +21334,7 @@ hb.c
  
  	if (hw_pp->ops.enable_dsc)
  		hw_pp->ops.enable_dsc(hw_pp);
-@@ -2039,7 +2152,10 @@
+@@ -2041,7 +2154,10 @@
  	pic_width = dsc->pic_width;
  
  	dsc_common_mode = 0;
@@ -21898,7 +21346,7 @@ hb.c
  		dsc_common_mode |= DSC_MODE_SPLIT_PANEL;
  	if (dpu_encoder_use_dsc_merge(enc_master->parent))
  		dsc_common_mode |= DSC_MODE_MULTIPLEX;
-@@ -2054,6 +2170,7 @@
+@@ -2056,6 +2172,7 @@
  
  	for (i = 0; i < num_dsc; i++)
  		dpu_encoder_dsc_pipe_cfg(ctl, hw_dsc[i], hw_pp[i],
@@ -22091,24 +21539,6 @@ hb.c
  extern const struct dpu_mdss_cfg dpu_sm8750_cfg;
  extern const struct dpu_mdss_cfg dpu_x1e80100_cfg;
  
---- a/drivers/gpu/drm/msm/disp/dpu1/dpu_rm.c
-+++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_rm.c
-@@ -674,6 +674,15 @@
- 	int ret;
- 
- 	ret = _dpu_rm_reserve_lms(rm, global_state, crtc_id, topology);
-+	/*
-+	 * U880 (sm7675): 4 mixers but only 3 DSPPs, LM_3 has none. A 1920-wide mode on the second
-+	 * output needs LM_2+LM_3, so gamma/CTM (num_dspp) can never be met there. Drop the colour
-+	 * pipeline for this CRTC instead of failing the whole commit; dpu_crtc copes with fewer DSPPs.
-+	 */
-+	if (ret && topology->num_dspp) {
-+		topology->num_dspp = 0;
-+		ret = _dpu_rm_reserve_lms(rm, global_state, crtc_id, topology);
-+	}
- 	if (ret) {
- 		DPU_ERROR("unable to find appropriate mixers\n");
- 		return ret;
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
 +++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_vid.c
 @@ -3,6 +3,7 @@
@@ -22128,6 +21558,17 @@ hb.c
  
  #define DPU_DEBUG_VIDENC(e, fmt, ...) DPU_DEBUG("enc%d intf%d " fmt, \
  		(e) && (e)->parent ? \
+@@ -134,8 +137,8 @@
+ 		 * TODO: replace drm_dsc_get_bpp_int with logic to handle
+ 		 * fractional part if there is fraction
+ 		 */
+-		timing->width = timing->width * drm_dsc_get_bpp_int(dsc) /
+-				(dsc->bits_per_component * 3);
++		timing->width = DIV_ROUND_UP(timing->width * drm_dsc_get_bpp_int(dsc),
++					     dsc->bits_per_component * 3);
+ 		timing->xres = timing->width;
+ 		timing->dce_bytes_per_line = msm_dsc_get_bytes_per_line(dsc);
+ 	}
 @@ -178,6 +181,7 @@
  		const struct dpu_hw_intf_timing_params *timing)
  {
@@ -22385,9 +21826,28 @@ hb.c
 +};
 +
 +#endif
---- a/drivers/gpu/drm/msm/adreno/a7xx_catalog.c
-+++ b/drivers/gpu/drm/msm/adreno/a7xx_catalog.c
-@@ -452,6 +452,43 @@
+--- a/drivers/gpu/drm/msm/adreno/adreno_device.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_device.c
+@@ -280,12 +280,11 @@
+ 
+ static void adreno_remove(struct platform_device *pdev)
+ {
+-	struct msm_drm_private *priv = platform_get_drvdata(pdev);
+-
+-	if (priv->kms_init)
++	if (of_device_is_compatible(pdev->dev.of_node, "amd,imageon") ||
++	    msm_gpu_no_components())
++		msm_gpu_remove(pdev, &a3xx_ops);
++	else
+ 		component_del(&pdev->dev, &a3xx_ops);
+-	else
+-		msm_gpu_remove(pdev, &a3xx_ops);
+ }
+ 
+ static void adreno_shutdown(struct platform_device *pdev)
+--- a/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_catalog.c
+@@ -1649,6 +1649,37 @@
  		},
  		.preempt_record_size = 3572 * SZ_1K,
  	}, {
@@ -22400,10 +21860,9 @@ hb.c
 +		},
 +		.gmem = SZ_1M + SZ_512K,
 +		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
-+		/* IFPC requires separate device qualification. */
++		/* Preemption and IFPC require separate device qualification. */
 +		.quirks = ADRENO_QUIRK_HAS_CACHED_COHERENT |
-+			  ADRENO_QUIRK_HAS_HW_APRIV |
-+			  ADRENO_QUIRK_PREEMPTION,
++			  ADRENO_QUIRK_HAS_HW_APRIV,
 +		.funcs = &a7xx_gpu_funcs,
 +		.zapfw = "gen71100_zap.mbn",
 +		.a6xx = &(const struct a6xx_info) {
@@ -22417,12 +21876,7 @@ hb.c
 +			.bcms = (const struct a6xx_bcm[]) {
 +				{ .name = "SH0", .buswidth = 16 },
 +				{ .name = "MC0", .buswidth = 4 },
-+				{
-+					.name = "ACV",
-+					.fixed = true,
-+					.perfmode = BIT(2),
-+					.perfmode_bw = 16500000,
-+				},
++				{ .name = "ACV", .fixed = true, .perfmode = BIT(2) },
 +				{ /* sentinel */ },
 +			},
 +		},
@@ -22431,28 +21885,9 @@ hb.c
  		.chip_ids = ADRENO_CHIP_IDS(0x43030c00),
  		.family = ADRENO_7XX_GEN2,
  		.fw = {
---- a/drivers/gpu/drm/msm/adreno/adreno_device.c
-+++ b/drivers/gpu/drm/msm/adreno/adreno_device.c
-@@ -282,12 +282,11 @@
- 
- static void adreno_remove(struct platform_device *pdev)
- {
--	struct msm_drm_private *priv = platform_get_drvdata(pdev);
--
--	if (priv->kms_init)
-+	if (of_device_is_compatible(pdev->dev.of_node, "amd,imageon") ||
-+	    (msm_separate_gpu_kms_components() && adreno_has_gpu(pdev->dev.of_node)))
-+		msm_gpu_remove(pdev, &a3xx_ops);
-+	else
- 		component_del(&pdev->dev, &a3xx_ops);
--	else
--		msm_gpu_remove(pdev, &a3xx_ops);
- }
- 
- static void adreno_shutdown(struct platform_device *pdev)
 --- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
 +++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
-@@ -1221,7 +1221,14 @@
+@@ -1208,7 +1208,14 @@
  	if (test_bit(GMU_STATUS_SECURE_INIT, &gmu->status))
  		return 0;
  
@@ -22468,7 +21903,7 @@ hb.c
  		/*
  		 * Assume that if qcom scm isn't available, that whatever
  		 * replacement allows writing the fuse register ourselves.
-@@ -1337,9 +1344,14 @@
+@@ -1324,9 +1331,14 @@
  	a6xx_gmu_gxpd_get(gmu);
  
  	/* Use a known rate to bring up the GMU */
@@ -26111,7 +25546,7 @@ hb.c
 +#endif /* A3XX_XML */
 --- /dev/null
 +++ b/drivers/gpu/drm/msm/generated/a5xx.xml.h
-@@ -0,0 +1,7006 @@
+@@ -0,0 +1,6962 @@
 +#ifndef A5XX_XML
 +#define A5XX_XML
 +
@@ -29586,9 +29021,6 @@ hb.c
 +
 +
 +#define REG_A5XX_GRAS_CL_CNTL					0x0000e000
-+#define A5XX_GRAS_CL_CNTL_ZNEAR_CLIP_DISABLE			0x00000002
-+#define A5XX_GRAS_CL_CNTL_ZFAR_CLIP_DISABLE			0x00000004
-+#define A5XX_GRAS_CL_CNTL_Z_CLAMP_ENABLE			0x00000020
 +#define A5XX_GRAS_CL_CNTL_ZERO_GB_SCALE_Z			0x00000040
 +
 +
@@ -29691,24 +29123,6 @@ hb.c
 +static inline uint32_t A5XX_GRAS_CL_VPORT_ZSCALE_0(float val)
 +{
 +	return ((fui(val)) << A5XX_GRAS_CL_VPORT_ZSCALE_0__SHIFT) & A5XX_GRAS_CL_VPORT_ZSCALE_0__MASK;
-+}
-+
-+
-+#define REG_A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0			0x0000e070
-+#define A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0__MASK		0xffffffff
-+#define A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0__SHIFT		0
-+static inline uint32_t A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0(float val)
-+{
-+	return ((fui(val)) << A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0__SHIFT) & A5XX_GRAS_CL_VIEWPORT_ZCLAMP_NEAR_0__MASK;
-+}
-+
-+
-+#define REG_A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0			0x0000e071
-+#define A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0__MASK		0xffffffff
-+#define A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0__SHIFT		0
-+static inline uint32_t A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0(float val)
-+{
-+	return ((fui(val)) << A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0__SHIFT) & A5XX_GRAS_CL_VIEWPORT_ZCLAMP_FAR_0__MASK;
 +}
 +
 +
@@ -30051,7 +29465,6 @@ hb.c
 +{
 +	return ((val) << A5XX_RB_FS_OUTPUT_CNTL_MRT__SHIFT) & A5XX_RB_FS_OUTPUT_CNTL_MRT__MASK;
 +}
-+#define A5XX_RB_FS_OUTPUT_CNTL_DUAL_COLOR_IN_ENABLE		0x00000010
 +#define A5XX_RB_FS_OUTPUT_CNTL_FRAG_WRITES_Z			0x00000020
 +
 +
@@ -30368,7 +29781,6 @@ hb.c
 +	return ((val) << A5XX_RB_BLEND_CNTL_ENABLE_BLEND__SHIFT) & A5XX_RB_BLEND_CNTL_ENABLE_BLEND__MASK;
 +}
 +#define A5XX_RB_BLEND_CNTL_INDEPENDENT_BLEND			0x00000100
-+#define A5XX_RB_BLEND_CNTL_DUAL_COLOR_IN_ENABLE			0x00000200
 +#define A5XX_RB_BLEND_CNTL_ALPHA_TO_COVERAGE			0x00000400
 +#define A5XX_RB_BLEND_CNTL_SAMPLE_MASK__MASK			0xffff0000
 +#define A5XX_RB_BLEND_CNTL_SAMPLE_MASK__SHIFT			16
@@ -30392,7 +29804,6 @@ hb.c
 +{
 +	return ((val) << A5XX_RB_DEPTH_CNTL_ZFUNC__SHIFT) & A5XX_RB_DEPTH_CNTL_ZFUNC__MASK;
 +}
-+#define A5XX_RB_DEPTH_CNTL_Z_CLAMP_ENABLE			0x00000020
 +#define A5XX_RB_DEPTH_CNTL_Z_READ_ENABLE			0x00000040
 +
 +
@@ -30585,24 +29996,6 @@ hb.c
 +
 +#define REG_A5XX_RB_SAMPLE_COUNT_CONTROL			0x0000e1d1
 +#define A5XX_RB_SAMPLE_COUNT_CONTROL_COPY			0x00000002
-+
-+
-+#define REG_A5XX_RB_VIEWPORT_ZCLAMP_NEAR			0x0000e200
-+#define A5XX_RB_VIEWPORT_ZCLAMP_NEAR__MASK			0xffffffff
-+#define A5XX_RB_VIEWPORT_ZCLAMP_NEAR__SHIFT			0
-+static inline uint32_t A5XX_RB_VIEWPORT_ZCLAMP_NEAR(float val)
-+{
-+	return ((fui(val)) << A5XX_RB_VIEWPORT_ZCLAMP_NEAR__SHIFT) & A5XX_RB_VIEWPORT_ZCLAMP_NEAR__MASK;
-+}
-+
-+
-+#define REG_A5XX_RB_VIEWPORT_ZCLAMP_FAR				0x0000e201
-+#define A5XX_RB_VIEWPORT_ZCLAMP_FAR__MASK			0xffffffff
-+#define A5XX_RB_VIEWPORT_ZCLAMP_FAR__SHIFT			0
-+static inline uint32_t A5XX_RB_VIEWPORT_ZCLAMP_FAR(float val)
-+{
-+	return ((fui(val)) << A5XX_RB_VIEWPORT_ZCLAMP_FAR__SHIFT) & A5XX_RB_VIEWPORT_ZCLAMP_FAR__MASK;
-+}
 +
 +
 +#define REG_A5XX_RB_BLIT_CNTL					0x0000e210
@@ -31533,7 +30926,6 @@ hb.c
 +	return ((val) << A5XX_SP_BLEND_CNTL_ENABLE_BLEND__SHIFT) & A5XX_SP_BLEND_CNTL_ENABLE_BLEND__MASK;
 +}
 +#define A5XX_SP_BLEND_CNTL_UNK8					0x00000100
-+#define A5XX_SP_BLEND_CNTL_DUAL_COLOR_IN_ENABLE			0x00000200
 +#define A5XX_SP_BLEND_CNTL_ALPHA_TO_COVERAGE			0x00000400
 +
 +
@@ -31544,7 +30936,6 @@ hb.c
 +{
 +	return ((val) << A5XX_SP_FS_OUTPUT_CNTL_MRT__SHIFT) & A5XX_SP_FS_OUTPUT_CNTL_MRT__MASK;
 +}
-+#define A5XX_SP_FS_OUTPUT_CNTL_DUAL_COLOR_IN_ENABLE		0x00000010
 +#define A5XX_SP_FS_OUTPUT_CNTL_DEPTH_REGID__MASK		0x00001fe0
 +#define A5XX_SP_FS_OUTPUT_CNTL_DEPTH_REGID__SHIFT		5
 +static CONSTEXPR inline uint32_t A5XX_SP_FS_OUTPUT_CNTL_DEPTH_REGID(uint32_t val)
@@ -33120,7 +32511,7 @@ hb.c
 +#endif /* A5XX_XML */
 --- /dev/null
 +++ b/drivers/gpu/drm/msm/generated/adreno_pm4.xml.h
-@@ -0,0 +1,3400 @@
+@@ -0,0 +1,3399 @@
 +#ifndef ADRENO_PM4_XML
 +#define ADRENO_PM4_XML
 +
@@ -33441,7 +32832,7 @@ hb.c
 +	CP_BV_BR_COUNT_OPS = 27,
 +	CP_MODIFY_TIMESTAMP = 28,
 +	CP_NON_CONTEXT_REG_BUNCH = 93,
-+	CP_MEM_TO_OC_MEM = 73,
++	CP_MEM_TO_SCRATCH_MEM = 73,
 +	CP_FIXED_STRIDE_DRAW_TABLE = 127,
 +	CP_RESET_CONTEXT_STATE = 31,
 +	CP_CCHE_INVALIDATE = 58,
@@ -33666,7 +33057,7 @@ hb.c
 +
 +enum source_type {
 +	SOURCE_REG = 0,
-+	SOURCE_OC_MEM = 1,
++	SOURCE_SCRATCH_MEM = 1,
 +};
 +
 +enum compare_mode {
@@ -34548,7 +33939,7 @@ hb.c
 +
 +
 +#define REG_CP_DRAW_AUTO_5					0x00000005
-+#define CP_DRAW_AUTO_5_STRIDE__MASK				0x000007ff
++#define CP_DRAW_AUTO_5_STRIDE__MASK				0xffffffff
 +#define CP_DRAW_AUTO_5_STRIDE__SHIFT				0
 +static CONSTEXPR inline uint32_t CP_DRAW_AUTO_5_STRIDE(uint32_t val)
 +{
@@ -34969,7 +34360,7 @@ hb.c
 +{
 +	return ((val) << CP_REG_TO_MEM_0_CNT__SHIFT) & CP_REG_TO_MEM_0_CNT__MASK;
 +}
-+#define CP_REG_TO_MEM_0_IS_64B					0x40000000
++#define CP_REG_TO_MEM_0_64B					0x40000000
 +#define CP_REG_TO_MEM_0_ACCUMULATE				0x80000000
 +
 +
@@ -35000,7 +34391,7 @@ hb.c
 +{
 +	return ((val) << CP_REG_TO_MEM_OFFSET_REG_0_CNT__SHIFT) & CP_REG_TO_MEM_OFFSET_REG_0_CNT__MASK;
 +}
-+#define CP_REG_TO_MEM_OFFSET_REG_0_IS_64B			0x40000000
++#define CP_REG_TO_MEM_OFFSET_REG_0_64B				0x40000000
 +#define CP_REG_TO_MEM_OFFSET_REG_0_ACCUMULATE			0x80000000
 +
 +
@@ -35038,7 +34429,7 @@ hb.c
 +{
 +	return ((val) << CP_REG_TO_MEM_OFFSET_MEM_0_CNT__SHIFT) & CP_REG_TO_MEM_OFFSET_MEM_0_CNT__MASK;
 +}
-+#define CP_REG_TO_MEM_OFFSET_MEM_0_IS_64B			0x40000000
++#define CP_REG_TO_MEM_OFFSET_MEM_0_64B				0x40000000
 +#define CP_REG_TO_MEM_OFFSET_MEM_0_ACCUMULATE			0x80000000
 +
 +
@@ -35071,7 +34462,6 @@ hb.c
 +{
 +	return ((val) << CP_MEM_TO_REG_0_REG__SHIFT) & CP_MEM_TO_REG_0_REG__MASK;
 +}
-+#define CP_MEM_TO_REG_0_ONE_REG_WR				0x00040000
 +#define CP_MEM_TO_REG_0_CNT__MASK				0x3ff80000
 +#define CP_MEM_TO_REG_0_CNT__SHIFT				19
 +static CONSTEXPR inline uint32_t CP_MEM_TO_REG_0_CNT(uint32_t val)
@@ -35079,7 +34469,7 @@ hb.c
 +	return ((val) << CP_MEM_TO_REG_0_CNT__SHIFT) & CP_MEM_TO_REG_0_CNT__MASK;
 +}
 +#define CP_MEM_TO_REG_0_SHIFT_BY_2				0x40000000
-+#define CP_MEM_TO_REG_0_WAIT_CACHE_FLUSH			0x80000000
++#define CP_MEM_TO_REG_0_UNK31					0x80000000
 +
 +
 +#define REG_A2XX_CP_MEM_TO_REG_SRC				0x00000001
@@ -35102,7 +34492,7 @@ hb.c
 +#define CP_MEM_TO_MEM_0_NEG_C					0x00000004
 +#define CP_MEM_TO_MEM_0_DOUBLE					0x20000000
 +#define CP_MEM_TO_MEM_0_WAIT_FOR_MEM_WRITES			0x40000000
-+#define CP_MEM_TO_MEM_0_WAIT_CACHE_FLUSH			0x80000000
++#define CP_MEM_TO_MEM_0_UNK31					0x80000000
 +
 +
 +#define REG_CP_MEM_TO_MEM_DST					0x00000001
@@ -36013,11 +35403,11 @@ hb.c
 +{
 +	return ((val) << A6XX_CP_REG_TEST_0_REG__SHIFT) & A6XX_CP_REG_TEST_0_REG__MASK;
 +}
-+#define A6XX_CP_REG_TEST_0_OC_MEM_OFFSET__MASK			0x0003ffff
-+#define A6XX_CP_REG_TEST_0_OC_MEM_OFFSET__SHIFT			0
-+static CONSTEXPR inline uint32_t A6XX_CP_REG_TEST_0_OC_MEM_OFFSET(uint32_t val)
++#define A6XX_CP_REG_TEST_0_SCRATCH_MEM_OFFSET__MASK		0x0003ffff
++#define A6XX_CP_REG_TEST_0_SCRATCH_MEM_OFFSET__SHIFT		0
++static CONSTEXPR inline uint32_t A6XX_CP_REG_TEST_0_SCRATCH_MEM_OFFSET(uint32_t val)
 +{
-+	return ((val) << A6XX_CP_REG_TEST_0_OC_MEM_OFFSET__SHIFT) & A6XX_CP_REG_TEST_0_OC_MEM_OFFSET__MASK;
++	return ((val) << A6XX_CP_REG_TEST_0_SCRATCH_MEM_OFFSET__SHIFT) & A6XX_CP_REG_TEST_0_SCRATCH_MEM_OFFSET__MASK;
 +}
 +#define A6XX_CP_REG_TEST_0_SOURCE__MASK				0x00040000
 +#define A6XX_CP_REG_TEST_0_SOURCE__SHIFT			18
@@ -36330,39 +35720,39 @@ hb.c
 +}
 +
 +
-+#define REG_CP_MEM_TO_OC_MEM_0					0x00000000
-+#define CP_MEM_TO_OC_MEM_0_CNT__MASK				0x0000003f
-+#define CP_MEM_TO_OC_MEM_0_CNT__SHIFT				0
-+static CONSTEXPR inline uint32_t CP_MEM_TO_OC_MEM_0_CNT(uint32_t val)
++#define REG_CP_MEM_TO_SCRATCH_MEM_0				0x00000000
++#define CP_MEM_TO_SCRATCH_MEM_0_CNT__MASK			0x0000003f
++#define CP_MEM_TO_SCRATCH_MEM_0_CNT__SHIFT			0
++static CONSTEXPR inline uint32_t CP_MEM_TO_SCRATCH_MEM_0_CNT(uint32_t val)
 +{
-+	return ((val) << CP_MEM_TO_OC_MEM_0_CNT__SHIFT) & CP_MEM_TO_OC_MEM_0_CNT__MASK;
++	return ((val) << CP_MEM_TO_SCRATCH_MEM_0_CNT__SHIFT) & CP_MEM_TO_SCRATCH_MEM_0_CNT__MASK;
 +}
 +
 +
-+#define REG_CP_MEM_TO_OC_MEM_1					0x00000001
-+#define CP_MEM_TO_OC_MEM_1_OFFSET__MASK				0x0000003f
-+#define CP_MEM_TO_OC_MEM_1_OFFSET__SHIFT			0
-+static CONSTEXPR inline uint32_t CP_MEM_TO_OC_MEM_1_OFFSET(uint32_t val)
++#define REG_CP_MEM_TO_SCRATCH_MEM_1				0x00000001
++#define CP_MEM_TO_SCRATCH_MEM_1_OFFSET__MASK			0x0000003f
++#define CP_MEM_TO_SCRATCH_MEM_1_OFFSET__SHIFT			0
++static CONSTEXPR inline uint32_t CP_MEM_TO_SCRATCH_MEM_1_OFFSET(uint32_t val)
 +{
-+	return ((val) << CP_MEM_TO_OC_MEM_1_OFFSET__SHIFT) & CP_MEM_TO_OC_MEM_1_OFFSET__MASK;
++	return ((val) << CP_MEM_TO_SCRATCH_MEM_1_OFFSET__SHIFT) & CP_MEM_TO_SCRATCH_MEM_1_OFFSET__MASK;
 +}
 +
 +
-+#define REG_CP_MEM_TO_OC_MEM_2					0x00000002
-+#define CP_MEM_TO_OC_MEM_2_SRC__MASK				0xffffffff
-+#define CP_MEM_TO_OC_MEM_2_SRC__SHIFT				0
-+static CONSTEXPR inline uint32_t CP_MEM_TO_OC_MEM_2_SRC(uint32_t val)
++#define REG_CP_MEM_TO_SCRATCH_MEM_2				0x00000002
++#define CP_MEM_TO_SCRATCH_MEM_2_SRC__MASK			0xffffffff
++#define CP_MEM_TO_SCRATCH_MEM_2_SRC__SHIFT			0
++static CONSTEXPR inline uint32_t CP_MEM_TO_SCRATCH_MEM_2_SRC(uint32_t val)
 +{
-+	return ((val) << CP_MEM_TO_OC_MEM_2_SRC__SHIFT) & CP_MEM_TO_OC_MEM_2_SRC__MASK;
++	return ((val) << CP_MEM_TO_SCRATCH_MEM_2_SRC__SHIFT) & CP_MEM_TO_SCRATCH_MEM_2_SRC__MASK;
 +}
 +
 +
-+#define REG_CP_MEM_TO_OC_MEM_3					0x00000003
-+#define CP_MEM_TO_OC_MEM_3_SRC_HI__MASK				0xffffffff
-+#define CP_MEM_TO_OC_MEM_3_SRC_HI__SHIFT			0
-+static CONSTEXPR inline uint32_t CP_MEM_TO_OC_MEM_3_SRC_HI(uint32_t val)
++#define REG_CP_MEM_TO_SCRATCH_MEM_3				0x00000003
++#define CP_MEM_TO_SCRATCH_MEM_3_SRC_HI__MASK			0xffffffff
++#define CP_MEM_TO_SCRATCH_MEM_3_SRC_HI__SHIFT			0
++static CONSTEXPR inline uint32_t CP_MEM_TO_SCRATCH_MEM_3_SRC_HI(uint32_t val)
 +{
-+	return ((val) << CP_MEM_TO_OC_MEM_3_SRC_HI__SHIFT) & CP_MEM_TO_OC_MEM_3_SRC_HI__MASK;
++	return ((val) << CP_MEM_TO_SCRATCH_MEM_3_SRC_HI__SHIFT) & CP_MEM_TO_SCRATCH_MEM_3_SRC_HI__MASK;
 +}
 +
 +
@@ -42680,7 +42070,7 @@ hb.c
 +#endif /* __A6XX_PERFCNTRS_ */
 --- /dev/null
 +++ b/drivers/gpu/drm/msm/generated/a2xx.xml.h
-@@ -0,0 +1,3547 @@
+@@ -0,0 +1,3526 @@
 +#ifndef A2XX_XML
 +#define A2XX_XML
 +
@@ -43807,10 +43197,10 @@ hb.c
 +};
 +
 +enum sq_tex_type {
-+	SQ_TEX_TYPE_INVALID_TEXTURE = 0,
-+	SQ_TEX_TYPE_INVALID_BUFFER = 1,
-+	SQ_TEX_TYPE_VALID_TEXTURE = 2,
-+	SQ_TEX_TYPE_VALID_BUFFER = 3,
++	SQ_TEX_TYPE_0 = 0,
++	SQ_TEX_TYPE_1 = 1,
++	SQ_TEX_TYPE_2 = 2,
++	SQ_TEX_TYPE_3 = 3,
 +};
 +
 +#define REG_A2XX_RBBM_PATCH_RELEASE				0x00000001
@@ -44197,36 +43587,15 @@ hb.c
 +}
 +
 +
-+#define REG_A2XX_SQ_RESOURCE_MANAGMENT				0x00000d03
-+#define A2XX_SQ_RESOURCE_MANAGMENT_VTX_THREAD_BUF_ENTRIES__MASK	0x000000ff
-+#define A2XX_SQ_RESOURCE_MANAGMENT_VTX_THREAD_BUF_ENTRIES__SHIFT	0
-+static CONSTEXPR inline uint32_t A2XX_SQ_RESOURCE_MANAGMENT_VTX_THREAD_BUF_ENTRIES(uint32_t val)
-+{
-+	return ((val) << A2XX_SQ_RESOURCE_MANAGMENT_VTX_THREAD_BUF_ENTRIES__SHIFT) & A2XX_SQ_RESOURCE_MANAGMENT_VTX_THREAD_BUF_ENTRIES__MASK;
-+}
-+#define A2XX_SQ_RESOURCE_MANAGMENT_PIX_THREAD_BUF_ENTRIES__MASK	0x0000ff00
-+#define A2XX_SQ_RESOURCE_MANAGMENT_PIX_THREAD_BUF_ENTRIES__SHIFT	8
-+static CONSTEXPR inline uint32_t A2XX_SQ_RESOURCE_MANAGMENT_PIX_THREAD_BUF_ENTRIES(uint32_t val)
-+{
-+	return ((val) << A2XX_SQ_RESOURCE_MANAGMENT_PIX_THREAD_BUF_ENTRIES__SHIFT) & A2XX_SQ_RESOURCE_MANAGMENT_PIX_THREAD_BUF_ENTRIES__MASK;
-+}
-+#define A2XX_SQ_RESOURCE_MANAGMENT_EXPORT_BUF_ENTRIES__MASK	0x01ff0000
-+#define A2XX_SQ_RESOURCE_MANAGMENT_EXPORT_BUF_ENTRIES__SHIFT	16
-+static CONSTEXPR inline uint32_t A2XX_SQ_RESOURCE_MANAGMENT_EXPORT_BUF_ENTRIES(uint32_t val)
-+{
-+	return ((val) << A2XX_SQ_RESOURCE_MANAGMENT_EXPORT_BUF_ENTRIES__SHIFT) & A2XX_SQ_RESOURCE_MANAGMENT_EXPORT_BUF_ENTRIES__MASK;
-+}
-+
-+
 +#define REG_A2XX_SQ_GPR_MANAGEMENT				0x00000d00
 +#define A2XX_SQ_GPR_MANAGEMENT_REG_DYNAMIC			0x00000001
-+#define A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_PIX__MASK		0x000007f0
++#define A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_PIX__MASK		0x00000ff0
 +#define A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_PIX__SHIFT		4
 +static CONSTEXPR inline uint32_t A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_PIX(uint32_t val)
 +{
 +	return ((val) << A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_PIX__SHIFT) & A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_PIX__MASK;
 +}
-+#define A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_VTX__MASK		0x0007f000
++#define A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_VTX__MASK		0x000ff000
 +#define A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_VTX__SHIFT		12
 +static CONSTEXPR inline uint32_t A2XX_SQ_GPR_MANAGEMENT_REG_SIZE_VTX(uint32_t val)
 +{
@@ -45324,20 +44693,20 @@ hb.c
 +
 +#define REG_A2XX_PA_SC_VIZ_QUERY				0x00002293
 +#define A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ENA			0x00000001
-+#define A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ID__MASK			0x0000003e
++#define A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ID__MASK			0x0000007e
 +#define A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ID__SHIFT		1
 +static CONSTEXPR inline uint32_t A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ID(uint32_t val)
 +{
 +	return ((val) << A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ID__SHIFT) & A2XX_PA_SC_VIZ_QUERY_VIZ_QUERY_ID__MASK;
 +}
-+#define A2XX_PA_SC_VIZ_QUERY_KILL_PIX_POST_EARLY_Z		0x00000080
++#define A2XX_PA_SC_VIZ_QUERY_KILL_PIX_POST_EARLY_Z		0x00000100
 +
 +
 +#define REG_A2XX_VGT_ENHANCE					0x00002294
 +
 +
 +#define REG_A2XX_PA_SC_LINE_CNTL				0x00002300
-+#define A2XX_PA_SC_LINE_CNTL_BRES_CNTL__MASK			0x000000ff
++#define A2XX_PA_SC_LINE_CNTL_BRES_CNTL__MASK			0x0000ffff
 +#define A2XX_PA_SC_LINE_CNTL_BRES_CNTL__SHIFT			0
 +static CONSTEXPR inline uint32_t A2XX_PA_SC_LINE_CNTL_BRES_CNTL(uint32_t val)
 +{
@@ -45376,8 +44745,8 @@ hb.c
 +{
 +	return ((val) << A2XX_PA_SU_VTX_CNTL_ROUND_MODE__SHIFT) & A2XX_PA_SU_VTX_CNTL_ROUND_MODE__MASK;
 +}
-+#define A2XX_PA_SU_VTX_CNTL_QUANT_MODE__MASK			0x00000038
-+#define A2XX_PA_SU_VTX_CNTL_QUANT_MODE__SHIFT			3
++#define A2XX_PA_SU_VTX_CNTL_QUANT_MODE__MASK			0x00000380
++#define A2XX_PA_SU_VTX_CNTL_QUANT_MODE__SHIFT			7
 +static CONSTEXPR inline uint32_t A2XX_PA_SU_VTX_CNTL_QUANT_MODE(enum a2xx_pa_quantmode val)
 +{
 +	return ((val) << A2XX_PA_SU_VTX_CNTL_QUANT_MODE__SHIFT) & A2XX_PA_SU_VTX_CNTL_QUANT_MODE__MASK;
@@ -53992,7 +53361,7 @@ hb.c
 +#endif /* DSI_XML */
 --- /dev/null
 +++ b/drivers/gpu/drm/msm/generated/a6xx.xml.h
-@@ -0,0 +1,19456 @@
+@@ -0,0 +1,19254 @@
 +#ifndef A6XX_XML
 +#define A6XX_XML
 +
@@ -54124,12 +53493,6 @@ hb.c
 +	CCU_CACHE_SIZE_QUARTER = 2,
 +	CCU_CACHE_SIZE_EIGHTH = 3,
 +	CCU_CACHE_SIZE_THREE_QUARTER = 3,
-+};
-+
-+enum a6xx_a2d_pixel_op {
-+	PIXEL_OP_DISABLED = 0,
-+	PIXEL_OP_BLENDING = 1,
-+	PIXEL_OP_ROP = 3,
 +};
 +
 +enum a7xx_concurrent_resolve_mode {
@@ -54625,9 +53988,6 @@ hb.c
 +
 +
 +#define REG_A6XX_CP_DBG_ECO_CNTL				__FD_DEPRECATED 0x00000843
-+
-+
-+#define REG_A8XX_CP_MULTIDRAW_CNTL				__FD_DEPRECATED 0x0000084a
 +
 +
 +#define REG_A8XX_CP_DBG_ECO_CNTL				__FD_DEPRECATED 0x0000084b
@@ -58463,9 +57823,6 @@ hb.c
 +#define REG_A8XX_VSC_KMD_DBG_ECO_CNTL				__FD_DEPRECATED 0x00000df0
 +
 +
-+#define REG_A8XX_VSC_VISIBILITY_FLUSH_CNTL			__FD_DEPRECATED 0x00000df8
-+
-+
 +#define REG_A6XX_VSC_BIN_SIZE					__FD_DEPRECATED 0x00000c02
 +#define A6XX_VSC_BIN_SIZE_BINW__MASK				0x000000ff
 +#define A6XX_VSC_BIN_SIZE_BINW__SHIFT				0
@@ -58596,12 +57953,10 @@ hb.c
 +
 +#define REG_A6XX_VSC_PIPE_DATA_PRIM_SIZE(i0)			(0x00000c58 + 0x1*i0 )
 +
-+static CONSTEXPR inline uint32_t REG_A6XX_VSC_PIPE_DATA_PRIM_SIZE_REG(uint32_t i0) { return 0x00000c58 + 0x1*i0; }
 +
 +
 +#define REG_A6XX_VSC_PIPE_DATA_DRAW_SIZE(i0)			(0x00000c78 + 0x1*i0 )
 +
-+static CONSTEXPR inline uint32_t REG_A6XX_VSC_PIPE_DATA_DRAW_SIZE_REG(uint32_t i0) { return 0x00000c78 + 0x1*i0; }
 +
 +
 +#define REG_A7XX_VSC_UNKNOWN_0D08				__FD_DEPRECATED 0x00000d08
@@ -58759,8 +58114,8 @@ hb.c
 +{
 +	return ((val) << A6XX_GRAS_CL_INTERP_CNTL_COORD_MASK__SHIFT) & A6XX_GRAS_CL_INTERP_CNTL_COORD_MASK__MASK;
 +}
-+#define A6XX_GRAS_CL_INTERP_CNTL_FACENESS			0x00000400
-+#define A6XX_GRAS_CL_INTERP_CNTL_CENTERRHW			0x00000800
++#define A6XX_GRAS_CL_INTERP_CNTL_UNK10				0x00000400
++#define A6XX_GRAS_CL_INTERP_CNTL_UNK11				0x00000800
 +
 +
 +#define REG_A8XX_GRAS_CL_INTERP_CNTL				__FD_DEPRECATED 0x00008080
@@ -58776,8 +58131,8 @@ hb.c
 +{
 +	return ((val) << A8XX_GRAS_CL_INTERP_CNTL_COORD_MASK__SHIFT) & A8XX_GRAS_CL_INTERP_CNTL_COORD_MASK__MASK;
 +}
-+#define A8XX_GRAS_CL_INTERP_CNTL_FACENESS			0x00000400
-+#define A8XX_GRAS_CL_INTERP_CNTL_CENTERRHW			0x00000800
++#define A8XX_GRAS_CL_INTERP_CNTL_UNK10				0x00000400
++#define A8XX_GRAS_CL_INTERP_CNTL_UNK11				0x00000800
 +
 +
 +#define REG_A6XX_GRAS_CL_GUARDBAND_CLIP_ADJ			__FD_DEPRECATED 0x00008006
@@ -60849,7 +60204,7 @@ hb.c
 +{
 +	return ((val) << A6XX_GRAS_A2D_BLT_CNTL_UNK17__SHIFT) & A6XX_GRAS_A2D_BLT_CNTL_UNK17__MASK;
 +}
-+#define A6XX_GRAS_A2D_BLT_CNTL_IS_SRC_YUV			0x00080000
++#define A6XX_GRAS_A2D_BLT_CNTL_D24S8				0x00080000
 +#define A6XX_GRAS_A2D_BLT_CNTL_MASK__MASK			0x00f00000
 +#define A6XX_GRAS_A2D_BLT_CNTL_MASK__SHIFT			20
 +static CONSTEXPR inline uint32_t A6XX_GRAS_A2D_BLT_CNTL_MASK(uint32_t val)
@@ -60862,8 +60217,8 @@ hb.c
 +{
 +	return ((val) << A6XX_GRAS_A2D_BLT_CNTL_IFMT__SHIFT) & A6XX_GRAS_A2D_BLT_CNTL_IFMT__MASK;
 +}
-+#define A6XX_GRAS_A2D_BLT_CNTL_FULL_RANGE_YUV			0x08000000
-+#define A6XX_GRAS_A2D_BLT_CNTL_LINEAR_YUV			0x10000000
++#define A6XX_GRAS_A2D_BLT_CNTL_UNK27				0x08000000
++#define A6XX_GRAS_A2D_BLT_CNTL_UNK28				0x10000000
 +#define A6XX_GRAS_A2D_BLT_CNTL_RASTER_MODE__MASK		0x20000000
 +#define A6XX_GRAS_A2D_BLT_CNTL_RASTER_MODE__SHIFT		29
 +static CONSTEXPR inline uint32_t A6XX_GRAS_A2D_BLT_CNTL_RASTER_MODE(enum a6xx_raster_mode val)
@@ -61006,7 +60361,7 @@ hb.c
 +{
 +	return ((val) << A8XX_GRAS_A2D_BLT_CNTL_UNK17__SHIFT) & A8XX_GRAS_A2D_BLT_CNTL_UNK17__MASK;
 +}
-+#define A8XX_GRAS_A2D_BLT_CNTL_IS_SRC_YUV			0x00080000
++#define A8XX_GRAS_A2D_BLT_CNTL_D24S8				0x00080000
 +#define A8XX_GRAS_A2D_BLT_CNTL_MASK__MASK			0x00f00000
 +#define A8XX_GRAS_A2D_BLT_CNTL_MASK__SHIFT			20
 +static CONSTEXPR inline uint32_t A8XX_GRAS_A2D_BLT_CNTL_MASK(uint32_t val)
@@ -61019,8 +60374,8 @@ hb.c
 +{
 +	return ((val) << A8XX_GRAS_A2D_BLT_CNTL_IFMT__SHIFT) & A8XX_GRAS_A2D_BLT_CNTL_IFMT__MASK;
 +}
-+#define A8XX_GRAS_A2D_BLT_CNTL_FULL_RANGE_YUV			0x08000000
-+#define A8XX_GRAS_A2D_BLT_CNTL_LINEAR_YUV			0x10000000
++#define A8XX_GRAS_A2D_BLT_CNTL_UNK27				0x08000000
++#define A8XX_GRAS_A2D_BLT_CNTL_UNK28				0x10000000
 +#define A8XX_GRAS_A2D_BLT_CNTL_RASTER_MODE__MASK		0x20000000
 +#define A8XX_GRAS_A2D_BLT_CNTL_RASTER_MODE__SHIFT		29
 +static CONSTEXPR inline uint32_t A8XX_GRAS_A2D_BLT_CNTL_RASTER_MODE(enum a6xx_raster_mode val)
@@ -62290,11 +61645,17 @@ hb.c
 +
 +
 +#define REG_A6XX_RB_RESOLVE_CNTL_0				0x000088d0
-+#define A6XX_RB_RESOLVE_CNTL_0_YUV_PLANE_ID__MASK		0x00000003
-+#define A6XX_RB_RESOLVE_CNTL_0_YUV_PLANE_ID__SHIFT		0
-+static CONSTEXPR inline uint32_t A6XX_RB_RESOLVE_CNTL_0_YUV_PLANE_ID(uint32_t val)
++#define A6XX_RB_RESOLVE_CNTL_0_UNK0__MASK			0x00001fff
++#define A6XX_RB_RESOLVE_CNTL_0_UNK0__SHIFT			0
++static CONSTEXPR inline uint32_t A6XX_RB_RESOLVE_CNTL_0_UNK0(uint32_t val)
 +{
-+	return ((val) << A6XX_RB_RESOLVE_CNTL_0_YUV_PLANE_ID__SHIFT) & A6XX_RB_RESOLVE_CNTL_0_YUV_PLANE_ID__MASK;
++	return ((val) << A6XX_RB_RESOLVE_CNTL_0_UNK0__SHIFT) & A6XX_RB_RESOLVE_CNTL_0_UNK0__MASK;
++}
++#define A6XX_RB_RESOLVE_CNTL_0_UNK16__MASK			0x07ff0000
++#define A6XX_RB_RESOLVE_CNTL_0_UNK16__SHIFT			16
++static CONSTEXPR inline uint32_t A6XX_RB_RESOLVE_CNTL_0_UNK16(uint32_t val)
++{
++	return ((val) << A6XX_RB_RESOLVE_CNTL_0_UNK16__SHIFT) & A6XX_RB_RESOLVE_CNTL_0_UNK16__MASK;
 +}
 +
 +
@@ -62861,7 +62222,7 @@ hb.c
 +{
 +	return ((val) << A6XX_RB_A2D_BLT_CNTL_UNK17__SHIFT) & A6XX_RB_A2D_BLT_CNTL_UNK17__MASK;
 +}
-+#define A6XX_RB_A2D_BLT_CNTL_IS_SRC_YUV				0x00080000
++#define A6XX_RB_A2D_BLT_CNTL_D24S8				0x00080000
 +#define A6XX_RB_A2D_BLT_CNTL_MASK__MASK				0x00f00000
 +#define A6XX_RB_A2D_BLT_CNTL_MASK__SHIFT			20
 +static CONSTEXPR inline uint32_t A6XX_RB_A2D_BLT_CNTL_MASK(uint32_t val)
@@ -62874,8 +62235,8 @@ hb.c
 +{
 +	return ((val) << A6XX_RB_A2D_BLT_CNTL_IFMT__SHIFT) & A6XX_RB_A2D_BLT_CNTL_IFMT__MASK;
 +}
-+#define A6XX_RB_A2D_BLT_CNTL_FULL_RANGE_YUV			0x08000000
-+#define A6XX_RB_A2D_BLT_CNTL_LINEAR_YUV				0x10000000
++#define A6XX_RB_A2D_BLT_CNTL_UNK27				0x08000000
++#define A6XX_RB_A2D_BLT_CNTL_UNK28				0x10000000
 +#define A6XX_RB_A2D_BLT_CNTL_RASTER_MODE__MASK			0x20000000
 +#define A6XX_RB_A2D_BLT_CNTL_RASTER_MODE__SHIFT			29
 +static CONSTEXPR inline uint32_t A6XX_RB_A2D_BLT_CNTL_RASTER_MODE(enum a6xx_raster_mode val)
@@ -62886,48 +62247,6 @@ hb.c
 +
 +
 +#define REG_A6XX_RB_A2D_PIXEL_CNTL				0x00008c01
-+#define A6XX_RB_A2D_PIXEL_CNTL_PIXEL_OP__MASK			0x00000003
-+#define A6XX_RB_A2D_PIXEL_CNTL_PIXEL_OP__SHIFT			0
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_PIXEL_OP(enum a6xx_a2d_pixel_op val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_PIXEL_OP__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_PIXEL_OP__MASK;
-+}
-+#define A6XX_RB_A2D_PIXEL_CNTL_COLOR_SRC_FACTOR__MASK		0x000007c0
-+#define A6XX_RB_A2D_PIXEL_CNTL_COLOR_SRC_FACTOR__SHIFT		6
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_COLOR_SRC_FACTOR(enum adreno_rb_blend_factor val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_COLOR_SRC_FACTOR__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_COLOR_SRC_FACTOR__MASK;
-+}
-+#define A6XX_RB_A2D_PIXEL_CNTL_COLOR_BLEND_OP__MASK		0x00003800
-+#define A6XX_RB_A2D_PIXEL_CNTL_COLOR_BLEND_OP__SHIFT		11
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_COLOR_BLEND_OP(enum a3xx_rb_blend_opcode val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_COLOR_BLEND_OP__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_COLOR_BLEND_OP__MASK;
-+}
-+#define A6XX_RB_A2D_PIXEL_CNTL_COLOR_DST_FACTOR__MASK		0x0007c000
-+#define A6XX_RB_A2D_PIXEL_CNTL_COLOR_DST_FACTOR__SHIFT		14
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_COLOR_DST_FACTOR(enum adreno_rb_blend_factor val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_COLOR_DST_FACTOR__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_COLOR_DST_FACTOR__MASK;
-+}
-+#define A6XX_RB_A2D_PIXEL_CNTL_ALPHA_SRC_FACTOR__MASK		0x00f80000
-+#define A6XX_RB_A2D_PIXEL_CNTL_ALPHA_SRC_FACTOR__SHIFT		19
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_ALPHA_SRC_FACTOR(enum adreno_rb_blend_factor val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_ALPHA_SRC_FACTOR__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_ALPHA_SRC_FACTOR__MASK;
-+}
-+#define A6XX_RB_A2D_PIXEL_CNTL_ALPHA_BLEND_OP__MASK		0x07000000
-+#define A6XX_RB_A2D_PIXEL_CNTL_ALPHA_BLEND_OP__SHIFT		24
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_ALPHA_BLEND_OP(enum a3xx_rb_blend_opcode val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_ALPHA_BLEND_OP__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_ALPHA_BLEND_OP__MASK;
-+}
-+#define A6XX_RB_A2D_PIXEL_CNTL_ALPHA_DST_FACTOR__MASK		0xf8000000
-+#define A6XX_RB_A2D_PIXEL_CNTL_ALPHA_DST_FACTOR__SHIFT		27
-+static CONSTEXPR inline uint32_t A6XX_RB_A2D_PIXEL_CNTL_ALPHA_DST_FACTOR(enum adreno_rb_blend_factor val)
-+{
-+	return ((val) << A6XX_RB_A2D_PIXEL_CNTL_ALPHA_DST_FACTOR__SHIFT) & A6XX_RB_A2D_PIXEL_CNTL_ALPHA_DST_FACTOR__MASK;
-+}
 +
 +
 +#define REG_A6XX_RB_A2D_DEST_BUFFER_INFO			0x00008c17
@@ -63074,7 +62393,7 @@ hb.c
 +#define REG_A6XX_RB_A2D_CLEAR_COLOR_DW3				0x00008c2f
 +
 +
-+#define REG_A7XX_RB_A2D_DEST_BUFFER_ARRAY_PITCH			__FD_DEPRECATED 0x00008c34
++#define REG_A7XX_RB_A2D_UNKNOWN_8C34				__FD_DEPRECATED 0x00008c34
 +
 +
 +#define REG_A6XX_RB_RBP_CNTL					0x00008e01
@@ -63637,7 +62956,7 @@ hb.c
 +}
 +
 +
-+#define REG_A6XX_VPC_RAST_STREAM_CNTL				__FD_DEPRECATED 0x00009107
++#define REG_A6XX_VPC_RAST_STREAM_CNTL				__FD_DEPRECATED 0x00009980
 +#define A6XX_VPC_RAST_STREAM_CNTL_STREAM__MASK			0x00000003
 +#define A6XX_VPC_RAST_STREAM_CNTL_STREAM__SHIFT			0
 +static CONSTEXPR inline uint32_t A6XX_VPC_RAST_STREAM_CNTL_STREAM(uint32_t val)
@@ -63645,6 +62964,16 @@ hb.c
 +	return ((val) << A6XX_VPC_RAST_STREAM_CNTL_STREAM__SHIFT) & A6XX_VPC_RAST_STREAM_CNTL_STREAM__MASK;
 +}
 +#define A6XX_VPC_RAST_STREAM_CNTL_DISCARD			0x00000004
++
++
++#define REG_A7XX_VPC_RAST_STREAM_CNTL				__FD_DEPRECATED 0x00009107
++#define A7XX_VPC_RAST_STREAM_CNTL_STREAM__MASK			0x00000003
++#define A7XX_VPC_RAST_STREAM_CNTL_STREAM__SHIFT			0
++static CONSTEXPR inline uint32_t A7XX_VPC_RAST_STREAM_CNTL_STREAM(uint32_t val)
++{
++	return ((val) << A7XX_VPC_RAST_STREAM_CNTL_STREAM__SHIFT) & A7XX_VPC_RAST_STREAM_CNTL_STREAM__MASK;
++}
++#define A7XX_VPC_RAST_STREAM_CNTL_DISCARD			0x00000004
 +
 +
 +#define REG_A8XX_VPC_RAST_STREAM_CNTL				__FD_DEPRECATED 0x0000930d
@@ -63665,6 +62994,11 @@ hb.c
 +	return ((val) << A7XX_VPC_RAST_STREAM_CNTL_V2_STREAM__SHIFT) & A7XX_VPC_RAST_STREAM_CNTL_V2_STREAM__MASK;
 +}
 +#define A7XX_VPC_RAST_STREAM_CNTL_V2_DISCARD			0x00000004
++
++
++#define REG_A6XX_VPC_UNKNOWN_9107				__FD_DEPRECATED 0x00009107
++#define A6XX_VPC_UNKNOWN_9107_RASTER_DISCARD			0x00000001
++#define A6XX_VPC_UNKNOWN_9107_UNK2				0x00000004
 +
 +
 +#define REG_A6XX_VPC_RAST_CNTL					__FD_DEPRECATED 0x00009108
@@ -64472,21 +63806,6 @@ hb.c
 +
 +
 +#define REG_A6XX_PC_MODE_CNTL					__FD_DEPRECATED 0x00009804
-+#define A6XX_PC_MODE_CNTL_COUNT1__MASK				0x0000001f
-+#define A6XX_PC_MODE_CNTL_COUNT1__SHIFT				0
-+static CONSTEXPR inline uint32_t A6XX_PC_MODE_CNTL_COUNT1(uint32_t val)
-+{
-+	return ((val) << A6XX_PC_MODE_CNTL_COUNT1__SHIFT) & A6XX_PC_MODE_CNTL_COUNT1__MASK;
-+}
-+#define A6XX_PC_MODE_CNTL_UNK5					0x00000020
-+#define A6XX_PC_MODE_CNTL_UNK6					0x00000040
-+#define A6XX_PC_MODE_CNTL_UNK7					0x00000080
-+#define A6XX_PC_MODE_CNTL_COUNT2__MASK				0x00003f00
-+#define A6XX_PC_MODE_CNTL_COUNT2__SHIFT				8
-+static CONSTEXPR inline uint32_t A6XX_PC_MODE_CNTL_COUNT2(uint32_t val)
-+{
-+	return ((val) << A6XX_PC_MODE_CNTL_COUNT2__SHIFT) & A6XX_PC_MODE_CNTL_COUNT2__MASK;
-+}
 +
 +
 +#define REG_A8XX_PC_MODE_CNTL					__FD_DEPRECATED 0x00009b00
@@ -64656,16 +63975,6 @@ hb.c
 +
 +
 +#define REG_A8XX_PC_TF_BUFFER_SIZE				__FD_DEPRECATED 0x00009815
-+
-+
-+#define REG_A6XX_PC_RAST_STREAM_CNTL				__FD_DEPRECATED 0x00009980
-+#define A6XX_PC_RAST_STREAM_CNTL_STREAM__MASK			0x00000003
-+#define A6XX_PC_RAST_STREAM_CNTL_STREAM__SHIFT			0
-+static CONSTEXPR inline uint32_t A6XX_PC_RAST_STREAM_CNTL_STREAM(uint32_t val)
-+{
-+	return ((val) << A6XX_PC_RAST_STREAM_CNTL_STREAM__SHIFT) & A6XX_PC_RAST_STREAM_CNTL_STREAM__MASK;
-+}
-+#define A6XX_PC_RAST_STREAM_CNTL_DISCARD			0x00000004
 +
 +
 +#define REG_A6XX_PC_CNTL					__FD_DEPRECATED 0x00009b00
@@ -66811,7 +66120,7 @@ hb.c
 +	return ((val) << A6XX_SP_CS_CNTL_0_THREADSIZE__SHIFT) & A6XX_SP_CS_CNTL_0_THREADSIZE__MASK;
 +}
 +#define A6XX_SP_CS_CNTL_0_UNK21					0x00200000
-+#define A6XX_SP_CS_CNTL_0_COMPUTERRMODEEN			0x00400000
++#define A6XX_SP_CS_CNTL_0_UNK22					0x00400000
 +#define A6XX_SP_CS_CNTL_0_EARLYPREAMBLE				0x00800000
 +#define A6XX_SP_CS_CNTL_0_MERGEDREGS				0x80000000
 +
@@ -67399,9 +66708,6 @@ hb.c
 +#define A6XX_SP_CHICKEN_BITS_EOLM_ENABLE			0x00000002
 +
 +
-+#define REG_A7XX_SP_LPAC_CHICKEN_BITS				__FD_DEPRECATED 0x0000af81
-+
-+
 +#define REG_A6XX_SP_NC_MODE_CNTL_2				0x0000ae04
 +#define A6XX_SP_NC_MODE_CNTL_2_F16_NO_INF			0x00000008
 +
@@ -67428,9 +66734,6 @@ hb.c
 +
 +
 +#define REG_A6XX_SP_STATUS					0x0000ae0c
-+
-+
-+#define REG_A8XX_SP_L0_PERF_TUNE				__FD_DEPRECATED 0x0000ae0e
 +
 +
 +#define REG_A6XX_SP_PERFCTR_SHADER_MASK				0x0000ae0f
@@ -67543,9 +66846,6 @@ hb.c
 +{
 +	return val;
 +}
-+
-+
-+#define REG_A8XX_SP_CHICKEN_BITS_5				__FD_DEPRECATED 0x0000ae14
 +
 +
 +#define REG_A8XX_SP_LPAC_CPI_STATUS				__FD_DEPRECATED 0x0000ae15
@@ -69738,11 +69038,6 @@ hb.c
 +#define REG_A7XX_CX_MISC_TCM_RET_CNTL				__FD_DEPRECATED 0x00000039
 +
 +
-+#define REG_A8XX_CX_MISC_GFX_PWR_CLK_STATUS			__FD_DEPRECATED 0x00000083
-+#define A8XX_CX_MISC_GFX_PWR_CLK_STATUS_GX_GDSC_POWER_OFF	0x00000008
-+#define A8XX_CX_MISC_GFX_PWR_CLK_STATUS_GX_CLK_OFF		0x00000010
-+
-+
 +#define REG_A8XX_CX_MISC_SLICE_ENABLE_FINAL			__FD_DEPRECATED 0x00000087
 +
 +
@@ -69804,7 +69099,6 @@ hb.c
 +	0xae6a,
 +	0xae6b,
 +	0xae6c,
-+	0xaf81,
 +	0xb600,
 +	0xb602,
 +};
@@ -70140,70 +69434,6 @@ hb.c
 +	0xc55,
 +	0xc56,
 +	0xc57,
-+	0xc58,
-+	0xc59,
-+	0xc5a,
-+	0xc5b,
-+	0xc5c,
-+	0xc5d,
-+	0xc5e,
-+	0xc5f,
-+	0xc60,
-+	0xc61,
-+	0xc62,
-+	0xc63,
-+	0xc64,
-+	0xc65,
-+	0xc66,
-+	0xc67,
-+	0xc68,
-+	0xc69,
-+	0xc6a,
-+	0xc6b,
-+	0xc6c,
-+	0xc6d,
-+	0xc6e,
-+	0xc6f,
-+	0xc70,
-+	0xc71,
-+	0xc72,
-+	0xc73,
-+	0xc74,
-+	0xc75,
-+	0xc76,
-+	0xc77,
-+	0xc78,
-+	0xc79,
-+	0xc7a,
-+	0xc7b,
-+	0xc7c,
-+	0xc7d,
-+	0xc7e,
-+	0xc7f,
-+	0xc80,
-+	0xc81,
-+	0xc82,
-+	0xc83,
-+	0xc84,
-+	0xc85,
-+	0xc86,
-+	0xc87,
-+	0xc88,
-+	0xc89,
-+	0xc8a,
-+	0xc8b,
-+	0xc8c,
-+	0xc8d,
-+	0xc8e,
-+	0xc8f,
-+	0xc90,
-+	0xc91,
-+	0xc92,
-+	0xc93,
-+	0xc94,
-+	0xc95,
-+	0xc96,
-+	0xc97,
 +	0x810a,
 +	0x8206,
 +	0x8207,
@@ -70412,70 +69642,6 @@ hb.c
 +	0xc55,
 +	0xc56,
 +	0xc57,
-+	0xc58,
-+	0xc59,
-+	0xc5a,
-+	0xc5b,
-+	0xc5c,
-+	0xc5d,
-+	0xc5e,
-+	0xc5f,
-+	0xc60,
-+	0xc61,
-+	0xc62,
-+	0xc63,
-+	0xc64,
-+	0xc65,
-+	0xc66,
-+	0xc67,
-+	0xc68,
-+	0xc69,
-+	0xc6a,
-+	0xc6b,
-+	0xc6c,
-+	0xc6d,
-+	0xc6e,
-+	0xc6f,
-+	0xc70,
-+	0xc71,
-+	0xc72,
-+	0xc73,
-+	0xc74,
-+	0xc75,
-+	0xc76,
-+	0xc77,
-+	0xc78,
-+	0xc79,
-+	0xc7a,
-+	0xc7b,
-+	0xc7c,
-+	0xc7d,
-+	0xc7e,
-+	0xc7f,
-+	0xc80,
-+	0xc81,
-+	0xc82,
-+	0xc83,
-+	0xc84,
-+	0xc85,
-+	0xc86,
-+	0xc87,
-+	0xc88,
-+	0xc89,
-+	0xc8a,
-+	0xc8b,
-+	0xc8c,
-+	0xc8d,
-+	0xc8e,
-+	0xc8f,
-+	0xc90,
-+	0xc91,
-+	0xc92,
-+	0xc93,
-+	0xc94,
-+	0xc95,
-+	0xc96,
-+	0xc97,
 +	0xce2,
 +	0xce3,
 +	0xce4,
@@ -72578,6 +71744,7 @@ hb.c
 +	0x8918,
 +	0x8919,
 +	0x891a,
++	0x9107,
 +	0x9109,
 +	0x910a,
 +	0x910b,
@@ -73091,6 +72258,30 @@ hb.c
 +	0xb300,
 +	0xb301,
 +};
++template<> constexpr inline uint16_t RESOLVE_REGS<A7XX>[] = {
++	0x8106,
++	0x8107,
++	0x88d0,
++	0x88d1,
++	0x88d2,
++	0x88d4,
++	0x88d5,
++	0x88d6,
++	0x88d7,
++	0x88d8,
++	0x88d9,
++	0x88da,
++	0x88db,
++	0x88dc,
++	0x88dd,
++	0x88de,
++	0x88df,
++	0x88e0,
++	0x88e1,
++	0x88e2,
++	0x88e3,
++	0x88e4,
++};
 +template<> constexpr inline uint16_t RESOLVE_REGS<A6XX>[] = {
 +	0x8106,
 +	0x8107,
@@ -73115,30 +72306,6 @@ hb.c
 +	0x88e2,
 +	0x88e3,
 +	0x88f0,
-+};
-+template<> constexpr inline uint16_t RESOLVE_REGS<A7XX>[] = {
-+	0x8106,
-+	0x8107,
-+	0x88d0,
-+	0x88d1,
-+	0x88d2,
-+	0x88d4,
-+	0x88d5,
-+	0x88d6,
-+	0x88d7,
-+	0x88d8,
-+	0x88d9,
-+	0x88da,
-+	0x88db,
-+	0x88dc,
-+	0x88dd,
-+	0x88de,
-+	0x88df,
-+	0x88e0,
-+	0x88e1,
-+	0x88e2,
-+	0x88e3,
-+	0x88e4,
 +};
 +template<> constexpr inline uint16_t RESOLVE_REGS<A8XX>[] = {
 +	0x8106,
@@ -73303,6 +72470,62 @@ hb.c
 +	0xb2d0,
 +	0xb2d2,
 +};
++template<> constexpr inline uint16_t COMPUTE_REGS<A7XX>[] = {
++	0xa9b0,
++	0xa9b1,
++	0xa9b2,
++	0xa9b3,
++	0xa9b4,
++	0xa9b5,
++	0xa9b6,
++	0xa9b7,
++	0xa9b8,
++	0xa9b9,
++	0xa9ba,
++	0xa9bb,
++	0xa9bc,
++	0xa9bd,
++	0xa9c0,
++	0xa9c2,
++	0xa9c3,
++	0xa9cd,
++	0xa9d4,
++	0xa9d5,
++	0xa9d6,
++	0xa9d7,
++	0xa9d8,
++	0xa9d9,
++	0xa9da,
++	0xa9db,
++	0xa9dc,
++	0xa9dd,
++	0xa9de,
++	0xa9df,
++	0xa9e2,
++	0xa9e3,
++	0xa9e6,
++	0xa9e7,
++	0xa9e8,
++	0xa9e9,
++	0xa9ea,
++	0xa9eb,
++	0xa9ec,
++	0xa9ed,
++	0xa9ee,
++	0xa9ef,
++	0xa9f0,
++	0xa9f1,
++	0xa9f2,
++	0xa9f3,
++	0xa9f4,
++	0xa9f5,
++	0xa9f6,
++	0xa9f7,
++	0xa9f8,
++	0xa9f9,
++	0xaa00,
++	0xab1f,
++};
 +template<> constexpr inline uint16_t COMPUTE_REGS<A6XX>[] = {
 +	0xa9b0,
 +	0xa9b1,
@@ -73365,62 +72588,6 @@ hb.c
 +	0xb9d0,
 +	0xbb08,
 +	0xbb11,
-+};
-+template<> constexpr inline uint16_t COMPUTE_REGS<A7XX>[] = {
-+	0xa9b0,
-+	0xa9b1,
-+	0xa9b2,
-+	0xa9b3,
-+	0xa9b4,
-+	0xa9b5,
-+	0xa9b6,
-+	0xa9b7,
-+	0xa9b8,
-+	0xa9b9,
-+	0xa9ba,
-+	0xa9bb,
-+	0xa9bc,
-+	0xa9bd,
-+	0xa9c0,
-+	0xa9c2,
-+	0xa9c3,
-+	0xa9cd,
-+	0xa9d4,
-+	0xa9d5,
-+	0xa9d6,
-+	0xa9d7,
-+	0xa9d8,
-+	0xa9d9,
-+	0xa9da,
-+	0xa9db,
-+	0xa9dc,
-+	0xa9dd,
-+	0xa9de,
-+	0xa9df,
-+	0xa9e2,
-+	0xa9e3,
-+	0xa9e6,
-+	0xa9e7,
-+	0xa9e8,
-+	0xa9e9,
-+	0xa9ea,
-+	0xa9eb,
-+	0xa9ec,
-+	0xa9ed,
-+	0xa9ee,
-+	0xa9ef,
-+	0xa9f0,
-+	0xa9f1,
-+	0xa9f2,
-+	0xa9f3,
-+	0xa9f4,
-+	0xa9f5,
-+	0xa9f6,
-+	0xa9f7,
-+	0xa9f8,
-+	0xa9f9,
-+	0xaa00,
-+	0xab1f,
 +};
 +template<> constexpr inline uint16_t COMPUTE_REGS<A8XX>[] = {
 +	0xa9b0,
@@ -85447,7 +84614,7 @@ hb.c
  	} else {		/* command mode */
  		if (msm_host->dsc)
  			dsi_update_dsc_timing(msm_host, true);
-@@ -1568,6 +1585,107 @@
+@@ -1566,6 +1583,107 @@
  	return len;
  }
  
@@ -85555,7 +84722,7 @@ hb.c
  static void dsi_err_worker(struct work_struct *work)
  {
  	struct msm_dsi_host *msm_host =
-@@ -1575,7 +1693,12 @@
+@@ -1573,7 +1691,12 @@
  	u32 status = msm_host->err_work_state;
  
  	pr_err_ratelimited("%s: status=%x\n", __func__, status);
@@ -85569,7 +84736,7 @@ hb.c
  		dsi_sw_reset(msm_host);
  
  	/* It is safe to clear here because error irq is disabled. */
-@@ -1623,6 +1746,8 @@
+@@ -1621,6 +1744,8 @@
  			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP0 |
  			DSI_DLN0_PHY_ERR_DLN0_ERR_CONTENTION_LP1)) {
  		dsi_write(msm_host, REG_DSI_DLN0_PHY_ERR, status);
@@ -85578,7 +84745,7 @@ hb.c
  		msm_host->err_work_state |= DSI_ERR_STATE_DLN0_PHY;
  	}
  }
-@@ -1672,6 +1797,14 @@
+@@ -1670,6 +1795,14 @@
  {
  	/* disable dsi error interrupt */
  	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_ERROR, 0);
@@ -85593,7 +84760,7 @@ hb.c
  
  	dsi_clk_status(msm_host);
  	dsi_fifo_status(msm_host);
-@@ -1679,6 +1812,9 @@
+@@ -1677,6 +1810,9 @@
  	dsi_timeout_status(msm_host);
  	dsi_status(msm_host);
  	dsi_dln0_phy_err(msm_host);
@@ -85603,7 +84770,7 @@ hb.c
  
  	queue_work(msm_host->workqueue, &msm_host->err_work);
  }
-@@ -2207,6 +2343,8 @@
+@@ -2205,6 +2341,8 @@
  
  	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_CMD_DMA_DONE, 0);
  	dsi_write(msm_host, REG_DSI_CTRL, msm_host->dma_cmd_ctrl_restore);
@@ -85612,7 +84779,7 @@ hb.c
  
  	if (!(msg->flags & MIPI_DSI_MSG_USE_LPM))
  		dsi_set_tx_power_mode(1, msm_host);
-@@ -2356,11 +2494,24 @@
+@@ -2354,11 +2492,24 @@
  		ret = dsi_long_read_resp(buf, msg);
  		break;
  	default:
@@ -85638,7 +84805,7 @@ hb.c
  }
  
  void msm_dsi_host_cmd_xfer_commit(struct mipi_dsi_host *host, u32 dma_base,
-@@ -2439,6 +2590,82 @@
+@@ -2437,6 +2588,82 @@
  int msm_dsi_host_enable(struct mipi_dsi_host *host)
  {
  	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
@@ -85721,7 +84888,7 @@ hb.c
  
  	dsi_op_mode_config(msm_host,
  		!!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO), true);
-@@ -2705,6 +2932,19 @@
+@@ -2703,6 +2930,19 @@
  				DSI_TEST_PATTERN_GEN_CMD_STREAM0_TRIGGER_SW_TRIGGER);
  }
  
@@ -86186,16 +85353,7 @@ hb.c
  MODULE_DEVICE_TABLE(of, pm8xxx_vib_id_table);
 --- a/drivers/input/touchscreen/novatek-nvt-ts.c
 +++ b/drivers/input/touchscreen/novatek-nvt-ts.c
-@@ -32,6 +32,8 @@
- 
- #define NVT_TS_MAX_TOUCHES		10
- #define NVT_TS_MAX_SIZE			4096
-+#define NVT_TS_NT365XX_BUF_SIZE		65
-+#define NVT_TS_MAX_PRESSURE		1000
- 
- #define NVT_TS_TOUCH_INVALID		0xff
- #define NVT_TS_TOUCH_SLOT_SHIFT		3
-@@ -49,16 +51,52 @@
+@@ -49,15 +49,49 @@
  
  struct nvt_ts_i2c_chip_data {
  	u8 chip_id;
@@ -86208,13 +85366,11 @@ hb.c
 +	u32 event_buf_addr;
 +	unsigned int reset_delay_ms;
 +	/*
-+	 * Override the firmware's IRQ type. Stock nvt_ts_u880.ko uses IRQF_TRIGGER_RISING
-+	 * (matching live.dts 0x2001). Using IRQF_TRIGGER_LOW caused a continuous ~1330 Hz
-+	 * IRQ storm when idle and an I2C NACK storm during s2idle when the TDDI panel
-+	 * powers down.
++	 * Override the firmware's IRQ type. The NT36523N holds its INT line low until
++	 * the event buffer is read; with the reported falling edge, an edge that fires
++	 * before the IRQ is armed leaves the line stuck low forever.
 +	 */
 +	unsigned long irq_trigger;
-+	bool has_pressure_major;
 +};
 +
 +/*
@@ -86243,14 +85399,12 @@ hb.c
  	struct regulator_bulk_data regulators[2];
  	struct touchscreen_properties prop;
  	int max_touches;
--	u8 buf[NVT_TS_TOUCH_SIZE * NVT_TS_MAX_TOUCHES];
 +	bool page_ok;	/* event page selected since the last reset; only the IRQ thread and start() touch it */
 +	bool stopped_for_pm;	/* nvt_ts_prepare() stopped the chip; nvt_ts_complete() restarts it */
-+	u8 buf[NVT_TS_NT365XX_BUF_SIZE];
+ 	u8 buf[NVT_TS_TOUCH_SIZE * NVT_TS_MAX_TOUCHES];
  };
  
- static int nvt_ts_read_data(struct i2c_client *client, u8 reg, u8 *data, int count)
-@@ -80,7 +118,27 @@
+@@ -80,7 +114,27 @@
  
  	ret = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
  	if (ret != ARRAY_SIZE(msg)) {
@@ -86279,7 +85433,7 @@ hb.c
  		return (ret < 0) ? ret : -EIO;
  	}
  
-@@ -92,13 +150,36 @@
+@@ -92,13 +146,25 @@
  	struct nvt_ts_data *data = dev_id;
  	struct device *dev = &data->client->dev;
  	int i, error, slot, x, y;
@@ -86287,7 +85441,7 @@ hb.c
 +	bool active, touching = false;
 +	unsigned int delay;
  	u8 *touch;
- 
++
 +	/* The event page is selected once per reset, not per interrupt: the chip keeps it until it is
 +	 * reset, and the extra transfer was about 40% of the I2C traffic. If that select failed (the
 +	 * chip was still booting) or a read failed, it is retried here until it works. */
@@ -86296,10 +85450,8 @@ hb.c
 +			goto backoff;
 +		data->page_ok = true;
 +	}
-+
+ 
  	error = nvt_ts_read_data(data->client, NVT_TS_TOUCH_START, data->buf,
-+				 data->chip->has_pressure_major ?
-+				 NVT_TS_NT365XX_BUF_SIZE :
  				 data->max_touches * NVT_TS_TOUCH_SIZE);
 -	if (error)
 -		return IRQ_HANDLED;
@@ -86307,19 +85459,10 @@ hb.c
 +		data->page_ok = false;
 +		goto backoff;
 +	}
-+
-+	if (data->chip->has_pressure_major) {
-+		u8 sum = 0;
-+
-+		for (i = 0; i < NVT_TS_NT365XX_BUF_SIZE - 1; i++)
-+			sum += data->buf[i];
-+		if ((u8)(sum + data->buf[NVT_TS_NT365XX_BUF_SIZE - 1]) != 0)
-+			return IRQ_HANDLED;
-+	}
  
  	for (i = 0; i < data->max_touches; i++) {
  		touch = &data->buf[i * NVT_TS_TOUCH_SIZE];
-@@ -107,8 +188,11 @@
+@@ -107,8 +173,11 @@
  			continue;
  
  		slot = touch[0] >> NVT_TS_TOUCH_SLOT_SHIFT;
@@ -86332,7 +85475,7 @@ hb.c
  			continue;
  		}
  
-@@ -121,10 +205,11 @@
+@@ -121,10 +190,11 @@
  			active = false;
  			break;
  		default:
@@ -86345,21 +85488,7 @@ hb.c
  		slot--;
  		x = (touch[1] << 4) | (touch[3] >> 4);
  		y = (touch[2] << 4) | (touch[3] & 0x0f);
-@@ -132,11 +217,31 @@
- 		input_mt_slot(data->input, slot);
- 		input_mt_report_slot_state(data->input, MT_TOOL_FINGER, active);
- 		touchscreen_report_pos(data->input, &data->prop, x, y, true);
-+		if (active && data->chip->has_pressure_major) {
-+			int major = touch[4] ?: 1;
-+			int pressure = (i < 2) ?
-+				(touch[5] | (data->buf[62 + i] << 8)) : touch[5];
-+
-+			pressure = clamp_t(int, pressure, 1, NVT_TS_MAX_PRESSURE);
-+			input_report_abs(data->input, ABS_MT_TOUCH_MAJOR, major);
-+			input_report_abs(data->input, ABS_MT_PRESSURE, pressure);
-+		}
- 	}
- 
+@@ -137,6 +207,17 @@
  	input_mt_sync_frame(data->input);
  	input_sync(data->input);
  
@@ -86377,7 +85506,7 @@ hb.c
  	return IRQ_HANDLED;
  }
  
-@@ -151,8 +256,17 @@
+@@ -151,8 +232,17 @@
  		return error;
  	}
  
@@ -86396,7 +85525,7 @@ hb.c
  
  	return 0;
  }
-@@ -166,31 +280,43 @@
+@@ -166,31 +256,43 @@
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  }
  
@@ -86450,7 +85579,7 @@ hb.c
  
  static int nvt_ts_probe(struct i2c_client *client)
  {
-@@ -214,6 +340,7 @@
+@@ -214,6 +316,7 @@
  		return -EINVAL;
  
  	data->client = client;
@@ -86458,7 +85587,7 @@ hb.c
  	i2c_set_clientdata(client, data);
  
  	/*
-@@ -243,9 +370,11 @@
+@@ -243,9 +346,11 @@
  	}
  
  	/* Wait for controller to come out of reset before params read */
@@ -86473,18 +85602,7 @@ hb.c
  	gpiod_set_value_cansleep(data->reset_gpio, 1); /* Put back in reset */
  	regulator_bulk_disable(ARRAY_SIZE(data->regulators), data->regulators);
  	if (error)
-@@ -282,6 +411,10 @@
- 
- 	input_set_abs_params(input, ABS_MT_POSITION_X, 0, width - 1, 0, 0);
- 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, height - 1, 0, 0);
-+	if (chip->has_pressure_major) {
-+		input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
-+		input_set_abs_params(input, ABS_MT_PRESSURE, 0, NVT_TS_MAX_PRESSURE, 0, 0);
-+	}
- 	touchscreen_parse_properties(input, true, &data->prop);
- 
- 	error = input_mt_init_slots(input, data->max_touches,
-@@ -294,7 +427,7 @@
+@@ -294,7 +399,7 @@
  
  	error = devm_request_threaded_irq(dev, client->irq, NULL, nvt_ts_irq,
  					  IRQF_ONESHOT | IRQF_NO_AUTOEN |
@@ -86493,7 +85611,7 @@ hb.c
  					  client->name, data);
  	if (error) {
  		dev_err(dev, "failed to request irq: %d\n", error);
-@@ -316,11 +449,21 @@
+@@ -316,11 +421,20 @@
  
  static const struct nvt_ts_i2c_chip_data nvt_nt36672a_ts_data = {
  	.chip_id = 0x08,
@@ -86504,8 +85622,7 @@ hb.c
 +	.chip_id = 0x08,
 +	.event_buf_addr = 0x2fd00,
 +	.reset_delay_ms = 500,
-+	.irq_trigger = IRQF_TRIGGER_RISING,
-+	.has_pressure_major = true,
++	.irq_trigger = IRQF_TRIGGER_LOW,
  };
  
  static const struct of_device_id nvt_ts_of_match[] = {
@@ -86515,7 +85632,7 @@ hb.c
  	{ }
  };
  MODULE_DEVICE_TABLE(of, nvt_ts_of_match);
-@@ -328,6 +471,7 @@
+@@ -328,6 +442,7 @@
  static const struct i2c_device_id nvt_ts_i2c_id[] = {
  	{ .name = "nt11205-ts", .driver_data = (unsigned long)&nvt_nt11205_ts_data },
  	{ .name = "nt36672a-ts", .driver_data = (unsigned long)&nvt_nt36672a_ts_data },
@@ -86525,7 +85642,7 @@ hb.c
  MODULE_DEVICE_TABLE(i2c, nvt_ts_i2c_id);
 --- a/drivers/soc/qcom/ubwc_config.c
 +++ b/drivers/soc/qcom/ubwc_config.c
-@@ -173,6 +173,9 @@
+@@ -161,6 +161,9 @@
  	{ .compatible = "qcom,sm8250", .data = &ubwc_4_0_hbb16, },
  	{ .compatible = "qcom,sm8350", .data = &ubwc_4_0_hbb16, },
  	{ .compatible = "qcom,sm8450", .data = &ubwc_4_0_hbb16, },
@@ -86562,7 +85679,7 @@ hb.c
  #include <linux/of.h>
  
  enum {
-@@ -590,6 +592,16 @@
+@@ -601,6 +603,16 @@
  	ret = of_property_read_u32(dev->of_node, "qcom,domain", &apr->dest_domain_id);
  
  	if (of_device_is_compatible(dev->of_node, "qcom,gpr")) {
@@ -86588,7 +85705,7 @@ hb.c
  CFLAGS_qcom_aoss.o := -I$(src)
  obj-$(CONFIG_QCOM_AOSS_QMP) +=	qcom_aoss.o
  obj-$(CONFIG_QCOM_GENI_SE) +=	qcom-geni-se.o
-@@ -21,8 +22,11 @@
+@@ -20,8 +21,11 @@
  obj-$(CONFIG_QCOM_RMTFS_MEM)	+= rmtfs_mem.o
  obj-$(CONFIG_QCOM_RPM_MASTER_STATS)	+= rpm_master_stats.o
  obj-$(CONFIG_QCOM_RPMH)		+= qcom_rpmh.o
@@ -86602,7 +85719,7 @@ hb.c
  obj-$(CONFIG_QCOM_SMD_RPM)	+= rpm-proc.o smd-rpm.o
  qcom_smem-y			+= smem.o smem_dramc.o
  obj-$(CONFIG_QCOM_SMEM) +=	qcom_smem.o
-@@ -42,3 +46,5 @@
+@@ -41,3 +45,5 @@
  obj-$(CONFIG_QCOM_INLINE_CRYPTO_ENGINE)	+= qcom_ice.o
  obj-$(CONFIG_QCOM_PBS) +=	qcom-pbs.o
  obj-$(CONFIG_QCOM_UBWC_CONFIG) += ubwc_config.o
@@ -86763,7 +85880,7 @@ hb.c
 +
 --- a/drivers/soc/qcom/pmic_glink.c
 +++ b/drivers/soc/qcom/pmic_glink.c
-@@ -390,6 +390,20 @@
+@@ -389,6 +389,20 @@
  	__pmic_glink = NULL;
  }
  
@@ -86784,7 +85901,7 @@ hb.c
  static const struct pmic_glink_data pmic_glink_adsp_data = {
  	.client_mask = BIT(PMIC_GLINK_CLIENT_BATT) |
  		       BIT(PMIC_GLINK_CLIENT_ALTMODE) |
-@@ -405,6 +419,8 @@
+@@ -404,6 +418,8 @@
  };
  
  static const struct of_device_id pmic_glink_of_match[] = {
@@ -86824,7 +85941,7 @@ hb.c
  
 --- a/drivers/soc/qcom/Kconfig
 +++ b/drivers/soc/qcom/Kconfig
-@@ -338,3 +338,15 @@
+@@ -327,3 +327,15 @@
  	  (UBWC) engines across various IP blocks, which need to be initialized
  	  with coherent configuration data. This module functions as a single
  	  source of truth for that information.
@@ -94273,7 +93390,7 @@ hb.c
  		arm_smmu_write_context_bank(smmu, i);
  		arm_smmu_cb_write(smmu, i, ARM_SMMU_CB_FSR, ARM_SMMU_CB_FSR_FAULT);
  	}
-@@ -1958,6 +1960,7 @@
+@@ -1960,6 +1962,7 @@
  	{ .compatible = "cavium,smmu-v2", .data = &cavium_smmuv2 },
  	{ .compatible = "nvidia,smmu-500", .data = &arm_mmu500 },
  	{ .compatible = "qcom,smmu-v2", .data = &qcom_smmuv2 },
@@ -94281,7 +93398,7 @@ hb.c
  	{ },
  };
  MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
-@@ -2072,6 +2075,10 @@
+@@ -2074,6 +2077,10 @@
  	int idx, cnt = 0;
  	u32 reg;
  
@@ -94314,7 +93431,7 @@ hb.c
  	{ .compatible = "qcom,adreno",
  			.data = (const void *) (PREFETCH_DEEP | CPRE | CMTLB) },
  	{ .compatible = "qcom,adreno-gmu",
-@@ -740,6 +746,150 @@
+@@ -740,6 +746,141 @@
   * Do not add any more qcom,SOC-smmu-500 entries to this list, unless they need
   * special handling and can not be covered by the qcom,smmu-500 entry.
   */
@@ -94411,22 +93528,13 @@ hb.c
 +			      FIELD_GET(ARM_SMMU_SMR_ID, sid) == 0x1061) &&
 +			     of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
 +
-+		/* U880: ADSP + CDSP FastRPC compute context banks (ADSP 0x1003..0x1087, CDSP 0xc01..0xc08). */
++		/* U880: ADSP FastRPC compute context banks (stock adsprpc-smd cb10-cb14), used by the sensors PD. */
 +		u32 id = FIELD_GET(ARM_SMMU_SMR_ID, sid);
 +		bool fastrpc = ((id >= 0x1003 && id <= 0x1007) || (id >= 0x1043 && id <= 0x1047) ||
-+				id == 0x1067 || id == 0x1087 ||
-+				(id >= 0xc01 && id <= 0xc08)) &&
++				id == 0x1067 || id == 0x1087) &&
 +			       of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
 +
-+		/* U880: Camera CAMSS/IFE stream (0x800 mask 0x20). */
-+		bool camera = (id == 0x800) &&
-+			      of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
-+
-+		/* U880: Video Iris/VPU non-secure streams (0x1940, 0x1947). */
-+		bool video = (id == 0x1940 || id == 0x1947) &&
-+			     of_device_is_compatible(smmu->dev->of_node, "qcom,sm7675-boot-smmu");
-+
-+		if (audio || fastrpc || camera || video)
++		if (audio || fastrpc)
 +			continue;
 +		if (sid != 0x40 && sid != 0xb6 &&
 +		    !((sid == 0x60 || sid == 0xa3 || sid == 0x423 ||
@@ -94465,7 +93573,7 @@ hb.c
  static const struct of_device_id __maybe_unused qcom_smmu_impl_of_match[] = {
  	{ .compatible = "qcom,msm8996-smmu-v2", .data = &msm8996_smmu_data },
  	{ .compatible = "qcom,msm8998-smmu-v2", .data = &qcom_smmu_v2_data },
-@@ -766,6 +916,8 @@
+@@ -766,6 +907,8 @@
  	{ .compatible = "qcom,sm8350-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,sm8450-smmu-500", .data = &qcom_smmu_500_impl0_data },
  	{ .compatible = "qcom,smmu-500", .data = &qcom_smmu_500_impl0_data },
@@ -95711,7 +94819,7 @@ hb.c
 +
 --- /dev/null
 +++ b/arch/arm64/kvm/hyp_constants.h
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,13 @@
 +#ifndef __HYP_CONSTANTS_H__
 +#define __HYP_CONSTANTS_H__
 +/*
@@ -95721,623 +94829,474 @@ hb.c
 + */
 +
 +#define STRUCT_HYP_PAGE_SIZE 8 /* sizeof(struct hyp_page) */
++#define PKVM_HYP_VM_SIZE 4488 /* sizeof(struct pkvm_hyp_vm) */
++#define PKVM_HYP_VCPU_SIZE 9040 /* sizeof(struct pkvm_hyp_vcpu) */
 +
 +#endif
 --- /dev/null
 +++ b/arch/arm64/kvm/hyp/nvhe/hyp-reloc.S
-@@ -0,0 +1,609 @@
+@@ -0,0 +1,458 @@
 +.data
 +.pushsection .hyp.reloc, "a"
 +.global __hyp_section_.hyp.text
 +.global __hyp_section_.hyp.rodata
 +.word 0
-+.reloc 0, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x16e0
++.reloc 0, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1668
 +.word 0
-+.reloc 4, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x16e8
++.reloc 4, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x16e0
 +.word 0
 +.reloc 8, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x16f0
 +.word 0
 +.reloc 12, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x16f8
 +.word 0
-+.reloc 16, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1700
++.reloc 16, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1730
 +.word 0
-+.reloc 20, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1708
++.reloc 20, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1750
 +.word 0
-+.reloc 24, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1710
++.reloc 24, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1768
 +.word 0
-+.reloc 28, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1718
++.reloc 28, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17d0
 +.word 0
-+.reloc 32, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1720
++.reloc 32, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1848
 +.word 0
-+.reloc 36, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1728
++.reloc 36, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1868
 +.word 0
-+.reloc 40, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1730
++.reloc 40, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18f0
 +.word 0
-+.reloc 44, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1738
++.reloc 44, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18f8
 +.word 0
-+.reloc 48, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1740
++.reloc 48, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1930
 +.word 0
-+.reloc 52, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1748
++.reloc 52, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1950
 +.word 0
-+.reloc 56, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1750
++.reloc 56, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1968
 +.word 0
-+.reloc 60, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1758
++.reloc 60, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x19d0
 +.word 0
-+.reloc 64, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1760
++.reloc 64, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a68
 +.word 0
-+.reloc 68, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1768
++.reloc 68, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a70
 +.word 0
-+.reloc 72, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1770
++.reloc 72, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a78
 +.word 0
-+.reloc 76, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1778
++.reloc 76, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a80
 +.word 0
-+.reloc 80, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1780
++.reloc 80, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a88
 +.word 0
-+.reloc 84, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1788
++.reloc 84, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a90
 +.word 0
-+.reloc 88, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1790
++.reloc 88, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a98
 +.word 0
-+.reloc 92, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1798
++.reloc 92, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1aa0
 +.word 0
-+.reloc 96, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17a0
++.reloc 96, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1aa8
 +.word 0
-+.reloc 100, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17a8
++.reloc 100, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ab0
 +.word 0
-+.reloc 104, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17b0
++.reloc 104, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ab8
 +.word 0
-+.reloc 108, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17b8
++.reloc 108, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ac0
 +.word 0
-+.reloc 112, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17c0
++.reloc 112, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ac8
 +.word 0
-+.reloc 116, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17c8
++.reloc 116, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ad0
 +.word 0
-+.reloc 120, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17d0
++.reloc 120, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ad8
 +.word 0
-+.reloc 124, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17d8
++.reloc 124, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ae0
 +.word 0
-+.reloc 128, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17e0
++.reloc 128, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ae8
 +.word 0
-+.reloc 132, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17e8
++.reloc 132, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1af0
 +.word 0
-+.reloc 136, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17f0
++.reloc 136, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1af8
 +.word 0
-+.reloc 140, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x17f8
++.reloc 140, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b00
 +.word 0
-+.reloc 144, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1800
++.reloc 144, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b08
 +.word 0
-+.reloc 148, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1808
++.reloc 148, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b10
 +.word 0
-+.reloc 152, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1810
++.reloc 152, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b18
 +.word 0
-+.reloc 156, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1818
++.reloc 156, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b20
 +.word 0
-+.reloc 160, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1820
++.reloc 160, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b28
 +.word 0
-+.reloc 164, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1828
++.reloc 164, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b30
 +.word 0
-+.reloc 168, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1830
++.reloc 168, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b38
 +.word 0
-+.reloc 172, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1838
++.reloc 172, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b40
 +.word 0
-+.reloc 176, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1840
++.reloc 176, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b48
 +.word 0
-+.reloc 180, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1848
++.reloc 180, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b50
 +.word 0
-+.reloc 184, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1850
++.reloc 184, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b58
 +.word 0
-+.reloc 188, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1858
++.reloc 188, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b60
 +.word 0
-+.reloc 192, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1860
++.reloc 192, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b68
 +.word 0
-+.reloc 196, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1868
++.reloc 196, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b70
 +.word 0
-+.reloc 200, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1870
++.reloc 200, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b78
 +.word 0
-+.reloc 204, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1878
++.reloc 204, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b80
 +.word 0
-+.reloc 208, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1880
++.reloc 208, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b88
 +.word 0
-+.reloc 212, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1888
++.reloc 212, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b90
 +.word 0
-+.reloc 216, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1890
++.reloc 216, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b98
 +.word 0
-+.reloc 220, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1898
++.reloc 220, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ba0
 +.word 0
-+.reloc 224, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18a0
++.reloc 224, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ba8
 +.word 0
-+.reloc 228, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18a8
++.reloc 228, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bb0
 +.word 0
-+.reloc 232, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18b0
++.reloc 232, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bb8
 +.word 0
-+.reloc 236, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18b8
++.reloc 236, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bc0
 +.word 0
-+.reloc 240, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18c0
++.reloc 240, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bc8
 +.word 0
-+.reloc 244, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18c8
++.reloc 244, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bd0
 +.word 0
-+.reloc 248, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18d0
++.reloc 248, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bd8
 +.word 0
-+.reloc 252, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18d8
++.reloc 252, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1be0
 +.word 0
-+.reloc 256, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x18f8
++.reloc 256, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1be8
 +.word 0
-+.reloc 260, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1918
++.reloc 260, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bf0
 +.word 0
-+.reloc 264, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x19a0
++.reloc 264, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bf8
 +.word 0
-+.reloc 268, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x19a8
++.reloc 268, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c10
 +.word 0
-+.reloc 272, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x19e0
++.reloc 272, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c28
 +.word 0
-+.reloc 276, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a00
++.reloc 276, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c30
 +.word 0
-+.reloc 280, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a18
++.reloc 280, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cd0
 +.word 0
-+.reloc 284, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1a80
++.reloc 284, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1d40
 +.word 0
-+.reloc 288, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b18
++.reloc 288, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1d50
 +.word 0
-+.reloc 292, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b20
++.reloc 292, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1e18
 +.word 0
-+.reloc 296, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b28
++.reloc 296, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1e30
 +.word 0
-+.reloc 300, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b30
++.reloc 300, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1e68
 +.word 0
-+.reloc 304, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b38
++.reloc 304, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1e80
 +.word 0
-+.reloc 308, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b40
++.reloc 308, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1eb8
 +.word 0
-+.reloc 312, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b48
++.reloc 312, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ed0
 +.word 0
-+.reloc 316, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b50
++.reloc 316, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1f08
 +.word 0
-+.reloc 320, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b58
++.reloc 320, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1f20
 +.word 0
-+.reloc 324, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b60
++.reloc 324, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1f58
 +.word 0
-+.reloc 328, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b68
++.reloc 328, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1f70
 +.word 0
-+.reloc 332, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b70
++.reloc 332, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1fa8
 +.word 0
-+.reloc 336, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b78
++.reloc 336, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1fc0
 +.word 0
-+.reloc 340, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b80
++.reloc 340, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ff8
 +.word 0
-+.reloc 344, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b88
++.reloc 344, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2010
 +.word 0
-+.reloc 348, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b90
++.reloc 348, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2048
 +.word 0
-+.reloc 352, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1b98
++.reloc 352, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2060
 +.word 0
-+.reloc 356, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ba0
++.reloc 356, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2098
 +.word 0
-+.reloc 360, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ba8
++.reloc 360, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x20e8
 +.word 0
-+.reloc 364, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bb0
++.reloc 364, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2100
 +.word 0
-+.reloc 368, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bb8
++.reloc 368, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2138
 +.word 0
-+.reloc 372, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bc0
++.reloc 372, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2150
 +.word 0
-+.reloc 376, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bc8
++.reloc 376, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2188
 +.word 0
-+.reloc 380, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bd0
++.reloc 380, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x21a0
 +.word 0
-+.reloc 384, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bd8
++.reloc 384, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x21d8
 +.word 0
-+.reloc 388, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1be0
++.reloc 388, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x21f0
 +.word 0
-+.reloc 392, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1be8
++.reloc 392, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2228
 +.word 0
-+.reloc 396, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bf0
++.reloc 396, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2240
 +.word 0
-+.reloc 400, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1bf8
++.reloc 400, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2278
 +.word 0
-+.reloc 404, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c00
++.reloc 404, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2290
 +.word 0
-+.reloc 408, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c08
++.reloc 408, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x22c8
 +.word 0
-+.reloc 412, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c10
++.reloc 412, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x22e0
 +.word 0
-+.reloc 416, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c18
++.reloc 416, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2318
 +.word 0
-+.reloc 420, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c20
++.reloc 420, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2330
 +.word 0
-+.reloc 424, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c28
++.reloc 424, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2368
 +.word 0
-+.reloc 428, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c30
++.reloc 428, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2380
 +.word 0
-+.reloc 432, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c38
++.reloc 432, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x23b8
 +.word 0
-+.reloc 436, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c40
++.reloc 436, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x23d0
 +.word 0
-+.reloc 440, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c48
++.reloc 440, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2408
 +.word 0
-+.reloc 444, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c50
++.reloc 444, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2420
 +.word 0
-+.reloc 448, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c58
++.reloc 448, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2458
 +.word 0
-+.reloc 452, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c60
++.reloc 452, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2470
 +.word 0
-+.reloc 456, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c68
++.reloc 456, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x24a8
 +.word 0
-+.reloc 460, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c70
++.reloc 460, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x24c0
 +.word 0
-+.reloc 464, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c78
++.reloc 464, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x24f8
 +.word 0
-+.reloc 468, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c80
++.reloc 468, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2510
 +.word 0
-+.reloc 472, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c88
++.reloc 472, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2548
 +.word 0
-+.reloc 476, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c90
++.reloc 476, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2560
 +.word 0
-+.reloc 480, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1c98
++.reloc 480, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2598
 +.word 0
-+.reloc 484, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ca0
++.reloc 484, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x25b0
 +.word 0
-+.reloc 488, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ca8
++.reloc 488, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x25e8
 +.word 0
-+.reloc 492, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cb0
++.reloc 492, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2600
 +.word 0
-+.reloc 496, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cb8
++.reloc 496, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2638
 +.word 0
-+.reloc 500, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cc0
++.reloc 500, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2650
 +.word 0
-+.reloc 504, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cc8
++.reloc 504, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2688
 +.word 0
-+.reloc 508, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cd0
++.reloc 508, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x26a0
 +.word 0
-+.reloc 512, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1cd8
++.reloc 512, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x26f0
 +.word 0
-+.reloc 516, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ce8
++.reloc 516, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2728
 +.word 0
-+.reloc 520, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1d90
++.reloc 520, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2740
 +.word 0
-+.reloc 524, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1da0
++.reloc 524, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2778
 +.word 0
-+.reloc 528, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1de0
++.reloc 528, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2790
 +.word 0
-+.reloc 532, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1e00
++.reloc 532, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x27c8
 +.word 0
-+.reloc 536, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1ee8
++.reloc 536, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x27e0
 +.word 0
-+.reloc 540, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1f90
++.reloc 540, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2830
 +.word 0
-+.reloc 544, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1fa0
++.reloc 544, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2868
 +.word 0
-+.reloc 548, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x1fe0
++.reloc 548, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2880
 +.word 0
-+.reloc 552, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2000
++.reloc 552, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x28b8
 +.word 0
-+.reloc 556, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x20e0
++.reloc 556, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x28d0
 +.word 0
-+.reloc 560, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x20f8
++.reloc 560, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2908
 +.word 0
-+.reloc 564, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2110
++.reloc 564, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2920
 +.word 0
-+.reloc 568, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2118
++.reloc 568, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2970
 +.word 0
-+.reloc 572, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x21b8
++.reloc 572, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x29a8
 +.word 0
-+.reloc 576, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2228
++.reloc 576, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x29c0
 +.word 0
-+.reloc 580, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2238
++.reloc 580, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2a10
 +.word 0
-+.reloc 584, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2300
++.reloc 584, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2a60
 +.word 0
-+.reloc 588, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2318
++.reloc 588, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ab0
 +.word 0
-+.reloc 592, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2350
++.reloc 592, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ae8
 +.word 0
-+.reloc 596, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2368
++.reloc 596, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b00
 +.word 0
-+.reloc 600, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x23a0
++.reloc 600, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b38
 +.word 0
-+.reloc 604, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x23b8
++.reloc 604, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b50
 +.word 0
-+.reloc 608, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x23f0
++.reloc 608, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ba0
 +.word 0
-+.reloc 612, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2408
++.reloc 612, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2bf0
 +.word 0
-+.reloc 616, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2440
++.reloc 616, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c28
 +.word 0
-+.reloc 620, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2458
++.reloc 620, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c40
 +.word 0
-+.reloc 624, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2490
++.reloc 624, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c78
 +.word 0
-+.reloc 628, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x24a8
++.reloc 628, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c90
 +.word 0
-+.reloc 632, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x24e0
++.reloc 632, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ce0
 +.word 0
-+.reloc 636, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x24f8
++.reloc 636, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2d30
 +.word 0
-+.reloc 640, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2530
++.reloc 640, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2d68
 +.word 0
-+.reloc 644, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2548
++.reloc 644, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2d80
 +.word 0
-+.reloc 648, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2580
++.reloc 648, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2db8
 +.word 0
-+.reloc 652, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x25d0
++.reloc 652, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2dd0
 +.word 0
-+.reloc 656, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x25e8
++.reloc 656, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2e08
 +.word 0
-+.reloc 660, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2620
++.reloc 660, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2e20
 +.word 0
-+.reloc 664, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2638
++.reloc 664, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2e70
 +.word 0
-+.reloc 668, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2670
++.reloc 668, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ec0
 +.word 0
-+.reloc 672, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2688
++.reloc 672, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2f10
 +.word 0
-+.reloc 676, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x26c0
++.reloc 676, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2f60
 +.word 0
-+.reloc 680, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x26d8
++.reloc 680, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2fb0
 +.word 0
-+.reloc 684, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2710
++.reloc 684, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2fe8
 +.word 0
-+.reloc 688, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2728
++.reloc 688, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3000
 +.word 0
-+.reloc 692, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2760
++.reloc 692, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3038
 +.word 0
-+.reloc 696, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2778
++.reloc 696, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3050
 +.word 0
-+.reloc 700, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x27b0
++.reloc 700, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3088
 +.word 0
-+.reloc 704, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x27c8
++.reloc 704, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x30a0
 +.word 0
-+.reloc 708, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2800
++.reloc 708, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x30f0
 +.word 0
-+.reloc 712, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2818
++.reloc 712, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3140
 +.word 0
-+.reloc 716, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2850
++.reloc 716, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3190
 +.word 0
-+.reloc 720, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2868
++.reloc 720, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x31e0
 +.word 0
-+.reloc 724, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x28a0
++.reloc 724, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3230
 +.word 0
-+.reloc 728, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x28b8
++.reloc 728, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3268
 +.word 0
-+.reloc 732, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x28f0
++.reloc 732, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x32b8
 +.word 0
-+.reloc 736, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2908
++.reloc 736, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x32d0
 +.word 0
-+.reloc 740, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2940
++.reloc 740, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3308
 +.word 0
-+.reloc 744, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2958
++.reloc 744, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3320
 +.word 0
-+.reloc 748, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2990
++.reloc 748, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3358
 +.word 0
-+.reloc 752, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x29a8
++.reloc 752, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3370
 +.word 0
-+.reloc 756, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x29e0
++.reloc 756, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x33a8
 +.word 0
-+.reloc 760, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x29f8
++.reloc 760, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x33c0
 +.word 0
-+.reloc 764, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2a30
++.reloc 764, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x33f8
 +.word 0
-+.reloc 768, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2a48
++.reloc 768, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3410
 +.word 0
-+.reloc 772, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2a80
++.reloc 772, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3448
 +.word 0
-+.reloc 776, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2a98
++.reloc 776, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3460
 +.word 0
-+.reloc 780, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ad0
++.reloc 780, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3498
 +.word 0
-+.reloc 784, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ae8
++.reloc 784, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x34b0
 +.word 0
-+.reloc 788, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b20
++.reloc 788, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x34e8
 +.word 0
-+.reloc 792, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b38
++.reloc 792, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3500
 +.word 0
-+.reloc 796, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b70
++.reloc 796, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3538
 +.word 0
-+.reloc 800, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2b88
++.reloc 800, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3588
 +.word 0
-+.reloc 804, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2bd8
++.reloc 804, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x35d8
 +.word 0
-+.reloc 808, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c10
++.reloc 808, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3628
 +.word 0
-+.reloc 812, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c28
++.reloc 812, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3678
 +.word 0
-+.reloc 816, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c60
++.reloc 816, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x36c8
 +.word 0
-+.reloc 820, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2c78
++.reloc 820, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3718
 +.word 0
-+.reloc 824, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2cb0
++.reloc 824, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3730
 +.word 0
-+.reloc 828, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2cc8
++.reloc 828, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3768
 +.word 0
-+.reloc 832, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2d18
++.reloc 832, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x37b8
 +.word 0
-+.reloc 836, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2d50
++.reloc 836, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3808
 +.word 0
-+.reloc 840, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2d68
++.reloc 840, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3820
 +.word 0
-+.reloc 844, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2da0
++.reloc 844, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3858
 +.word 0
-+.reloc 848, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2db8
++.reloc 848, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3870
 +.word 0
-+.reloc 852, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2df0
++.reloc 852, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x38a8
 +.word 0
-+.reloc 856, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2e08
++.reloc 856, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x38c0
 +.word 0
-+.reloc 860, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2e58
++.reloc 860, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x38f8
 +.word 0
-+.reloc 864, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2e90
++.reloc 864, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3948
 +.word 0
-+.reloc 868, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ea8
++.reloc 868, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3998
 +.word 0
-+.reloc 872, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2ef8
++.reloc 872, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x39e8
 +.word 0
-+.reloc 876, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2f48
++.reloc 876, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3a38
 +.word 0
-+.reloc 880, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2f98
++.reloc 880, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3a88
 +.word 0
-+.reloc 884, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2fd0
++.reloc 884, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3d08
 +.word 0
-+.reloc 888, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x2fe8
-+.word 0
-+.reloc 892, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3020
-+.word 0
-+.reloc 896, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3038
-+.word 0
-+.reloc 900, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3088
-+.word 0
-+.reloc 904, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x30d8
-+.word 0
-+.reloc 908, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3110
-+.word 0
-+.reloc 912, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3128
-+.word 0
-+.reloc 916, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3160
-+.word 0
-+.reloc 920, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3178
-+.word 0
-+.reloc 924, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x31c8
-+.word 0
-+.reloc 928, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3218
-+.word 0
-+.reloc 932, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3250
-+.word 0
-+.reloc 936, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3268
-+.word 0
-+.reloc 940, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x32a0
-+.word 0
-+.reloc 944, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x32b8
-+.word 0
-+.reloc 948, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x32f0
-+.word 0
-+.reloc 952, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3308
-+.word 0
-+.reloc 956, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3358
-+.word 0
-+.reloc 960, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x33a8
-+.word 0
-+.reloc 964, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x33f8
-+.word 0
-+.reloc 968, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3448
-+.word 0
-+.reloc 972, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3498
-+.word 0
-+.reloc 976, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x34d0
-+.word 0
-+.reloc 980, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x34e8
-+.word 0
-+.reloc 984, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3520
-+.word 0
-+.reloc 988, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3538
-+.word 0
-+.reloc 992, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3570
-+.word 0
-+.reloc 996, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3588
-+.word 0
-+.reloc 1000, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x35d8
-+.word 0
-+.reloc 1004, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3628
-+.word 0
-+.reloc 1008, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3678
-+.word 0
-+.reloc 1012, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x36c8
-+.word 0
-+.reloc 1016, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3718
-+.word 0
-+.reloc 1020, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3750
-+.word 0
-+.reloc 1024, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x37a0
-+.word 0
-+.reloc 1028, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x37b8
-+.word 0
-+.reloc 1032, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x37f0
-+.word 0
-+.reloc 1036, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3808
-+.word 0
-+.reloc 1040, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3840
-+.word 0
-+.reloc 1044, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3858
-+.word 0
-+.reloc 1048, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3890
-+.word 0
-+.reloc 1052, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x38a8
-+.word 0
-+.reloc 1056, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x38e0
-+.word 0
-+.reloc 1060, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x38f8
-+.word 0
-+.reloc 1064, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3930
-+.word 0
-+.reloc 1068, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3948
-+.word 0
-+.reloc 1072, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3980
-+.word 0
-+.reloc 1076, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3998
-+.word 0
-+.reloc 1080, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x39d0
-+.word 0
-+.reloc 1084, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x39e8
-+.word 0
-+.reloc 1088, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3a20
-+.word 0
-+.reloc 1092, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3a70
-+.word 0
-+.reloc 1096, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3ac0
-+.word 0
-+.reloc 1100, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3b10
-+.word 0
-+.reloc 1104, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3b60
-+.word 0
-+.reloc 1108, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3bb0
-+.word 0
-+.reloc 1112, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3c00
-+.word 0
-+.reloc 1116, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3c18
-+.word 0
-+.reloc 1120, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3c50
-+.word 0
-+.reloc 1124, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3ca0
-+.word 0
-+.reloc 1128, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3cf0
-+.word 0
-+.reloc 1132, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3d08
-+.word 0
-+.reloc 1136, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3d40
-+.word 0
-+.reloc 1140, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3d58
-+.word 0
-+.reloc 1144, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3d90
-+.word 0
-+.reloc 1148, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3da8
-+.word 0
-+.reloc 1152, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3de0
-+.word 0
-+.reloc 1156, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3e30
-+.word 0
-+.reloc 1160, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3e80
-+.word 0
-+.reloc 1164, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3ed0
-+.word 0
-+.reloc 1168, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3f20
-+.word 0
-+.reloc 1172, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3f70
-+.word 0
-+.reloc 1176, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x4290
-+.word 0
-+.reloc 1180, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x42a8
++.reloc 888, R_AARCH64_PREL32, __hyp_section_.hyp.rodata + 0x3d20
 +.global __hyp_section_.hyp.idmap.text
 +.word 0
-+.reloc 1184, R_AARCH64_PREL32, __hyp_section_.hyp.idmap.text + 0xe08
++.reloc 892, R_AARCH64_PREL32, __hyp_section_.hyp.idmap.text + 0xe08
 +.word 0
-+.reloc 1188, R_AARCH64_PREL32, __hyp_section_.hyp.idmap.text + 0xe10
++.reloc 896, R_AARCH64_PREL32, __hyp_section_.hyp.idmap.text + 0xe10
 +.word 0
-+.reloc 1192, R_AARCH64_PREL32, __hyp_section_.hyp.idmap.text + 0xe18
-+.global __hyp_section_.hyp.data
-+.word 0
-+.reloc 1196, R_AARCH64_PREL32, __hyp_section_.hyp.data + 0x58
-+.word 0
-+.reloc 1200, R_AARCH64_PREL32, __hyp_section_.hyp.data + 0x60
++.reloc 900, R_AARCH64_PREL32, __hyp_section_.hyp.idmap.text + 0xe18
 +.popsection
 --- a/arch/arm64/boot/dts/qcom/Makefile
 +++ b/arch/arm64/boot/dts/qcom/Makefile
-@@ -523,3 +523,5 @@
+@@ -473,3 +473,5 @@
  dtb-$(CONFIG_ARCH_QCOM)	+= x1p64100-microsoft-denali.dtb x1p64100-microsoft-denali-el2.dtb
  x1p42100-microsoft-sp12in-el2-dtbs	:= x1p42100-microsoft-sp12in.dtb x1-el2.dtbo
  dtb-$(CONFIG_ARCH_QCOM)	+= x1p42100-microsoft-sp12in.dtb x1p42100-microsoft-sp12in-el2.dtb
@@ -112848,21 +111807,6 @@ hb.c
 +		vst1q_u8(&q[d+NSIZE*3], wq3);
 +	}
 +}
---- a/sound/soc/codecs/wcd939x.c
-+++ b/sound/soc/codecs/wcd939x.c
-@@ -3222,10 +3222,10 @@
- 
- static int wcd939x_reset(struct wcd939x_priv *wcd939x)
- {
--	gpiod_set_value(wcd939x->reset_gpio, 1);
-+	gpiod_set_value_cansleep(wcd939x->reset_gpio, 1);
- 	/* 20us sleep required after pulling the reset gpio to LOW */
- 	usleep_range(20, 30);
--	gpiod_set_value(wcd939x->reset_gpio, 0);
-+	gpiod_set_value_cansleep(wcd939x->reset_gpio, 0);
- 	/* 20us sleep required after pulling the reset gpio to HIGH */
- 	usleep_range(20, 30);
- 
 --- a/sound/soc/codecs/aw88261.c
 +++ b/sound/soc/codecs/aw88261.c
 @@ -10,6 +10,7 @@
@@ -112905,7 +111849,7 @@ hb.c
  	.set_fmt = aw88261_set_fmt,
  	.hw_params = aw88261_hw_params,
  	.set_tdm_slot = aw88261_set_tdm_slot,
-@@ -1068,7 +1093,7 @@
+@@ -1039,7 +1064,7 @@
  	guard(mutex)(&aw88261->lock);
  	switch (event) {
  	case SND_SOC_DAPM_PRE_PMU:
@@ -112914,7 +111858,7 @@ hb.c
  		break;
  	case SND_SOC_DAPM_POST_PMD:
  		aw88261_dev_stop(aw88261->aw_pa);
-@@ -1316,6 +1341,7 @@
+@@ -1286,6 +1311,7 @@
  static int aw88261_i2c_probe(struct i2c_client *i2c)
  {
  	struct aw88261 *aw88261;
@@ -112922,7 +111866,7 @@ hb.c
  	int ret;
  
  	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_I2C))
-@@ -1336,6 +1362,13 @@
+@@ -1306,6 +1332,13 @@
  	aw88261->md_value = AW88261_I2SMD_PHILIPS_STANDARD_VALUE;
  	aw88261->rxr_slotvld_mask = 1 << AW88261_I2S_RXR_SLOTVLD_START_BIT;
  
@@ -112936,7 +111880,7 @@ hb.c
  	mutex_init(&aw88261->lock);
  
  	i2c_set_clientdata(i2c, aw88261);
-@@ -1368,6 +1401,8 @@
+@@ -1338,6 +1371,8 @@
  
  static const struct of_device_id aw88261_of_table[] = {
  	{ .compatible = "awinic,aw88261" },
@@ -112974,7 +111918,7 @@ hb.c
  #include <linux/module.h>
  #include <linux/platform_device.h>
  #include <sound/soc.h>
-@@ -527,7 +528,16 @@
+@@ -395,7 +396,16 @@
  	struct snd_soc_card *card;
  	struct sc8280xp_snd_data *data;
  	struct device *dev = &pdev->dev;
@@ -112990,7 +111934,7 @@ hb.c
 +	if (nclks < 0)
 +		return dev_err_probe(dev, nclks, "card clocks\n");
  
- 	card = devm_kzalloc_obj(dev, *card);
+ 	card = devm_kzalloc(dev, sizeof(*card), GFP_KERNEL);
  	if (!card)
 --- /dev/null
 +++ b/Documentation/devicetree/bindings/pinctrl/qcom,cliffs-tlmm.yaml
@@ -113074,7 +112018,7 @@ hb.c
        - const: qcom,dwc3
 --- a/Documentation/devicetree/bindings/usb/qcom,snps-dwc3.yaml
 +++ b/Documentation/devicetree/bindings/usb/qcom,snps-dwc3.yaml
-@@ -71,6 +71,7 @@
+@@ -68,6 +68,7 @@
            - qcom,sm6125-dwc3
            - qcom,sm6350-dwc3
            - qcom,sm6375-dwc3
@@ -113084,15 +112028,15 @@ hb.c
            - qcom,sm8350-dwc3
 --- a/Documentation/devicetree/bindings/phy/qcom,snps-eusb2-phy.yaml
 +++ b/Documentation/devicetree/bindings/phy/qcom,snps-eusb2-phy.yaml
-@@ -22,6 +22,7 @@
-               - qcom,nord-snps-eusb2-phy
+@@ -21,6 +21,7 @@
+               - qcom,milos-snps-eusb2-phy
                - qcom,sar2130p-snps-eusb2-phy
                - qcom,sdx75-snps-eusb2-phy
 +              - qcom,sm7675-snps-eusb2-phy
                - qcom,sm8650-snps-eusb2-phy
                - qcom,x1e80100-snps-eusb2-phy
            - const: qcom,sm8550-snps-eusb2-phy
-@@ -34,12 +35,16 @@
+@@ -33,12 +34,16 @@
      const: 0
  
    clocks:
@@ -113111,7 +112055,7 @@ hb.c
      maxItems: 1
 --- a/Documentation/devicetree/bindings/phy/qcom,sc8280xp-qmp-ufs-phy.yaml
 +++ b/Documentation/devicetree/bindings/phy/qcom,sc8280xp-qmp-ufs-phy.yaml
-@@ -57,6 +57,7 @@
+@@ -52,6 +52,7 @@
            - qcom,sm6125-qmp-ufs-phy
            - qcom,sm6350-qmp-ufs-phy
            - qcom,sm7150-qmp-ufs-phy
@@ -113119,7 +112063,7 @@ hb.c
            - qcom,sm8150-qmp-ufs-phy
            - qcom,sm8250-qmp-ufs-phy
            - qcom,sm8350-qmp-ufs-phy
-@@ -90,6 +91,8 @@
+@@ -85,6 +86,8 @@
    vdda-phy-supply: true
  
    vdda-pll-supply: true
@@ -113128,7 +112072,7 @@ hb.c
  
    "#clock-cells":
      const: 1
-@@ -109,6 +112,15 @@
+@@ -104,6 +107,15 @@
    - "#phy-cells"
  
  allOf:
@@ -113144,7 +112088,7 @@ hb.c
    - if:
        properties:
          compatible:
-@@ -128,6 +140,7 @@
+@@ -122,6 +134,7 @@
                - qcom,sm6125-qmp-ufs-phy
                - qcom,sm6350-qmp-ufs-phy
                - qcom,sm7150-qmp-ufs-phy
@@ -113632,7 +112576,7 @@ hb.c
  #endif /* __DT_QCOM_RPMH_RSC_H__ */
 --- a/include/linux/clk-provider.h
 +++ b/include/linux/clk-provider.h
-@@ -47,6 +47,11 @@
+@@ -46,6 +46,11 @@
  #define CLK_OPS_PARENT_ENABLE	BIT(12)
  #define CLK_DUTY_CYCLE_PARENT	BIT(13)
  
@@ -113644,7 +112588,7 @@ hb.c
  struct clk;
  struct clk_hw;
  struct clk_core;
-@@ -269,6 +274,10 @@
+@@ -267,6 +272,10 @@
   * called before clk_enable.
   */
  struct clk_ops {

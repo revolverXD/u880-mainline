@@ -56,6 +56,8 @@ Judge the display with a **camera**, not only screenshots: compositor screenshot
 - **Thermal**: the die heats 2.5-5 C/s. The DT cooling maps and `u880-thermal-guard` must both stay; do not load-test without them.
 - **Audio**: do not put a DisplayPort PCM in the same UCM verb as the speakers (the profile is dropped when it fails to open). WirePlumber remembers a saved `pro-audio` profile in `~/.local/state/wireplumber/`.
 - **Android caches BLE GATT tables**: refresh/forget the device in nRF Connect after changing a GATT server. Do not loop a fixed-length audio file with repeated player runs when measuring dropouts (each restart is a gap).
+- **Forgetting `SUFFIX=-7.4` overwrites the 7.3.1 files** (2026-11-27): the snapshot script without it wrote the 7.4 tree into `kernel/u880-kernel-delta.patch` and `kernel/u880.config`, while the real 7.4 delta missed the camera, video, CDSP, touch and GPU changes. Check after every snapshot: `git diff --stat kernel/` must touch only the `-7.4` files and `head -3 kernel/u880.config` of the old file must still say `7.3.1`. A release with the same name (`7.4.0-rc4-u880e`) can hold very different kernels: the delta, not the name, says which.
+- **Never start a camera with the screen off** (F53): the RPMh `MM0` vote times out and `apps_rsc` wedges until a forced reboot.
 - **Git does not keep empty directories**: the initramfs needs `dev proc sys newroot tmp`, which `scripts/build-initramfs.sh` creates; a ramdisk packed by hand from a fresh clone cannot boot (found by the third cold-read test, 2026-11-26). Whenever a build uses a directory tree from git, check what an empty directory would break.
 - **Steam shader pre-caching** replays about 1 M pipelines (hours, all cores): turn it off in Steam settings.
 
