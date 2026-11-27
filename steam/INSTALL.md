@@ -4,6 +4,12 @@ This is the install guide for games on the finished system (README steps 0-10 do
 It describes what is on the reference tablet. The pieces were each run there; **this guide as one script was not re-run from an empty home directory**, and a few spots below say so.
 The older route (x86 Steam under FEX) is in `steam/README.md`; the notes of how the native client was first assembled are in `steam/README-arm64.md`.
 
+> **Back up before you do anything on this page.** The steps replace launchers, write into your home directory and change which Proton tool a game uses, and a wrong move can lose game saves or leave Steam unusable. At least:
+> - the saves and settings of games you care about: `~/.local/share/Steam/steamapps/compatdata/` (Proton prefixes with the save games), `~/.local/share/Steam/userdata/` and the game folders' own save directories;
+> - the Steam client directories `~/steam-arm`, `~/.local/share/Steam`, `~/.steam`, your `~/.local/share/applications/`, and `/usr/local/bin/steam-*` if they exist;
+> - a copy of `/etc/fstab` and, before touching the system, a copy of the whole root filesystem, for example streamed to your PC while the system runs: `ssh root@<tablet> 'tar --xattrs --acls --numeric-owner --one-file-system -C / -cf - .' | zstd -T4 -3 -o root-backup.tar.zst` (the reference tablet's 23 GB backup was made this way; `--one-file-system` skips the SD card, so back that up separately) or an image of the card.
+> Copy them somewhere that is not on the tablet (your PC) and check that the copy opens. Nothing here is undone by an uninstall command. This is part of the [Disclaimer](../README.md#disclaimer): you do all of it at your own risk.
+
 Everything below runs **as your normal user on the tablet** (not root) unless it says `root`. `$HOME` is that user's home. Games and Proton builds are big (2 GB per Proton build, 1 GB for the client): put them on a card or on the internal disk with room; examples use `$HOME/sd` for a card.
 Send the files of this directory to the tablet first, for example `scp steam/{fetch-arm64.sh,unpack-arm64.py,arm64-packages.txt,fetch-proton.sh} <user>@<tablet>:`.
 The scripts in this directory contain the owner's home directory (a `/home/<name>/` path). Replace it once, on the tablet, in the files you copied:

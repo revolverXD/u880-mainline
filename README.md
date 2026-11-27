@@ -393,7 +393,7 @@ On the tablet: `uname -r` is `<release>` (`7.4.0-rc4-u880e` or `7.3.1-u880e`); `
 
 ### 11. Games: Steam ARM64, launchers, more Proton builds
 
-After step 10 follow **`steam/INSTALL.md`**: host packages, assembling Valve's native ARM64 Steam client from its update manifest (`steam/fetch-arm64.sh`, `steam/unpack-arm64.py`, the libpng fix), the launchers (`steam-arm64`, and `steam-arm64-gs` / `steam-arm64-gs-1280` inside gamescope, with their desktop entries), installing extra Proton builds (DroidDeck-Proton and GE-Proton for ARM64, `steam/fetch-proton.sh`) and gamemode. It was written from the working reference tablet and not re-run from an empty home directory.
+**Back up first** (your home directory, the Steam directories and game saves, `/etc/fstab`, ideally the whole root; the guide lists them) before you touch anything. After step 10 follow **`steam/INSTALL.md`**: host packages, assembling Valve's native ARM64 Steam client from its update manifest (`steam/fetch-arm64.sh`, `steam/unpack-arm64.py`, the libpng fix), the launchers (`steam-arm64`, and `steam-arm64-gs` / `steam-arm64-gs-1280` inside gamescope, with their desktop entries), installing extra Proton builds (DroidDeck-Proton and GE-Proton for ARM64, `steam/fetch-proton.sh`) and gamemode. It was written from the working reference tablet and not re-run from an empty home directory.
 
 ## Porting to another tablet
 
