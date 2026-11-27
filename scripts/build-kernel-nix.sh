@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build a kernel tree on the NixOS host with Nix's unwrapped clang, for when the aosp container is not usable. Used for the 7.4-rc4 port (src/k74).
 #   [MODULES_OUT=<dir>] scripts/build-kernel-nix.sh <kernel tree> [make targets, default "Image Image.gz modules"]
-# MODULES_OUT: also run modules_install into <dir> (lib/modules/<release>/ there is what build-rootfs-image.sh wants as MODULES). The boot image uses arch/arm64/boot/Image (uncompressed).
+# MODULES_OUT: also run modules_install into <dir> (lib/modules/<release>/ there is what build-rootfs-image.sh wants as MODULES). The boot image packs arch/arm64/boot/Image.gz by default (the uncompressed Image works too).
 # The tree needs its .config in place (copy kernel/u880-7.4.config), LOCALVERSION is pinned to -u880e. Compiler is clang 21.1.8, not the Android r574158 (both 21.x, same ABI options).
 # certs/extract-cert needs an x86_64 libcrypto at run time: picked below by reading the ELF header (a 32-bit openssl also lives in the store).
 set -euo pipefail
