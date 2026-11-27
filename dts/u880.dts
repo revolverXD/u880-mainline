@@ -8703,6 +8703,7 @@
 			status = "okay";
 			compatible = "qcom,rpmh-stats";
 			reg = <0xc3f0000 0x400>;
+			qcom,qmp = <&aoss_qmp>;
 			ss-name = "modem", "adsp", "adsp_island", "cdsp", "apss", "wpss";
 		};
 
@@ -14359,6 +14360,47 @@
 			qcom,count-unit = <0x10000>;
 			qcom,target-dev = <0x1b5>;
 			phandle = <0x3d5>;
+		};
+
+		u880_llcc_bwmon: pmu@24091000 {
+			compatible = "qcom,sm8650-llcc-bwmon", "qcom,sc7280-llcc-bwmon";
+			reg = <0x24091000 0x1000>;
+			interrupts = <0x00 0x51 0x04>;
+			interconnects = <&mc_virt 3 &mc_virt 512>;
+			operating-points-v2 = <&u880_llcc_bwmon_opp_table>;
+
+			u880_llcc_bwmon_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-0 { opp-peak-kBps = <2086000>; };
+				opp-1 { opp-peak-kBps = <2929000>; };
+				opp-2 { opp-peak-kBps = <5931000>; };
+				opp-3 { opp-peak-kBps = <6515000>; };
+				opp-4 { opp-peak-kBps = <7980000>; };
+				opp-5 { opp-peak-kBps = <10437000>; };
+				opp-6 { opp-peak-kBps = <12157000>; };
+				opp-7 { opp-peak-kBps = <14060000>; };
+				opp-8 { opp-peak-kBps = <16113000>; };
+			};
+		};
+
+		u880_cpu_bwmon: pmu@240b7400 {
+			compatible = "qcom,sm8650-cpu-bwmon", "qcom,sdm845-bwmon";
+			reg = <0x240b7400 0x600>;
+			interrupts = <0x00 0x245 0x04>;
+			interconnects = <&gem_noc 2 &gem_noc 555>;
+			operating-points-v2 = <&u880_cpu_bwmon_opp_table>;
+
+			u880_cpu_bwmon_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-0 { opp-peak-kBps = <4577000>; };
+				opp-1 { opp-peak-kBps = <7110000>; };
+				opp-2 { opp-peak-kBps = <9155000>; };
+				opp-3 { opp-peak-kBps = <12298000>; };
+				opp-4 { opp-peak-kBps = <14236000>; };
+				opp-5 { opp-peak-kBps = <16265000>; };
+			};
 		};
 
 		qcom,pmic_glink {
