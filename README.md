@@ -21,7 +21,7 @@ Tested on kernel `7.4.0-rc4-u880e` (the default since 2026-11-25; every result o
 | Area | Status |
 |---|---|
 | CPU, cpufreq, cpuidle, thermal (DT cooling maps + userspace guard) | works |
-| GPU Adreno 735 (msm DRM, Mesa freedreno/turnip, GL 4.6, Vulkan 1.4) | works (non-fatal page-fault messages in games, issue #2) |
+| GPU Adreno 735 (msm DRM, Mesa freedreno/turnip, GL 4.6, Vulkan 1.4; `adreno_smmu` `dma-coherent`, preemption, `ACV perfmode_bw`, F62) | works (non-fatal page-fault messages in games, issue #2) |
 | Display: native DPU + dual DSI, DSC, UBWC, 144/120/90/60 Hz, DPMS, backlight, auto-brightness | works (the MDSS power-domain wedge is fixed, issue #1; touch reports are best at 144 Hz) |
 | Touch (Novatek NT36523N, 10 points) | works (rising-edge IRQ and pressure/major axes since 2026-11-27: idle interrupts 1330/s -> 14/s, F61); the numbers that follow predate that change: the IC publishes only ~31-47 frames/s and about 1 in 5 light taps is lost (IC firmware, FINDINGS/NOTES 2026-11-24) |
 | Wi-Fi 6 (ath11k WCN6750) | works |
@@ -240,7 +240,7 @@ scripts/make-boot-image.sh stage1/dtb2-u880.dtb stage1/u880-boot-ufs.img        
 ROOT=sd,ufs scripts/make-boot-image.sh stage1/dtb2-u880.dtb stage1/u880-boot-sd.img    # FIRST INSTALL: card first (step 8a), internal root as fallback
 ```
 
-The script packs the **uncompressed** kernel `arch/arm64/boot/Image` (not `Image.gz`; the working image's kernel is the 46 MB `Image`; the packed boot image is 48 MiB, 50 MB), `stage1/initramfs.cpio.gz` and the DTB with `mkbootimg.py` (header v2, offsets `--base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --tags_offset 0x100 --dtb_offset 0x1f00000`, page size 4096) and the command line that every tested image used
+The script packs the **compressed** kernel `arch/arm64/boot/Image.gz` (~15 MB kernel, ~17 MiB packed boot image — **do not pack the 46 MB uncompressed `Image`**, which overlaps `--ramdisk_offset 0x1000000` (16 MiB) and `--dtb_offset 0x1f00000` (31 MiB) in RAM and hangs at boot), `stage1/initramfs.cpio.gz` and the DTB with `mkbootimg.py` (header v2, offsets `--base 0 --kernel_offset 0x8000 --ramdisk_offset 0x1000000 --tags_offset 0x100 --dtb_offset 0x1f00000`, page size 4096) and the command line that every tested image used
 (`console=tty0 fbcon=font:TER16x32 clk_ignore_unused pd_ignore_unused loglevel=6 rdinit=/init regulator_ignore_unused g_cdc.idProduct=0xa4a7 u880root=ufs cpufreq.default_governor=schedutil arm-smmu.disable_bypass=0 msm.u880_dbg=0x0 msm.u880_dbg2=0 fw_devlink.sync_state=timeout`, plus `apparmor=1 security=apparmor`, and `debugfs=off` unless `DEV=1`); the other `mkbootimg` arguments are `--header_version 2 --os_version 14.0.0 --os_patch_level 2024-03`.
 Defaults and overrides: `ROOT` (`ufs` by default; `sd,ufs` tries an SD card first, step 8a), `KIMAGE` (kernel Image; default the newest `linux-7.4-rc4`/`linux-7.3.1` in the repo root), `RAMDISK` (default `stage1/initramfs.cpio.gz`), `MKBOOTIMG` (default `../LineageOS/system/tools/mkbootimg/mkbootimg.py`; `git clone https://android.googlesource.com/platform/system/tools/mkbootimg`), `CMDLINE`. **Do not hand-type the `mkbootimg` command**: a made-up kernel argument once boot-looped the tablet (CLAUDE.md).
 When you replace an image of this project that already runs, compare the 4096-byte header of the new one with the installed one first (`unpack_bootimg.py`): only the size fields, the id hash and the ramdisk may differ. On a first install the installed `boot_a` is Android's (boot header v4 with an empty ramdisk), so there is nothing to compare with; unpack your own image and check the cmdline above instead.
@@ -363,9 +363,10 @@ From the running tablet (or from Android's fastboot once, for the very first ima
 
 ```
 cat stage1/u880-boot-ufs.img | ssh root@<tablet> 'cat > /root/boot.img'
-ssh root@<tablet> 'dd if=/dev/sde40 of=/root/u880-backup/boot_b-before.img bs=4M;            # sde40 = boot_b on the reference tablet
-   blockdev --setrw /dev/sde /dev/sde40; dd if=/root/boot.img of=/dev/sde40 bs=4M conv=fsync; sync;
-   blockdev --setro /dev/sde40 /dev/sde; head -c $(stat -c %s /root/boot.img) /dev/sde40 | sha256sum'
+ssh root@<tablet> 'DEV=$(readlink -f /dev/disk/by-partlabel/boot_b); DISK=$(echo "$DEV" | sed "s/[0-9]*$//");
+   dd if="$DEV" of=/root/u880-backup/boot_b-before.img bs=4M;
+   blockdev --setrw "$DISK" "$DEV"; dd if=/root/boot.img of="$DEV" bs=4M conv=fsync; sync;
+   blockdev --setro "$DEV" "$DISK"; head -c $(stat -c %s /root/boot.img) "$DEV" | sha256sum'
 ```
 
 Check the hash against the image, then reboot. `scripts/gpt-mark-successful.py` marks a slot successful after `set_active` (see FINDINGS F13/F18). The partition names/devices are those of the reference

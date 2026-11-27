@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Pack the production boot image: kernel Image (uncompressed, arch/arm64/boot/Image) + stage1/initramfs.cpio.gz + a DTB, the cmdline of the installed images.
-# usage: [DEV=1] [ROOT=ufs|sd,ufs] [KIMAGE=<Image>] [RAMDISK=<cpio.gz>] [MKBOOTIMG=<mkbootimg.py>] [CMDLINE=...] make-boot-image.sh <dtb> <out.img>
+# Pack the production boot image: compressed kernel Image.gz (arch/arm64/boot/Image.gz) + stage1/initramfs.cpio.gz + a DTB, the cmdline of the installed images.
+# usage: [DEV=1] [ROOT=ufs|sd,ufs] [KIMAGE=<Image.gz>] [RAMDISK=<cpio.gz>] [MKBOOTIMG=<mkbootimg.py>] [CMDLINE=...] make-boot-image.sh <dtb> <out.img>
 #   e.g. scripts/make-boot-image.sh stage1/dtb2-u880.dtb stage1/u880-boot.img
-# KIMAGE defaults to the newest of linux-7.4-rc4/linux-7.3.1 in the repo root; RAMDISK to stage1/initramfs.cpio.gz (scripts/build-initramfs.sh); MKBOOTIMG to AOSP system/tools/mkbootimg next to the repo
+# KIMAGE defaults to Image.gz in the newest of linux-7.4-rc4/linux-7.3.1 in the repo root (uncompressed 46 MB Image overlaps --ramdisk_offset 0x1000000 and --dtb_offset 0x1f00000 in RAM); RAMDISK to stage1/initramfs.cpio.gz (scripts/build-initramfs.sh); MKBOOTIMG to AOSP system/tools/mkbootimg next to the repo
 #   (git clone https://android.googlesource.com/platform/system/tools/mkbootimg). ROOT=sd,ufs tries an SD card first and falls back to the internal root (README step 8a); CMDLINE=... replaces the whole command line.
 # DTB: dts/u880.dts compiled by scripts/build-dtb-from-dts.sh -> stage1/dtb2-u880.dtb (README step 4; build-stock-disabled.sh is the porting tool that made it)
 # Flash (from the running tablet, boot_b stays marked successful; boot_a ran out of tries, FINDINGS F18):
@@ -11,7 +11,7 @@
 set -euo pipefail
 M=$(cd "$(dirname "$0")/.." && pwd)
 DTB=${1:?dtb}; OUT=${2:?out.img}
-KI=${KIMAGE:-}; [ -n "$KI" ] || for k in "$M"/linux-7.4-rc4 "$M"/linux-7.3.1; do [ -s "$k/arch/arm64/boot/Image" ] && { KI=$k/arch/arm64/boot/Image; break; }; done
+KI=${KIMAGE:-}; [ -n "$KI" ] || for k in "$M"/linux-7.4-rc4 "$M"/linux-7.3.1; do [ -s "$k/arch/arm64/boot/Image.gz" ] && { KI=$k/arch/arm64/boot/Image.gz; break; }; done
 RD=${RAMDISK:-$M/stage1/initramfs.cpio.gz}; MKB=${MKBOOTIMG:-$M/../LineageOS/system/tools/mkbootimg/mkbootimg.py}
 [ -s "$KI" ] || { echo "no kernel Image: build the kernel (README step 3) or set KIMAGE="; exit 2; }
 [ -s "$RD" ] || { echo "no ramdisk $RD: run scripts/build-initramfs.sh (README step 5) or set RAMDISK="; exit 2; }
