@@ -13761,6 +13761,11 @@
 			phandle = <0x3c3>;
 		};
 
+		u880_rng: rng@10c3000 {
+			compatible = "qcom,sm8650-trng", "qcom,trng";
+			reg = <0x10c3000 0x1000>;
+		};
+
 		gic-interrupt-router {
 			status = "disabled";
 			compatible = "qcom,gic-intr-routing";
